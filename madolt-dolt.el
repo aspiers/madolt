@@ -1,0 +1,303 @@
+;;; madolt-dolt.el --- Dolt CLI wrapper layer  -*- lexical-binding:t -*-
+
+;; Copyright (C) 2026  Adam Spiers
+
+;; Author: Adam Spiers <madolt@adamspiers.org>
+;; Maintainer: Adam Spiers <madolt@adamspiers.org>
+
+;; Package-Requires: ((emacs "29.1"))
+
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
+;; This file is not part of GNU Emacs.
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; Dolt CLI wrapper layer for madolt.  Provides functions to execute
+;; dolt commands and parse their output.  Modeled on magit-git.el:
+;; same abstraction pattern (executable + global args + output-parsing
+;; helpers), different binary.
+;;
+;; This is the lowest layer of madolt — it has no dependency on
+;; magit-section, transient, or with-editor.
+
+;;; Code:
+
+(eval-when-compile (require 'cl-lib))
+
+;;;; Configuration
+
+(defcustom madolt-dolt-executable "dolt"
+  "The Dolt executable used by Madolt."
+  :group 'madolt
+  :type 'string)
+
+(defcustom madolt-dolt-global-arguments nil
+  "Global arguments prepended to every dolt invocation.
+These are placed right after the executable itself and before
+the dolt command."
+  :group 'madolt
+  :type '(repeat string))
+
+;;;; Internal helpers
+
+(defun madolt--flatten-args (args)
+  "Flatten ARGS into a flat list of strings, removing nils."
+  (let ((flat (flatten-tree args)))
+    (delq nil (mapcar (lambda (a)
+                        (and a (if (stringp a) a (format "%s" a))))
+                      flat))))
+
+(defconst madolt--ansi-escape-re
+  "\033\\[[0-9;]*m"
+  "Regexp matching ANSI SGR escape sequences.")
+
+(defun madolt--strip-ansi (string)
+  "Strip ANSI escape sequences from STRING."
+  (if string
+      (replace-regexp-in-string madolt--ansi-escape-re "" string)
+    ""))
+
+;;;; Core execution
+
+(defun madolt--run (&rest args)
+  "Execute dolt with ARGS synchronously.
+Return a cons cell (EXIT-CODE . OUTPUT-STRING).
+Global arguments from `madolt-dolt-global-arguments' are prepended.
+Nil arguments are removed and nested lists are flattened."
+  (let* ((args (madolt--flatten-args
+                (append madolt-dolt-global-arguments args)))
+         (process-environment (cons "NO_COLOR=1" process-environment)))
+    (with-temp-buffer
+      (let ((exit (apply #'call-process
+                         madolt-dolt-executable nil t nil args)))
+        (cons exit (buffer-string))))))
+
+(defun madolt-dolt-string (&rest args)
+  "Execute dolt with ARGS, returning the first line of output.
+Return nil if exit code is non-zero or if there is no output."
+  (let ((result (apply #'madolt--run args)))
+    (and (zerop (car result))
+         (not (string-empty-p (cdr result)))
+         (car (split-string (cdr result) "\n" t)))))
+
+(defun madolt-dolt-lines (&rest args)
+  "Execute dolt with ARGS, returning output as a list of lines.
+Empty lines are omitted."
+  (let ((result (apply #'madolt--run args)))
+    (split-string (cdr result) "\n" t)))
+
+(defun madolt-dolt-json (&rest args)
+  "Execute dolt with ARGS, returning parsed JSON output.
+Return nil if the output cannot be parsed as JSON.
+Uses `json-parse-string' with alist object type and list array type."
+  (let ((result (apply #'madolt--run args)))
+    (and (zerop (car result))
+         (not (string-empty-p (cdr result)))
+         (condition-case nil
+             (json-parse-string (cdr result)
+                                :object-type 'alist
+                                :array-type 'list)
+           (json-parse-error nil)))))
+
+(defun madolt-dolt-insert (&rest args)
+  "Execute dolt with ARGS, inserting output at point.
+Return the exit code."
+  (let ((result (apply #'madolt--run args)))
+    (insert (cdr result))
+    (car result)))
+
+(defun madolt-dolt-exit-code (&rest args)
+  "Execute dolt with ARGS, returning the exit code as an integer."
+  (car (apply #'madolt--run args)))
+
+(defun madolt-dolt-success-p (&rest args)
+  "Execute dolt with ARGS, returning non-nil if exit code is 0."
+  (zerop (car (apply #'madolt--run args))))
+
+;;;; Database context
+
+(defun madolt-database-dir (&optional directory)
+  "Return the root directory of the Dolt database.
+Search upward from DIRECTORY (or `default-directory') for a
+directory containing a `.dolt/' subdirectory.
+Return nil if not in a dolt database."
+  (let ((dir (locate-dominating-file
+              (or directory default-directory)
+              (lambda (d) (file-directory-p (expand-file-name ".dolt" d))))))
+    (and dir (file-name-as-directory (expand-file-name dir)))))
+
+(defun madolt-database-p (&optional directory)
+  "Return non-nil if DIRECTORY is inside a Dolt database.
+If DIRECTORY is nil, use `default-directory'."
+  (not (null (madolt-database-dir directory))))
+
+(defun madolt-current-branch ()
+  "Return the name of the current Dolt branch as a string."
+  (let ((branch (madolt-dolt-string "branch" "--show-current")))
+    (and branch (string-trim branch))))
+
+;;;; Status queries
+
+(defun madolt-status-tables ()
+  "Parse `dolt status' and return an alist of change categories.
+Return value is:
+  ((staged    . ((TABLE . STATUS) ...))
+   (unstaged  . ((TABLE . STATUS) ...))
+   (untracked . ((TABLE . STATUS) ...)))
+where STATUS is a string like \"modified\", \"new table\", \"renamed\",
+\"deleted\"."
+  (let ((output (cdr (madolt--run "status")))
+        (staged nil)
+        (unstaged nil)
+        (untracked nil)
+        (current-section nil))
+    (dolist (line (split-string output "\n"))
+      (cond
+       ((string-match-p "^Changes to be committed:" line)
+        (setq current-section 'staged))
+       ((string-match-p "^Changes not staged for commit:" line)
+        (setq current-section 'unstaged))
+       ((string-match-p "^Untracked tables:" line)
+        (setq current-section 'untracked))
+       ;; Table entry lines are tab-indented: "\tstatus:  table_name"
+       ((string-match "^\t\\([a-z ]+\\):\\s-+\\(\\S-+\\)" line)
+        (let ((status (string-trim (match-string 1 line)))
+              (table (match-string 2 line)))
+          (pcase current-section
+            ('staged    (push (cons table status) staged))
+            ('unstaged  (push (cons table status) unstaged))
+            ('untracked (push (cons table status) untracked)))))))
+    `((staged    . ,(nreverse staged))
+      (unstaged  . ,(nreverse unstaged))
+      (untracked . ,(nreverse untracked)))))
+
+;;;; Diff queries
+
+(defun madolt-diff-json (&rest args)
+  "Run `dolt diff' with JSON output and return parsed result.
+ARGS are additional arguments passed to `dolt diff'."
+  (apply #'madolt-dolt-json "diff" "-r" "json" args))
+
+(defun madolt-diff-stat (&rest args)
+  "Run `dolt diff --stat' and return the output string.
+ARGS are additional arguments passed to `dolt diff'."
+  (cdr (apply #'madolt--run "diff" "--stat" args)))
+
+(defun madolt-diff-raw (&rest args)
+  "Run `dolt diff' and return the raw tabular output string.
+ARGS are additional arguments passed to `dolt diff'."
+  (cdr (apply #'madolt--run "diff" args)))
+
+;;;; Log queries
+
+(defun madolt-log-entries (&optional n)
+  "Return the last N commits as a list of plists.
+Each plist has keys :hash :refs :date :author :message.
+N defaults to 10."
+  (let* ((args (if n
+                   (list "log" "-n" (number-to-string n))
+                 (list "log" "-n" "10")))
+         (output (cdr (apply #'madolt--run args)))
+         (clean-output (madolt--strip-ansi output))
+         (entries nil)
+         (current-hash nil)
+         (current-refs nil)
+         (current-author nil)
+         (current-date nil)
+         (current-message-lines nil)
+         (in-message nil))
+    (dolist (line (split-string clean-output "\n"))
+      (cond
+       ;; Commit line: "commit HASH" or "commit HASH (refs)"
+       ((string-match "^commit \\([a-z0-9]+\\)\\(?: (\\(.*\\))\\)?\\s-*$" line)
+        ;; Save previous entry if any
+        (when current-hash
+          (push (list :hash current-hash
+                      :refs current-refs
+                      :date current-date
+                      :author current-author
+                      :message (string-trim
+                                (mapconcat #'identity
+                                           (nreverse current-message-lines)
+                                           "\n")))
+                entries))
+        (setq current-hash (match-string 1 line))
+        (setq current-refs (match-string 2 line))
+        (setq current-author nil)
+        (setq current-date nil)
+        (setq current-message-lines nil)
+        (setq in-message nil))
+       ;; Author line
+       ((string-match "^Author:\\s-+\\(.*\\)$" line)
+        (setq current-author (string-trim (match-string 1 line))))
+       ;; Date line
+       ((string-match "^Date:\\s-+\\(.*\\)$" line)
+        (setq current-date (string-trim (match-string 1 line)))
+        ;; Message follows after the blank line after Date
+        (setq in-message t))
+       ;; Blank line between date and message
+       ((and in-message (string-match-p "^\\s-*$" line)
+             (null current-message-lines))
+        ;; Skip the blank line separator
+        nil)
+       ;; Message lines (tab-indented)
+       ((and in-message (string-match "^\t\\(.*\\)" line))
+        (push (match-string 1 line) current-message-lines))
+       ;; Blank line within/after message
+       ((and in-message current-message-lines
+             (string-match-p "^\\s-*$" line))
+        ;; Could be multi-paragraph message; keep blank lines
+        (push "" current-message-lines))))
+    ;; Don't forget the last entry
+    (when current-hash
+      (push (list :hash current-hash
+                  :refs current-refs
+                  :date current-date
+                  :author current-author
+                  :message (string-trim
+                            (mapconcat #'identity
+                                       (nreverse current-message-lines)
+                                       "\n")))
+            entries))
+    (nreverse entries)))
+
+;;;; Mutation operations
+
+(defun madolt-add-tables (tables)
+  "Stage TABLES for commit.
+TABLES is a list of table name strings."
+  (apply #'madolt--run "add" tables))
+
+(defun madolt-add-all ()
+  "Stage all changed tables for commit."
+  (madolt--run "add" "."))
+
+(defun madolt-reset-tables (tables)
+  "Unstage TABLES.
+TABLES is a list of table name strings."
+  (apply #'madolt--run "reset" tables))
+
+(defun madolt-reset-all ()
+  "Unstage all staged tables."
+  (madolt--run "reset"))
+
+(defun madolt-checkout-table (table)
+  "Discard working changes to TABLE."
+  (madolt--run "checkout" table))
+
+(provide 'madolt-dolt)
+;;; madolt-dolt.el ends here
