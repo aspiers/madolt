@@ -44,6 +44,7 @@
 (require 'transient)
 (require 'madolt-dolt)
 (require 'madolt-mode)
+(require 'madolt-status)
 
 ;; Forward declarations for commands defined in other files.
 (declare-function madolt-diff "madolt-diff" ())
