@@ -81,8 +81,8 @@
 
 (defcustom madolt-status-sections-hook
   '(madolt-insert-status-header
-    madolt-insert-staged-changes
     madolt-insert-unstaged-changes
+    madolt-insert-staged-changes
     madolt-insert-untracked-tables
     madolt-insert-stashes
     madolt-insert-recent-commits)
