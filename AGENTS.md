@@ -1,8 +1,52 @@
 # Agent Instructions
 
+Madolt is a magit-like Emacs interface for the Dolt version-controlled
+database.  The **MVP is complete** -- all 9 source files and 9 test files
+are implemented with 185 passing tests (~4,685 LOC total).
+
+## Project Overview
+
+- **What**: An Emacs major mode providing section-based, keyboard-driven
+  UI for Dolt's Git-like version control on SQL databases.
+- **Stack**: Emacs Lisp, depending on `magit-section`, `transient`,
+  `with-editor`, `compat`.
+- **Architecture**: 9 source files (`madolt*.el`) + 9 test files
+  (`test/madolt*-tests.el`) + `Makefile`.
+- **License**: GPL-3.0-or-later.
+
+## Build & Test
+
+```bash
+make clean && make compile   # Always clean first to avoid stale .elc
+make test                    # Run all 185 tests
+make test-dolt               # Run a single module's tests
+make lint                    # checkdoc
+```
+
+The Makefile assumes `straight.el` packages under `~/.emacs.d/straight/build/`.
+Override with `STRAIGHT_DIR=/path/to/packages`.
+
+## Technical Notes
+
+- **Dolt CLI only** -- no `dolt sql-server` dependency. All operations
+  use `dolt sql -q ... -r json` or direct CLI commands.
+- **Dolt v1.82.x does NOT support `$EDITOR`-based commit messages.**
+  All commits use `-m` flag via minibuffer input.
+- **Dolt stages whole tables**, not hunks. No partial staging.
+- **`dolt commit --all`** only stages modified/deleted tables, NOT
+  untracked. Use `--ALL` for that.
+- **Stale .elc files cause insidious test failures** -- always
+  `make clean` before `make compile`.
+- **`magit-insert-section` with `(eval type)` needs DOUBLE parens:
+  `((eval type))`**.
+- **`define-derived-mode` replaces the keymap variable** -- bindings
+  must be added AFTER the mode definition using `keymap-set`.
+
+## Issue Tracking (bd/beads)
+
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
-## Quick Reference
+### Quick Reference
 
 ```bash
 bd ready              # Find available work
