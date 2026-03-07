@@ -156,6 +156,17 @@ restore cursor position."
            (rel-pos (and section
                          (magit-section-get-relative-position section))))
       (when refresh-fn
+        ;; Reset magit-section highlight state before erasing the
+        ;; buffer.  Without this, stale section objects from the
+        ;; previous render cause wrong-type-argument errors in
+        ;; magit-section-post-command-hook.  Mirrors what
+        ;; magit-refresh-buffer does in magit-mode.el.
+        (deactivate-mark)
+        (setq magit-section-pre-command-section nil)
+        (setq magit-section-highlight-overlays nil)
+        (setq magit-section-selection-overlays nil)
+        (setq magit-section-highlighted-sections nil)
+        (setq magit-section-focused-sections nil)
         (let ((inhibit-read-only t))
           (erase-buffer)
           (save-excursion
@@ -166,12 +177,17 @@ restore cursor position."
               (progn
                 (goto-char (oref target start))
                 (when rel-pos
-                  (magit-section-goto-successor section
-                                                (oref target start)
-                                                rel-pos)))
+                  (apply #'magit-section-goto-successor
+                         section rel-pos)))
             ;; Section not found; go to beginning
             (goto-char (point-min))))
-        (set-buffer-modified-p nil)))))
+        ;; Update highlighting on the freshly built sections, then
+        ;; mark this buffer as refreshed so
+        ;; magit-section-post-command-hook skips its redundant
+        ;; highlight pass (which would operate on stale state).
+        (magit-section-update-highlight)
+        (set-buffer-modified-p nil)
+        (push (current-buffer) magit-section--refreshed-buffers)))))
 
 (defun madolt-refresh-buffer (&rest _args)
   "Revert buffer function for madolt buffers.
