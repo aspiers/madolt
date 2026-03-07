@@ -4,15 +4,8 @@ Madolt is a magit-like Emacs interface for the Dolt version-controlled
 database.  The **MVP is complete** -- all 9 source files and 9 test files
 are implemented with 185 passing tests (~4,685 LOC total).
 
-## Project Overview
-
-- **What**: An Emacs major mode providing section-based, keyboard-driven
-  UI for Dolt's Git-like version control on SQL databases.
-- **Stack**: Emacs Lisp, depending on `magit-section`, `transient`,
-  `with-editor`, `compat`.
-- **Architecture**: 9 source files (`madolt*.el`) + 9 test files
-  (`test/madolt*-tests.el`) + `Makefile`.
-- **License**: GPL-3.0-or-later.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for project overview, build/test
+instructions, interactive QA testing guide, and technical notes.
 
 ## Build & Test
 
@@ -84,7 +77,6 @@ emacsclient --eval '(buffer-string)'
 emacsclient --eval '(madolt-status-refresh)'
 
 # Check what sections are visible
-emacsclient --eval '(madolt-status-refresh)'
 emacsclient --eval '(buffer-substring-no-properties (point-min) (point-max))'
 
 # Navigate and interact

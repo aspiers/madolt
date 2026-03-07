@@ -166,51 +166,23 @@ From any madolt buffer, press `?` or `h` to open the dispatch menu.
 
 Madolt is organized as 9 source files:
 
-| File               | Purpose                                  | LOC |
-|--------------------|------------------------------------------|-----|
-| `madolt.el`        | Entry point, defgroup, dispatch transient | 92  |
-| `madolt-dolt.el`   | CLI wrapper: parsing Dolt output         | 303 |
-| `madolt-process.el`| Process execution and logging            | 161 |
-| `madolt-mode.el`   | Major mode, buffer lifecycle, refresh    | 192 |
-| `madolt-status.el` | Status buffer with section inserters     | 260 |
-| `madolt-apply.el`  | Stage/unstage/discard operations         | 136 |
-| `madolt-commit.el` | Commit transient and minibuffer commit   | 181 |
-| `madolt-diff.el`   | Tabular diff viewer (structured + raw)   | 500 |
-| `madolt-log.el`    | Commit log viewer and revision buffer    | 322 |
+| File                | Purpose                                   | LOC |
+|---------------------|-------------------------------------------|-----|
+| `madolt.el`         | Entry point, defgroup, dispatch transient | 92  |
+| `madolt-dolt.el`    | CLI wrapper: parsing Dolt output          | 303 |
+| `madolt-process.el` | Process execution and logging             | 161 |
+| `madolt-mode.el`    | Major mode, buffer lifecycle, refresh     | 192 |
+| `madolt-status.el`  | Status buffer with section inserters      | 260 |
+| `madolt-apply.el`   | Stage/unstage/discard operations          | 136 |
+| `madolt-commit.el`  | Commit transient and minibuffer commit    | 181 |
+| `madolt-diff.el`    | Tabular diff viewer (structured + raw)    | 500 |
+| `madolt-log.el`     | Commit log viewer and revision buffer     | 322 |
 
 ## Development
 
-### Building
-
-```sh
-make compile    # Byte-compile all source files
-make test       # Run all 185 tests
-make test-dolt  # Run tests for a single module (dolt, process, mode, etc.)
-make lint       # Run checkdoc
-make clean      # Remove .elc files
-```
-
-### Running tests
-
-The test suite requires the Emacs dependencies on your `load-path`.
-The Makefile assumes [straight.el](https://github.com/radian-software/straight.el)
-and looks for packages under `~/.emacs.d/straight/build/`.  Override
-with:
-
-```sh
-make test STRAIGHT_DIR=/path/to/your/packages
-```
-
-## Known limitations
-
-- Dolt (as of v1.82.x) does not support `$EDITOR`-based commit
-  message editing.  Madolt uses minibuffer input with message history
-  instead.
-- Dolt stages whole tables, not individual rows or cells.  There is no
-  hunk-staging equivalent.
-- No `dolt sql-server` dependency -- all CLI operations use
-  `dolt sql -q ... -r json`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, running
+tests, and known limitations.
 
 ## License
 
-GPL-3.0-or-later.  See [COPYING](COPYING) for the full text.
+GPL-3.0-or-later.  See [LICENSE](LICENSE) for the full text.
