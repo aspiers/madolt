@@ -16,14 +16,6 @@
 (require 'madolt-test-helpers)
 (require 'madolt-status)
 
-;;;; Section tree walker (magit-section has no public map function)
-
-(defun madolt-test--walk-sections (fn section)
-  "Call FN on SECTION and all its descendants."
-  (funcall fn section)
-  (dolist (child (oref section children))
-    (madolt-test--walk-sections fn child)))
-
 ;;;; Helper to render status buffer in a test database
 
 (defun madolt-test--render-status ()

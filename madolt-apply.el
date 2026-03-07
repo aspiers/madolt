@@ -1,0 +1,136 @@
+;;; madolt-apply.el --- Stage, unstage, and discard for Madolt  -*- lexical-binding:t -*-
+
+;; Copyright (C) 2026  Adam Spiers
+
+;; Author: Adam Spiers <madolt@adamspiers.org>
+;; Maintainer: Adam Spiers <madolt@adamspiers.org>
+
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
+;; This file is not part of GNU Emacs.
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; Stage, unstage, and discard operations for the madolt status buffer.
+;; Dolt stages whole tables (not hunks), so this layer is simpler than
+;; magit's apply layer.
+;;
+;; All operations go through `madolt-run-dolt' which logs to the
+;; process buffer and refreshes the status buffer afterward.
+
+;;; Code:
+
+(require 'magit-section)
+(require 'madolt-process)
+
+;;;; Helpers
+
+(defun madolt-apply--section-table-name ()
+  "Return the table name of the section at point, or nil."
+  (let ((section (magit-current-section)))
+    (and section
+         (eq (oref section type) 'table)
+         (oref section value))))
+
+(defun madolt-apply--parent-type ()
+  "Return the type of the parent section of the section at point."
+  (let ((section (magit-current-section)))
+    (and section
+         (oref section parent)
+         (oref (oref section parent) type))))
+
+(defun madolt-apply--section-type ()
+  "Return the type of the section at point."
+  (let ((section (magit-current-section)))
+    (and section (oref section type))))
+
+;;;; Stage
+
+(defun madolt-stage ()
+  "Stage the table at point, or all tables if on a section heading.
+On a table under \"Unstaged changes\" or \"Untracked tables\", stages
+that table.  On the section heading itself, stages all tables."
+  (interactive)
+  (let ((section-type (madolt-apply--section-type))
+        (parent-type (madolt-apply--parent-type))
+        (table (madolt-apply--section-table-name)))
+    (cond
+     ;; Table under unstaged or untracked
+     ((and table (memq parent-type '(unstaged untracked)))
+      (madolt-run-dolt "add" table))
+     ;; Unstaged or untracked section heading
+     ((memq section-type '(unstaged untracked))
+      (madolt-run-dolt "add" "."))
+     (t
+      (user-error "Nothing to stage here")))))
+
+(defun madolt-stage-all ()
+  "Stage all changed and untracked tables."
+  (interactive)
+  (madolt-run-dolt "add" "."))
+
+;;;; Unstage
+
+(defun madolt-unstage ()
+  "Unstage the table at point, or all tables if on a section heading.
+On a table under \"Staged changes\", unstages that table.
+On the section heading itself, unstages all tables."
+  (interactive)
+  (let ((section-type (madolt-apply--section-type))
+        (parent-type (madolt-apply--parent-type))
+        (table (madolt-apply--section-table-name)))
+    (cond
+     ;; Table under staged
+     ((and table (eq parent-type 'staged))
+      (madolt-run-dolt "reset" table))
+     ;; Staged section heading
+     ((eq section-type 'staged)
+      (madolt-run-dolt "reset"))
+     (t
+      (user-error "Nothing to unstage here")))))
+
+(defun madolt-unstage-all ()
+  "Unstage all staged tables."
+  (interactive)
+  (madolt-run-dolt "reset"))
+
+;;;; Discard
+
+(defun madolt-discard ()
+  "Discard changes to the table at point.
+Prompts for confirmation because discard is destructive and
+irreversible."
+  (interactive)
+  (let ((section-type (madolt-apply--section-type))
+        (parent-type (madolt-apply--parent-type))
+        (table (madolt-apply--section-table-name)))
+    (cond
+     ;; Table under unstaged
+     ((and table (eq parent-type 'unstaged))
+      (when (yes-or-no-p (format "Discard changes to %s? " table))
+        (madolt-run-dolt "checkout" table)))
+     ;; Unstaged section heading — discard all
+     ((eq section-type 'unstaged)
+      (when (yes-or-no-p "Discard ALL unstaged changes? ")
+        (let ((section (magit-current-section)))
+          (dolist (child (oref section children))
+            (when (eq (oref child type) 'table)
+              (madolt-run-dolt "checkout" (oref child value)))))))
+     (t
+      (user-error "Nothing to discard here")))))
+
+(provide 'madolt-apply)
+;;; madolt-apply.el ends here

@@ -113,5 +113,13 @@ After calling this function the dolt status will show:
    "inventory" "id INT PRIMARY KEY, item VARCHAR(100), qty INT")
   (madolt-test-insert-row "inventory" "(1, 'Bolts', 500)"))
 
+;;;; Section tree walker
+
+(defun madolt-test--walk-sections (fn section)
+  "Call FN on SECTION and all its descendants recursively."
+  (funcall fn section)
+  (dolist (child (oref section children))
+    (madolt-test--walk-sections fn child)))
+
 (provide 'madolt-test-helpers)
 ;;; madolt-test-helpers.el ends here
