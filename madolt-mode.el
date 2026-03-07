@@ -185,7 +185,11 @@ restore cursor position."
         ;; mark this buffer as refreshed so
         ;; magit-section-post-command-hook skips its redundant
         ;; highlight pass (which would operate on stale state).
-        (magit-section-update-highlight)
+        ;; Guard on magit-root-section being set, which won't be
+        ;; the case if the refresh function errored before
+        ;; magit-insert-section could complete.
+        (when magit-root-section
+          (magit-section-update-highlight))
         (set-buffer-modified-p nil)
         (push (current-buffer) magit-section--refreshed-buffers)))))
 
