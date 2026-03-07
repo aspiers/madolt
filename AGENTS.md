@@ -9,7 +9,7 @@ bd ready              # Find available work
 bd show <id>          # View issue details
 bd update <id> --claim  # Claim work atomically
 bd close <id>         # Complete work
-bd sync               # Sync with git
+bd export -o .beads/issues.jsonl  # Export issues for git
 ```
 
 ## Non-Interactive Shell Commands
@@ -133,7 +133,9 @@ For more details, see README.md and docs/QUICKSTART.md.
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync
+   bd export -o .beads/issues.jsonl
+   git add .beads/issues.jsonl
+   git commit -m "chore: export beads issues"
    git push
    git status  # MUST show "up to date with origin"
    ```
