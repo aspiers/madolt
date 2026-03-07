@@ -52,19 +52,25 @@ dolt add users
 
 ### Running Emacs in tmux
 
+**CRITICAL: Use a dedicated server name** to avoid conflicts with any
+pre-existing Emacs server. NEVER kill an Emacs server you didn't start —
+it may have unsaved work, open buffers, or running processes.
+
 ```bash
 # Check if session already exists
 tmux has-session -t madolt-test 2>/dev/null
 
-# If no session exists, create one with Emacs running as a daemon-like server:
+# If no session exists, create one with Emacs using a DEDICATED server name:
 tmux new-session -d -s madolt-test -x 120 -y 40
-tmux send-keys -t madolt-test 'emacs -nw --eval "(progn (server-start) (add-to-list (quote load-path) \"'$(pwd)'\") (require (quote madolt)) (madolt-status \"'$(pwd)'/tmp/test-dolt\"))"' Enter
+tmux send-keys -t madolt-test 'emacs -nw --eval "(progn (setq server-name \"madolt\") (server-start) (add-to-list (quote load-path) \"'$(pwd)'\") (require (quote madolt)) (madolt-status \"'$(pwd)'/tmp/test-dolt\"))"' Enter
 
 # Force a specific terminal size
 tmux resize-window -t madolt-test -x 120 -y 40
 ```
 
 ### Inspecting state with emacsclient
+
+**Always use `-s madolt`** to connect to the dedicated server:
 
 Once Emacs is running with `server-start`, use `emacsclient --eval` to inspect and interact programmatically:
 
