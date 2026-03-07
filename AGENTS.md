@@ -26,6 +26,113 @@ make lint                    # checkdoc
 The Makefile assumes `straight.el` packages under `~/.emacs.d/straight/build/`.
 Override with `STRAIGHT_DIR=/path/to/packages`.
 
+## Interactive QA Testing via tmux
+
+**Both automated AND interactive testing are required** when working on UI changes. Run unit tests first (`make test`), then verify interactively via tmux.
+
+Use a **dedicated tmux session called `madolt-test`** for interactive testing. This session runs Emacs with madolt loaded in a controlled environment that can be inspected programmatically via `emacsclient`.
+
+**CRITICAL RULES for tmux session management:**
+
+- **NEVER kill existing tmux sessions or windows.** Take great care to preserve any running sessions.
+- **Session name is always `madolt-test`** -- do not use other names, and do not reuse session names belonging to other tools.
+- **Do NOT use `tmux kill-session`, `tmux kill-window`, or `tmux kill-pane`** unless you are absolutely certain the target is a stale `madolt-test` session with no running process.
+
+### Setting up the test repo
+
+Create a temporary dolt repo for interactive testing:
+
+```bash
+mkdir -p tmp/test-dolt
+cd tmp/test-dolt
+dolt init
+dolt sql -q "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100))"
+dolt sql -q "INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')"
+dolt add .
+dolt commit -m "Initial commit"
+dolt sql -q "INSERT INTO users VALUES (3, 'Charlie')"
+dolt sql -q "CREATE TABLE orders (id INT PRIMARY KEY, user_id INT, amount DECIMAL(10,2))"
+dolt sql -q "INSERT INTO orders VALUES (1, 1, 99.99)"
+dolt add users
+# Now: 'users' is staged, 'orders' is untracked
+```
+
+### Running Emacs in tmux
+
+```bash
+# Check if session already exists
+tmux has-session -t madolt-test 2>/dev/null
+
+# If no session exists, create one with Emacs running as a daemon-like server:
+tmux new-session -d -s madolt-test -x 120 -y 40
+tmux send-keys -t madolt-test 'emacs -nw --eval "(progn (server-start) (add-to-list (quote load-path) \"'$(pwd)'\") (require (quote madolt)) (madolt-status \"'$(pwd)'/tmp/test-dolt\"))"' Enter
+
+# Force a specific terminal size
+tmux resize-window -t madolt-test -x 120 -y 40
+```
+
+### Inspecting state with emacsclient
+
+Once Emacs is running with `server-start`, use `emacsclient --eval` to inspect and interact programmatically:
+
+```bash
+# Evaluate arbitrary Elisp in the running Emacs
+emacsclient --eval '(buffer-name)'
+emacsclient --eval '(buffer-string)'
+
+# Refresh madolt status
+emacsclient --eval '(madolt-status-refresh)'
+
+# Check what sections are visible
+emacsclient --eval '(madolt-status-refresh)'
+emacsclient --eval '(buffer-substring-no-properties (point-min) (point-max))'
+
+# Navigate and interact
+emacsclient --eval '(goto-char (point-min))'
+emacsclient --eval '(magit-section-forward)'
+emacsclient --eval '(madolt-stage)'
+
+# Check current section at point
+emacsclient --eval '(magit-current-section)'
+```
+
+### Sending keys via tmux
+
+For testing keybindings rather than Elisp functions, send keys directly:
+
+```bash
+# Send a single key
+tmux send-keys -t madolt-test 's'         # Stage
+tmux send-keys -t madolt-test 'u'         # Unstage
+tmux send-keys -t madolt-test 'g'         # Refresh
+tmux send-keys -t madolt-test 'c'         # Commit transient
+tmux send-keys -t madolt-test 'Tab'       # Toggle section
+tmux send-keys -t madolt-test 'C-c'       # Ctrl+C
+
+# Capture current screen content
+tmux capture-pane -t madolt-test -p
+
+# Wait briefly between actions for Emacs to update
+sleep 0.3
+```
+
+### Important tmux notes
+
+- **Window size**: tmux resizes to match the connecting client terminal, so `-x 120 -y 40` at creation doesn't persist. Use `tmux resize-window` to force a specific size.
+- **Prefer emacsclient**: For inspecting buffer contents and evaluating Elisp, `emacsclient --eval` is far more reliable than capturing tmux pane output. Use tmux `send-keys` only when testing actual keybindings.
+- **Graceful shutdown**: Send `C-x C-c` to quit Emacs, or use `emacsclient --eval '(kill-emacs)'`. Never kill sessions/windows/panes violently.
+- **PTY sessions**: Alternatively, use `pty_spawn` to run Emacs in a managed PTY session for automated testing within the agent environment. But this is far less preferable because it cannot easily be observed by the user during testing, so ask permission before using this fallback.
+
+### Typical QA workflow
+
+1. Compile with `make clean && make compile`
+2. Set up or verify the test repo state in `tmp/test-dolt/`
+3. Launch Emacs in the `madolt-test` tmux session (or restart if already running)
+4. Use `emacsclient --eval` to inspect buffer contents and verify behavior
+5. Send keys via tmux to test keybindings
+6. Check for correct section rendering, staging/unstaging, diffs
+7. When done: `emacsclient --eval '(kill-emacs)'` (leave the tmux session intact for next time)
+
 ## Technical Notes
 
 - **Dolt CLI only** -- no `dolt sql-server` dependency. All operations
