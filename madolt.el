@@ -49,6 +49,12 @@
 (declare-function madolt-diff "madolt-diff" ())
 (declare-function madolt-log "madolt-log" ())
 (declare-function madolt-commit "madolt-commit" ())
+(declare-function madolt-stage "madolt-apply" ())
+(declare-function madolt-stage-all "madolt-apply" ())
+(declare-function madolt-unstage "madolt-apply" ())
+(declare-function madolt-unstage-all "madolt-apply" ())
+(declare-function madolt-discard "madolt-apply" ())
+(declare-function madolt-visit-thing "madolt-status" ())
 
 ;;;; Customization
 
@@ -80,13 +86,26 @@ Interactively with a prefix argument, prompt for the directory."
 
 ;;;###autoload (autoload 'madolt-dispatch "madolt" nil t)
 (transient-define-prefix madolt-dispatch ()
-  "Show the main madolt dispatch menu."
-  ["Madolt"
-   ("s" "Status"  madolt-status)
-   ("d" "Diff"    madolt-diff)
-   ("l" "Log"     madolt-log)
-   ("c" "Commit"  madolt-commit)
-   ("$" "Process" madolt-process-buffer)])
+  "Invoke a Madolt command from a list of available commands."
+  ["Transient commands"
+   [("c" "Commit"         madolt-commit)
+    ("d" "Diff"           madolt-diff)
+    ("l" "Log"            madolt-log)]
+   [("j" "Status"         madolt-status)
+    ("$" "Process"        madolt-process-buffer)]]
+  ["Applying changes"
+   :if-derived madolt-mode
+   [("s" "Stage"          madolt-stage)
+    ("u" "Unstage"        madolt-unstage)
+    ("k" "Discard"        madolt-discard)]
+   [("S" "Stage all"      madolt-stage-all)
+    ("U" "Unstage all"    madolt-unstage-all)]]
+  ["Essential commands"
+   :if-derived madolt-mode
+   [("g"        "       Refresh current buffer"  madolt-refresh)
+    ("q"        "       Bury current buffer"     quit-window)]
+   [("<tab>"    "       Toggle section at point" magit-section-toggle)
+    ("<return>" "       Visit thing at point"    madolt-visit-thing)]])
 
 (provide 'madolt)
 ;;; madolt.el ends here

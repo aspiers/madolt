@@ -18,20 +18,28 @@
 ;;;; Helper to find transient suffixes
 
 (defun madolt-test--transient-suffix-keys (prefix-sym)
-  "Return an alist of (KEY . COMMAND) for transient PREFIX-SYM."
+  "Return an alist of (KEY . COMMAND) for transient PREFIX-SYM.
+Handles both flat groups and nested column groups."
   (let ((layout (get prefix-sym 'transient--layout))
         result)
     (when (and layout (>= (length layout) 3))
       ;; layout is a vector [VERSION SPEC GROUPS] where GROUPS is a
-      ;; list of vectors, each [CLASS PLIST SUFFIXES].
-      (dolist (group (aref layout 2))
-        (when (vectorp group)
-          (let ((suffixes (aref group 2)))
-            (dolist (suffix suffixes)
-              (when (and (listp suffix) (plist-get (cdr suffix) :key))
-                (push (cons (plist-get (cdr suffix) :key)
-                            (plist-get (cdr suffix) :command))
-                      result)))))))
+      ;; list of vectors, each [CLASS PLIST SUFFIXES-OR-COLUMNS].
+      (cl-labels
+          ((collect-suffixes (items)
+             (dolist (item items)
+               (cond
+                ;; Nested column: a vector [CLASS PLIST SUFFIXES]
+                ((vectorp item)
+                 (collect-suffixes (aref item 2)))
+                ;; Leaf suffix: a list (CLASS :key KEY :command CMD ...)
+                ((and (listp item) (plist-get (cdr item) :key))
+                 (push (cons (plist-get (cdr item) :key)
+                             (plist-get (cdr item) :command))
+                       result))))))
+        (dolist (group (aref layout 2))
+          (when (vectorp group)
+            (collect-suffixes (aref group 2))))))
     (nreverse result)))
 
 ;;;; Customization group
@@ -94,10 +102,10 @@
   (should (get 'madolt-dispatch 'transient--prefix)))
 
 (ert-deftest test-madolt-dispatch-has-status ()
-  "The dispatch menu has an \"s\" binding for status."
+  "The dispatch menu has a \"j\" binding for status."
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
-    (should (assoc "s" suffixes))
-    (should (eq (cdr (assoc "s" suffixes)) 'madolt-status))))
+    (should (assoc "j" suffixes))
+    (should (eq (cdr (assoc "j" suffixes)) 'madolt-status))))
 
 (ert-deftest test-madolt-dispatch-has-diff ()
   "The dispatch menu has a \"d\" binding for diff."
@@ -116,6 +124,64 @@
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
     (should (assoc "c" suffixes))
     (should (eq (cdr (assoc "c" suffixes)) 'madolt-commit))))
+
+;;;; Dispatch -- applying changes group
+
+(ert-deftest test-madolt-dispatch-has-stage ()
+  "The dispatch menu has an \"s\" binding for stage."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "s" suffixes))
+    (should (eq (cdr (assoc "s" suffixes)) 'madolt-stage))))
+
+(ert-deftest test-madolt-dispatch-has-unstage ()
+  "The dispatch menu has a \"u\" binding for unstage."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "u" suffixes))
+    (should (eq (cdr (assoc "u" suffixes)) 'madolt-unstage))))
+
+(ert-deftest test-madolt-dispatch-has-discard ()
+  "The dispatch menu has a \"k\" binding for discard."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "k" suffixes))
+    (should (eq (cdr (assoc "k" suffixes)) 'madolt-discard))))
+
+(ert-deftest test-madolt-dispatch-has-stage-all ()
+  "The dispatch menu has an \"S\" binding for stage all."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "S" suffixes))
+    (should (eq (cdr (assoc "S" suffixes)) 'madolt-stage-all))))
+
+(ert-deftest test-madolt-dispatch-has-unstage-all ()
+  "The dispatch menu has a \"U\" binding for unstage all."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "U" suffixes))
+    (should (eq (cdr (assoc "U" suffixes)) 'madolt-unstage-all))))
+
+;;;; Dispatch -- essential commands group
+
+(ert-deftest test-madolt-dispatch-has-refresh ()
+  "The dispatch menu has a \"g\" binding for refresh."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "g" suffixes))
+    (should (eq (cdr (assoc "g" suffixes)) 'madolt-refresh))))
+
+(ert-deftest test-madolt-dispatch-has-quit ()
+  "The dispatch menu has a \"q\" binding for quit."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "q" suffixes))
+    (should (eq (cdr (assoc "q" suffixes)) 'quit-window))))
+
+(ert-deftest test-madolt-dispatch-has-toggle ()
+  "The dispatch menu has a TAB binding for section toggle."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "<tab>" suffixes))
+    (should (eq (cdr (assoc "<tab>" suffixes)) 'magit-section-toggle))))
+
+(ert-deftest test-madolt-dispatch-has-visit ()
+  "The dispatch menu has a RET binding for visit thing."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "<return>" suffixes))
+    (should (eq (cdr (assoc "<return>" suffixes)) 'madolt-visit-thing))))
 
 (provide 'madolt-tests)
 ;;; madolt-tests.el ends here
