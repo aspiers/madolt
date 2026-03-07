@@ -137,13 +137,24 @@
   "madolt--refresh-function follows mode name convention."
   (with-temp-buffer
     (madolt-status-mode)
-    ;; Without the function defined, should return nil
-    (fmakunbound 'madolt-status-refresh-buffer)
-    (should (null (madolt--refresh-function)))
-    ;; Define it
-    (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
-               (lambda () nil)))
-      (should (eq (madolt--refresh-function) 'madolt-status-refresh-buffer)))))
+    ;; Save and restore in case madolt-status.el has been loaded
+    (let ((had-fn (fboundp 'madolt-status-refresh-buffer))
+          (old-fn (and (fboundp 'madolt-status-refresh-buffer)
+                       (symbol-function 'madolt-status-refresh-buffer))))
+      (unwind-protect
+          (progn
+            ;; Without the function defined, should return nil
+            (fmakunbound 'madolt-status-refresh-buffer)
+            (should (null (madolt--refresh-function)))
+            ;; Define it
+            (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+                       (lambda () nil)))
+              (should (eq (madolt--refresh-function)
+                          'madolt-status-refresh-buffer))))
+        ;; Restore original binding
+        (if had-fn
+            (fset 'madolt-status-refresh-buffer old-fn)
+          (fmakunbound 'madolt-status-refresh-buffer))))))
 
 ;;;; Keymap
 
