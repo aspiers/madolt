@@ -45,17 +45,10 @@
 (require 'madolt-dolt)
 (require 'madolt-mode)
 (require 'madolt-status)
-
-;; Forward declarations for commands defined in other files.
-(declare-function madolt-diff "madolt-diff" ())
-(declare-function madolt-log "madolt-log" ())
-(declare-function madolt-commit "madolt-commit" ())
-(declare-function madolt-stage "madolt-apply" ())
-(declare-function madolt-stage-all "madolt-apply" ())
-(declare-function madolt-unstage "madolt-apply" ())
-(declare-function madolt-unstage-all "madolt-apply" ())
-(declare-function madolt-discard "madolt-apply" ())
-(declare-function madolt-visit-thing "madolt-status" ())
+(require 'madolt-apply)
+(require 'madolt-commit)
+(require 'madolt-diff)
+(require 'madolt-log)
 
 ;;;; Customization
 
