@@ -80,8 +80,7 @@ navigation, expand/collapse, visibility levels, and highlighting."
 ;; keymap.  We populate it afterward so our bindings aren't lost.
 (let ((map madolt-mode-map))
   ;; Buffer
-  ;; "g" is inherited from special-mode-map -> revert-buffer,
-  ;; which calls revert-buffer-function (set to madolt-refresh-buffer)
+  (keymap-set map "g"   #'madolt-refresh)
   (keymap-set map "q"   #'quit-window)
   (keymap-set map "$"   #'madolt-process-buffer)
   ;; Help

@@ -176,8 +176,8 @@ The buffer is current during BODY and killed afterward."
       (let ((section (madolt-test--goto-section 'table "products")))
         (should section)
         (should (eq (oref (oref section parent) type) 'unstaged))
-        ;; Override yes-or-no-p to always confirm
-        (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest _) t)))
+        ;; Override y-or-n-p to always confirm
+        (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
           (madolt-discard)))
       ;; products should no longer appear in unstaged
       (let ((tables (madolt-test--dolt-status-tables)))
@@ -190,8 +190,8 @@ The buffer is current during BODY and killed afterward."
     (madolt-with-status-buffer
       (let ((prompted nil))
         (madolt-test--goto-section 'table "products")
-        ;; Override yes-or-no-p to record it was called and decline
-        (cl-letf (((symbol-function 'yes-or-no-p)
+        ;; Override y-or-n-p to record it was called and decline
+        (cl-letf (((symbol-function 'y-or-n-p)
                    (lambda (&rest _) (setq prompted t) nil)))
           (madolt-discard))
         (should prompted)

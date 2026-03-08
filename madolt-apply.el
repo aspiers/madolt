@@ -120,15 +120,16 @@ irreversible."
     (cond
      ;; Table under unstaged
      ((and table (eq parent-type 'unstaged))
-      (when (yes-or-no-p (format "Discard changes to %s? " table))
+      (when (y-or-n-p (format "Discard changes to %s? " table))
         (madolt-run-dolt "checkout" table)))
      ;; Unstaged section heading — discard all
      ((eq section-type 'unstaged)
-      (when (yes-or-no-p "Discard ALL unstaged changes? ")
+      (when (y-or-n-p "Discard ALL unstaged changes? ")
         (let ((section (magit-current-section)))
           (dolist (child (oref section children))
             (when (eq (oref child type) 'table)
-              (madolt-run-dolt "checkout" (oref child value)))))))
+              (madolt-call-dolt "checkout" (oref child value))))
+          (madolt-refresh))))
      (t
       (user-error "Nothing to discard here")))))
 

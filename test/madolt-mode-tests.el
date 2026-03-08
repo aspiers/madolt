@@ -159,10 +159,8 @@
 ;;;; Keymap
 
 (ert-deftest test-madolt-mode-map-g-refreshes ()
-  "g triggers refresh via revert-buffer (inherited from special-mode)."
-  ;; g is bound to revert-buffer in special-mode-map (grandparent),
-  ;; and revert-buffer-function is set to madolt-refresh-buffer
-  (should (eq (keymap-lookup madolt-mode-map "g") #'revert-buffer)))
+  "g is bound to madolt-refresh in madolt-mode-map."
+  (should (eq (keymap-lookup madolt-mode-map "g") #'madolt-refresh)))
 
 (ert-deftest test-madolt-mode-map-q-quits ()
   "q is bound to quit-window in madolt-mode-map."
@@ -171,7 +169,7 @@
 (ert-deftest test-madolt-mode-map-bindings-exist ()
   "All documented keybindings exist in madolt-mode-map."
   (let ((expected-bindings
-         '(("g"   . revert-buffer)  ; inherited from special-mode-map
+         '(("g"   . madolt-refresh)
            ("q"   . quit-window)
            ("$"   . madolt-process-buffer)
            ("?"   . madolt-dispatch)

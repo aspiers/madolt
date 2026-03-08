@@ -209,8 +209,8 @@ Return a flat list of strings."
     (when madolt-diff--staged
       (push "--staged" args))
     (when madolt-diff--revisions
-      (push (car madolt-diff--revisions) args)
-      (push (cdr madolt-diff--revisions) args))
+      (push (cdr madolt-diff--revisions) args)
+      (push (car madolt-diff--revisions) args))
     (when madolt-diff--table
       (push madolt-diff--table args))
     args))
@@ -464,10 +464,13 @@ BLOCK is a cons of (TABLE-NAME . BODY-TEXT)."
 
 ;;;; Inline diff for status buffer
 
-(defun madolt-diff-insert-table (table)
+(defun madolt-diff-insert-table (table &optional staged)
   "Insert diff for TABLE at point.
-Used by the status buffer's washer to show inline diffs."
-  (let* ((json (madolt-diff-json table))
+Used by the status buffer's washer to show inline diffs.
+When STAGED is non-nil, show the staged diff."
+  (let* ((json (if staged
+                   (madolt-diff-json "--staged" table)
+                 (madolt-diff-json table)))
          (tables (and json (alist-get 'tables json))))
     (if (null tables)
         (insert "      (no changes)\n")

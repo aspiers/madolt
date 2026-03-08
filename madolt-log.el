@@ -148,9 +148,25 @@ Return nil if not found."
 
 ;;;; Refresh
 
+(defun madolt-log--filter-log-args (args)
+  "Return ARGS with the -n limit removed.
+The limit is handled separately via `madolt-log--limit'."
+  (let ((result nil)
+        (skip-next nil))
+    (dolist (arg args)
+      (cond
+       (skip-next (setq skip-next nil))
+       ((string-match "^-n[0-9]+$" arg)) ; -n25 form — skip
+       ((string= arg "-n") (setq skip-next t)) ; -n 25 form — skip both
+       (t (push arg result))))
+    (nreverse result)))
+
 (defun madolt-log-refresh-buffer ()
   "Refresh the log buffer by inserting commit sections."
-  (let ((entries (madolt-log-entries madolt-log--limit)))
+  (let ((entries (madolt-log-entries
+                  madolt-log--limit
+                  madolt-log--rev
+                  (madolt-log--filter-log-args madolt-log--args))))
     (magit-insert-section (log)
       (magit-insert-heading
         (propertize (format "Commits on %s:" (or madolt-log--rev "HEAD"))
@@ -170,7 +186,7 @@ ENTRY is a plist with keys :hash :refs :date :author :message."
          (author (plist-get entry :author))
          (message (plist-get entry :message))
          (short-hash (substring hash 0 (min 8 (length hash)))))
-    (magit-insert-section (commit hash)
+    (magit-insert-section (commit hash t)
       (magit-insert-heading
         (concat
          (propertize short-hash 'font-lock-face 'madolt-hash)

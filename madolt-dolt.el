@@ -204,13 +204,16 @@ ARGS are additional arguments passed to `dolt diff'."
 
 ;;;; Log queries
 
-(defun madolt-log-entries (&optional n)
+(defun madolt-log-entries (&optional n rev extra-args)
   "Return the last N commits as a list of plists.
 Each plist has keys :hash :refs :date :author :message.
-N defaults to 10."
-  (let* ((args (if n
-                   (list "log" "-n" (number-to-string n))
-                 (list "log" "-n" "10")))
+N defaults to 10.  REV is the revision to show (branch name,
+tag, or commit hash); when nil, dolt shows the current branch.
+EXTRA-ARGS is a list of additional dolt log arguments
+such as \"--merges\"."
+  (let* ((args (append (list "log" "-n" (number-to-string (or n 10)))
+                       (madolt--flatten-args extra-args)
+                       (when rev (list rev))))
          (output (cdr (apply #'madolt--run args)))
          (clean-output (madolt--strip-ansi output))
          (entries nil)

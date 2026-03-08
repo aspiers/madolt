@@ -38,7 +38,7 @@
 (require 'madolt-mode)
 
 ;; Forward declarations for commands/functions in other files.
-(declare-function madolt-diff-insert-table "madolt-diff" (table))
+(declare-function madolt-diff-insert-table "madolt-diff" (table &optional staged))
 
 ;;;; Faces
 
@@ -228,9 +228,12 @@ If TABLES is empty, nothing is inserted."
 (defun madolt--wash-table-diff ()
   "Insert diff content for the table section at point.
 Used as a washer function for lazy diff expansion."
-  (let ((table (oref (magit-current-section) value)))
+  (let* ((section (magit-current-section))
+         (table (oref section value))
+         (staged (eq 'staged
+                     (oref (oref section parent) type))))
     (if (fboundp 'madolt-diff-insert-table)
-        (madolt-diff-insert-table table)
+        (madolt-diff-insert-table table staged)
       ;; Fallback before madolt-diff.el is implemented
       (insert "      (diff not yet available)\n"))))
 
