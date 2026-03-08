@@ -40,6 +40,7 @@
 
 ;; Forward declarations for commands defined in other madolt files.
 ;; These avoid byte-compiler warnings without circular requires.
+(declare-function madolt-clean "madolt-apply" ())
 (declare-function madolt-stage "madolt-apply" ())
 (declare-function madolt-stage-all "madolt-apply" ())
 (declare-function madolt-unstage "madolt-apply" ())
@@ -96,6 +97,7 @@ navigation, expand/collapse, visibility levels, and highlighting."
   (keymap-set map "u"   #'madolt-unstage)
   (keymap-set map "U"   #'madolt-unstage-all)
   (keymap-set map "k"   #'madolt-discard)
+  (keymap-set map "x"   #'madolt-clean)
   ;; Branch (autoloaded from madolt-branch.el)
   (keymap-set map "b"   #'madolt-branch)
   ;; Commit (autoloaded from madolt-commit.el)

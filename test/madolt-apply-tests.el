@@ -12,6 +12,7 @@
 
 (require 'ert)
 (require 'cl-lib)
+(require 'madolt)
 (require 'madolt-test-helpers)
 (require 'madolt-status)
 (require 'madolt-apply)
@@ -301,6 +302,60 @@ The buffer is current during BODY and killed afterward."
             (insert "test-table\n")))))
     (madolt-test--goto-section 'table)
     (should-not (madolt-apply--inside-row-p))))
+
+;;;; madolt-clean
+
+(ert-deftest test-madolt-clean-removes-untracked ()
+  "Clean should remove an untracked table when confirmed."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    ;; Create an untracked table
+    (madolt-test-create-table "orphan" "id INT PRIMARY KEY")
+    (should (assoc "orphan" (alist-get 'untracked (madolt-status-tables))))
+    ;; Clean it with mock section context
+    (cl-letf (((symbol-function 'madolt-apply--section-type) (lambda () 'table))
+              ((symbol-function 'madolt-apply--parent-type) (lambda () 'untracked))
+              ((symbol-function 'madolt-apply--section-table-name) (lambda () "orphan"))
+              ((symbol-function 'y-or-n-p) (lambda (_) t)))
+      (madolt-clean))
+    (should-not (assoc "orphan" (alist-get 'untracked (madolt-status-tables))))))
+
+(ert-deftest test-madolt-clean-aborts-without-confirmation ()
+  "Clean should not remove the table when user declines."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-test-create-table "orphan" "id INT PRIMARY KEY")
+    (cl-letf (((symbol-function 'madolt-apply--section-type) (lambda () 'table))
+              ((symbol-function 'madolt-apply--parent-type) (lambda () 'untracked))
+              ((symbol-function 'madolt-apply--section-table-name) (lambda () "orphan"))
+              ((symbol-function 'y-or-n-p) (lambda (_) nil)))
+      (madolt-clean))
+    (should (assoc "orphan" (alist-get 'untracked (madolt-status-tables))))))
+
+(ert-deftest test-madolt-clean-errors-outside-untracked ()
+  "Clean should error when not on an untracked table or section."
+  (with-temp-buffer
+    (let ((inhibit-read-only t))
+      (magit-insert-section (status)
+        (magit-insert-section (unstaged)
+          (magit-insert-heading "Unstaged changes")
+          (magit-insert-section (table "test-table")
+            (insert "test-table\n")))))
+    (madolt-test--goto-section 'table)
+    (let ((err (should-error (madolt-clean) :type 'user-error)))
+      (should (string-match-p "Nothing to clean" (cadr err))))))
+
+(ert-deftest test-madolt-dispatch-has-clean ()
+  "The dispatch menu has an \"x\" binding for clean."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "x" suffixes))
+    (should (eq (cdr (assoc "x" suffixes)) 'madolt-clean))))
+
+(ert-deftest test-madolt-mode-map-has-clean ()
+  "The mode map should bind 'x' to madolt-clean."
+  (should (eq (keymap-lookup madolt-mode-map "x") #'madolt-clean)))
 
 (provide 'madolt-apply-tests)
 ;;; madolt-apply-tests.el ends here

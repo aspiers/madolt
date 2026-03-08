@@ -148,7 +148,39 @@ irreversible."
      ((madolt-apply--inside-row-p)
       (user-error "Dolt doesn't support discarding individual rows; discard the whole table instead"))
      (t
-      (user-error "Nothing to discard here")))))
+       (user-error "Nothing to discard here")))))
+
+;;;; Clean
+
+(defun madolt-clean ()
+  "Remove untracked tables from the working set.
+When point is on a specific untracked table, remove only that table.
+When point is on the untracked section heading, remove all untracked
+tables.  Prompts for confirmation because this is destructive."
+  (interactive)
+  (let ((section-type (madolt-apply--section-type))
+        (parent-type (madolt-apply--parent-type))
+        (table (madolt-apply--section-table-name)))
+    (cond
+     ;; Table under untracked
+     ((and table (eq parent-type 'untracked))
+      (when (y-or-n-p (format "Delete untracked table %s? " table))
+        (madolt-run-dolt "clean" table)))
+     ;; Untracked section heading — clean all
+     ((eq section-type 'untracked)
+      (let ((tables nil))
+        (dolist (child (oref (magit-current-section) children))
+          (when (eq (oref child type) 'table)
+            (push (oref child value) tables)))
+        (if (null tables)
+            (user-error "No untracked tables to clean")
+          (when (y-or-n-p (format "Delete %d untracked table%s (%s)? "
+                                  (length tables)
+                                  (if (= (length tables) 1) "" "s")
+                                  (string-join tables ", ")))
+            (apply #'madolt-run-dolt "clean" tables)))))
+     (t
+      (user-error "Nothing to clean here; move to an untracked table or the Untracked section")))))
 
 (provide 'madolt-apply)
 ;;; madolt-apply.el ends here

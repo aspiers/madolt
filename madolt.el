@@ -95,7 +95,8 @@ Interactively with a prefix argument, prompt for the directory."
    :if-derived madolt-mode
    [("s" "Stage"          madolt-stage)
     ("u" "Unstage"        madolt-unstage)
-    ("k" "Discard"        madolt-discard)]
+    ("k" "Discard"        madolt-discard)
+    ("x" "Clean"          madolt-clean)]
    [("S" "Stage all"      madolt-stage-all)
     ("U" "Unstage all"    madolt-unstage-all)]]
   ["Essential commands"
