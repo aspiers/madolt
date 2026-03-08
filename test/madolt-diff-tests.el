@@ -55,6 +55,7 @@ Then modifies id=1 email, adds id=3, deletes id=2.  Nothing is staged."
                   madolt-diff-new
                   madolt-diff-changed-cell
                   madolt-diff-context
+                  madolt-diff-schema
                   madolt-diff-table-heading
                   madolt-diff-column-header))
     (should (facep face))))

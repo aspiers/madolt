@@ -88,6 +88,11 @@
   "Face for column header rows in raw mode."
   :group 'madolt-faces)
 
+(defface madolt-diff-schema
+  '((t :inherit font-lock-type-face))
+  "Face for schema change SQL statements."
+  :group 'madolt-faces)
+
 (defface madolt-diff-context
   '((t :inherit shadow))
   "Face for unchanged context in diffs."
@@ -245,7 +250,8 @@ TABLE-DATA is an alist from the JSON `tables' array."
             (propertize "  Schema changes"
                         'font-lock-face 'madolt-diff-column-header))
           (dolist (stmt schema-diff)
-            (insert "    " stmt "\n"))))
+            (insert (propertize (concat "    " stmt "\n")
+                                'font-lock-face 'madolt-diff-schema)))))
       ;; Data changes
       (when data-diff
         (dolist (row-change data-diff)

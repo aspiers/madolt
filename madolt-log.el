@@ -300,10 +300,12 @@ Strip email address if present."
       (insert "\n")
       (when entry
         (insert (propertize "Author: " 'font-lock-face 'bold)
-                (or (plist-get entry :author) "unknown")
+                (propertize (or (plist-get entry :author) "unknown")
+                            'font-lock-face 'madolt-log-author)
                 "\n")
         (insert (propertize "Date:   " 'font-lock-face 'bold)
-                (or (plist-get entry :date) "unknown")
+                (propertize (or (plist-get entry :date) "unknown")
+                            'font-lock-face 'madolt-log-date)
                 "\n\n")
         (insert "    " (or (plist-get entry :message) "") "\n\n"))
       ;; Diff
@@ -319,11 +321,10 @@ Strip email address if present."
                               'font-lock-face 'shadow)))))))
 
 (defun madolt-log--find-entry (hash)
-  "Find and return the log entry plist for HASH."
-  (let ((entries (madolt-log-entries 100)))
-    (cl-find hash entries
-             :key (lambda (e) (plist-get e :hash))
-             :test #'string=)))
+  "Find and return the log entry plist for HASH.
+Queries dolt log directly for HASH so it works regardless of
+which branch the commit belongs to."
+  (car (madolt-log-entries 1 hash)))
 
 ;;;; Branch name completion
 
