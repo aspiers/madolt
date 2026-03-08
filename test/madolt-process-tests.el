@@ -84,7 +84,7 @@
           (progn
             (madolt-call-dolt "status")
             (with-current-buffer buf
-              (should (string-match-p "\\$ dolt status"
+              (should (string-match-p "dolt status"
                                       (buffer-substring-no-properties
                                        (point-min) (point-max))))))
         (kill-buffer buf)))))
@@ -97,7 +97,8 @@
           (progn
             (madolt-call-dolt "status")
             (with-current-buffer buf
-              (should (string-match-p "exit: 0"
+              ;; Exit code is right-justified in 3 chars, e.g. "  0 "
+              (should (string-match-p "  0 dolt"
                                       (buffer-substring-no-properties
                                        (point-min) (point-max))))))
         (kill-buffer buf)))))
@@ -123,8 +124,8 @@
           (progn
             (madolt-call-dolt "checkout" "nonexistent-table")
             (with-current-buffer buf
-              ;; Should show non-zero exit code
-              (should (string-match-p "exit: [1-9]"
+              ;; Should show non-zero exit code, right-justified in 3 chars
+              (should (string-match-p "^ *[1-9][0-9]* dolt"
                                       (buffer-substring-no-properties
                                        (point-min) (point-max))))))
         (kill-buffer buf)))))
@@ -188,8 +189,8 @@
             (with-current-buffer buf
               (let ((content (buffer-substring-no-properties
                               (point-min) (point-max))))
-                (should (string-match-p "\\$ dolt status" content))
-                (should (string-match-p "\\$ dolt branch" content)))))
+                (should (string-match-p "dolt status" content))
+                (should (string-match-p "dolt branch" content)))))
         (kill-buffer buf)))))
 
 ;;;; Faces

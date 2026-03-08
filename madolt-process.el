@@ -107,7 +107,9 @@ also display the buffer."
   "Insert a process section into the process buffer.
 ARGS is the list of dolt arguments that were run.
 EXIT-CODE is the integer exit code.
-OUTPUT is the string output from the command."
+OUTPUT is the string output from the command.
+Layout matches magit-process: right-justified 3-char exit code,
+space, then the command string."
   (let ((buf (madolt-process-buffer t)))
     (when (buffer-live-p buf)
       (with-current-buffer buf
@@ -116,23 +118,17 @@ OUTPUT is the string output from the command."
                (or madolt-process--root-section magit-root-section)))
           (goto-char (1- (point-max)))
           (magit-insert-section (process)
+            (insert (propertize (format "%3s " exit-code)
+                                'font-lock-face
+                                (if (zerop exit-code)
+                                    'madolt-process-ok
+                                  'madolt-process-ng)))
             (magit-insert-heading
               (propertize
-               (format "$ %s %s"
-                       (file-name-nondirectory madolt-dolt-executable)
+               (concat (file-name-nondirectory madolt-dolt-executable)
+                       " "
                        (mapconcat #'shell-quote-argument args " "))
-               'font-lock-face 'madolt-process-heading)
-              (propertize
-               (format "  [exit: %s]"
-                       (propertize (number-to-string exit-code)
-                                   'font-lock-face
-                                   (if (zerop exit-code)
-                                       'madolt-process-ok
-                                     'madolt-process-ng)))
-               'font-lock-face
-               (if (zerop exit-code)
-                   'madolt-process-ok
-                 'madolt-process-ng)))
+               'font-lock-face 'madolt-process-heading))
             (unless (string-empty-p output)
               (insert output)
               (unless (string-suffix-p "\n" output)
