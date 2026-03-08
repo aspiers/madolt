@@ -355,5 +355,11 @@ When FORCE is non-nil, use -D (force delete)."
   "Rename branch OLD-NAME to NEW-NAME."
   (madolt--run "branch" "-m" old-name new-name))
 
+;;;; Remote operations
+
+(defun madolt-remote-names ()
+  "Return a list of remote names."
+  (mapcar #'car (madolt-remotes)))
+
 (provide 'madolt-dolt)
 ;;; madolt-dolt.el ends here

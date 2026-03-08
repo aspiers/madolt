@@ -85,8 +85,11 @@ Interactively with a prefix argument, prompt for the directory."
    [("b" "Branch"         madolt-branch)
     ("c" "Commit"         madolt-commit)
     ("d" "Diff"           madolt-diff)
+    ("f" "Fetch"          madolt-fetch)
     ("l" "Log"            madolt-log)]
-   [("j" "Status"         madolt-status)
+   [("F" "Pull"           madolt-pull)
+    ("P" "Push"           madolt-push)
+    ("j" "Status"         madolt-status)
     ("$" "Process"        madolt-process-buffer)]]
   ["Applying changes"
    :if-derived madolt-mode

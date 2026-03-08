@@ -48,7 +48,10 @@
 (declare-function madolt-branch "madolt-branch" ())
 (declare-function madolt-commit "madolt-commit" ())
 (declare-function madolt-diff "madolt-diff" ())
+(declare-function madolt-fetch "madolt-remote" ())
 (declare-function madolt-log "madolt-log" ())
+(declare-function madolt-pull "madolt-remote" ())
+(declare-function madolt-push "madolt-remote" ())
 (declare-function madolt-dispatch "madolt" ())
 (declare-function madolt-visit-thing "madolt-status" ())
 
@@ -99,6 +102,10 @@ navigation, expand/collapse, visibility levels, and highlighting."
   (keymap-set map "c"   #'madolt-commit)
   ;; Diff (autoloaded from madolt-diff.el)
   (keymap-set map "d"   #'madolt-diff)
+  ;; Fetch/Pull/Push (autoloaded from madolt-remote.el)
+  (keymap-set map "f"   #'madolt-fetch)
+  (keymap-set map "F"   #'madolt-pull)
+  (keymap-set map "P"   #'madolt-push)
   ;; Log (autoloaded from madolt-log.el)
   (keymap-set map "l"   #'madolt-log)
   ;; Navigation
