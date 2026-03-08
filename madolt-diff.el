@@ -341,13 +341,11 @@ Uses fields that are the same in both rows (assumed to be PK)."
                  ('added   'madolt-diff-added)
                  ('deleted 'madolt-diff-removed)
                  ('modified 'madolt-diff-old))))
-    (magit-insert-section (row-diff row-change t)
+    (magit-insert-section (row-diff row-change)
       (magit-insert-heading
         (propertize (concat madolt-diff--indent summary)
                     'font-lock-face face))
-      ;; Body: details shown when section is expanded (level 4)
-      (magit-insert-section-body
-        (madolt-diff--insert-row-details row-change change-type)))))
+      (madolt-diff--insert-row-details row-change change-type))))
 
 (defun madolt-diff--insert-row-details (row-change change-type)
   "Insert expanded detail lines for ROW-CHANGE of CHANGE-TYPE."
