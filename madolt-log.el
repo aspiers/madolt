@@ -203,9 +203,9 @@ ENTRY is a plist with keys :hash :refs :date :author :message."
          "  "
          (or message "")
          "\n"))
-      ;; Washer for TAB expansion: show --stat
+      ;; Washer for TAB expansion: show structured diff
       (magit-insert-section-body
-        (madolt-log--insert-commit-stat hash)))))
+        (madolt-log--insert-commit-diff hash)))))
 
 (defun madolt-log--format-date (date-string)
   "Format DATE-STRING for the log display.
@@ -228,20 +228,21 @@ Strip email address if present."
       (string-trim (match-string 1 author))
     author))
 
-;;;; Commit stat expansion
+;;;; Commit diff expansion
 
-(defun madolt-log--insert-commit-stat (hash)
-  "Insert --stat output for commit HASH."
+(defun madolt-log--insert-commit-diff (hash)
+  "Insert structured table diffs for commit HASH.
+Shows per-table row-level diffs, matching the status buffer style."
   (let* ((parent-hash (madolt-log--parent-hash hash))
-         (stat (if parent-hash
-                   (madolt-diff-stat parent-hash hash)
-                 ;; First commit — diff against empty
-                 (madolt-diff-stat hash))))
-    (if (and stat (not (string-empty-p (string-trim stat))))
-        (progn
-          (dolist (line (split-string stat "\n" t))
-            (insert "    " line "\n")))
-      (insert "    (no stat available)\n"))))
+         (diff-args (if parent-hash
+                        (list parent-hash hash)
+                      (list hash)))
+         (json (apply #'madolt-diff-json diff-args))
+         (tables (and json (alist-get 'tables json))))
+    (if tables
+        (dolist (tbl tables)
+          (madolt-diff--insert-table-diff tbl))
+      (insert "    (no changes)\n"))))
 
 (defun madolt-log--parent-hash (hash)
   "Return the parent commit hash of HASH, or nil if none."
