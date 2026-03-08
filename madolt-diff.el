@@ -333,10 +333,10 @@ Uses fields that are the same in both rows (assumed to be PK)."
                  ('added   'madolt-diff-added)
                  ('deleted 'madolt-diff-removed)
                  ('modified 'madolt-diff-old))))
-    (magit-insert-section (row-diff row-change)
+    (magit-insert-section (row-diff row-change t)
       (magit-insert-heading
         (propertize (concat "  " summary) 'font-lock-face face))
-      ;; Body: expanded details
+      ;; Body: details shown when section is expanded (level 4)
       (magit-insert-section-body
         (madolt-diff--insert-row-details row-change change-type)))))
 
@@ -475,7 +475,9 @@ BLOCK is a cons of (TABLE-NAME . BODY-TEXT)."
 (defun madolt-diff-insert-table (table &optional staged)
   "Insert diff for TABLE at point.
 Used by the status buffer's washer to show inline diffs.
-When STAGED is non-nil, show the staged diff."
+When STAGED is non-nil, show the staged diff.
+Each row change is a collapsible section: level 3 shows a
+one-line summary, TAB expands to level 4 with per-field details."
   (let* ((json (if staged
                    (madolt-diff-json "--staged" table)
                  (madolt-diff-json table)))
@@ -483,18 +485,23 @@ When STAGED is non-nil, show the staged diff."
     (if (null tables)
         (insert "      (no changes)\n")
       (let ((tbl (car tables)))
-        (let ((data-diff (alist-get 'data_diff tbl)))
+        (let ((schema-diff (alist-get 'schema_diff tbl))
+              (data-diff (alist-get 'data_diff tbl)))
+          (when (and schema-diff (not (seq-empty-p schema-diff)))
+            (magit-insert-section (schema-diff)
+              (magit-insert-heading
+                (propertize "  Schema changes"
+                            'font-lock-face 'madolt-diff-column-header))
+              (dolist (stmt schema-diff)
+                (let ((indented (replace-regexp-in-string
+                                 "^" "    " stmt)))
+                  (insert (propertize (concat indented "\n")
+                                      'font-lock-face 'madolt-diff-schema))))))
           (if (null data-diff)
-              (insert "      (schema change only)\n")
+              (unless (and schema-diff (not (seq-empty-p schema-diff)))
+                (insert "      (schema change only)\n"))
             (dolist (row-change data-diff)
-              (let* ((change-type (madolt-diff--row-change-type row-change))
-                     (summary (madolt-diff--row-summary row-change change-type))
-                     (face (pcase change-type
-                             ('added   'madolt-diff-added)
-                             ('deleted 'madolt-diff-removed)
-                             ('modified 'madolt-diff-old))))
-                (insert (propertize (concat "      " summary "\n")
-                                    'font-lock-face face))))))))))
+              (madolt-diff--insert-row-diff row-change))))))))
 
 ;;;; Table name completion
 

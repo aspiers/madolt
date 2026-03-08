@@ -311,13 +311,43 @@ Then modifies id=1 email, adds id=3, deletes id=2.  Nothing is staged."
   (madolt-with-test-database
     (madolt-test-setup-diff-db)
     (with-temp-buffer
+      (magit-section-mode)
       (let ((inhibit-read-only t))
-        (madolt-diff-insert-table "items"))
+        (magit-insert-section (root)
+          (madolt-diff-insert-table "items")))
       (let ((text (buffer-substring-no-properties (point-min) (point-max))))
         ;; Should contain row change indicators
         (should (or (string-match-p "\\+" text)
                     (string-match-p "~" text)
                     (string-match-p "-" text)))))))
+
+(ert-deftest test-madolt-diff-insert-table-creates-row-sections ()
+  "madolt-diff-insert-table should create row-diff sections."
+  (madolt-with-test-database
+    (madolt-test-setup-diff-db)
+    (with-temp-buffer
+      (magit-section-mode)
+      (let ((inhibit-read-only t))
+        (magit-insert-section (root)
+          (madolt-diff-insert-table "items")))
+      ;; Should have row-diff sections
+      (let ((row-sections (madolt-test--sections-of-type 'row-diff)))
+        (should (>= (length row-sections) 3))))))
+
+(ert-deftest test-madolt-diff-insert-table-row-details-hidden ()
+  "Row-diff sections should start hidden (collapsed at level 3)."
+  (madolt-with-test-database
+    (madolt-test-setup-diff-db)
+    (with-temp-buffer
+      (magit-section-mode)
+      (let ((inhibit-read-only t))
+        (magit-insert-section (root)
+          (madolt-diff-insert-table "items")))
+      (let ((row-sections (madolt-test--sections-of-type 'row-diff)))
+        (should (>= (length row-sections) 1))
+        ;; Each row-diff section should be initially hidden
+        (dolist (sec row-sections)
+          (should (oref sec hidden)))))))
 
 (ert-deftest test-madolt-diff-insert-table-no-changes ()
   "madolt-diff-insert-table should handle a table with no changes."
