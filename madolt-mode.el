@@ -136,10 +136,15 @@ database root, activate MODE, and call `madolt-refresh'."
             db-name)))
 
 (defun madolt-display-buffer (buffer)
-  "Display BUFFER in a window and select it."
-  (let ((window (display-buffer buffer)))
-    (when window
-      (select-window window))))
+  "Display BUFFER in a window and select it.
+Delegates to `magit-display-buffer' when available, so that the
+user's `magit-display-buffer-function' setting is respected.
+Falls back to `display-buffer' otherwise."
+  (if (fboundp 'magit-display-buffer)
+      (magit-display-buffer buffer)
+    (let ((window (display-buffer buffer)))
+      (when window
+        (select-window window)))))
 
 ;;;; Refresh
 
