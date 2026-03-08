@@ -81,9 +81,9 @@
 
 (defcustom madolt-status-sections-hook
   '(madolt-insert-status-header
+    madolt-insert-untracked-tables
     madolt-insert-unstaged-changes
     madolt-insert-staged-changes
-    madolt-insert-untracked-tables
     madolt-insert-stashes
     madolt-insert-recent-commits)
   "Hook run to insert sections into the status buffer.
