@@ -15,33 +15,6 @@
 (require 'madolt-test-helpers)
 (require 'madolt)
 
-;;;; Helper to find transient suffixes
-
-(defun madolt-test--transient-suffix-keys (prefix-sym)
-  "Return an alist of (KEY . COMMAND) for transient PREFIX-SYM.
-Handles both flat groups and nested column groups."
-  (let ((layout (get prefix-sym 'transient--layout))
-        result)
-    (when (and layout (>= (length layout) 3))
-      ;; layout is a vector [VERSION SPEC GROUPS] where GROUPS is a
-      ;; list of vectors, each [CLASS PLIST SUFFIXES-OR-COLUMNS].
-      (cl-labels
-          ((collect-suffixes (items)
-             (dolist (item items)
-               (cond
-                ;; Nested column: a vector [CLASS PLIST SUFFIXES]
-                ((vectorp item)
-                 (collect-suffixes (aref item 2)))
-                ;; Leaf suffix: a list (CLASS :key KEY :command CMD ...)
-                ((and (listp item) (plist-get (cdr item) :key))
-                 (push (cons (plist-get (cdr item) :key)
-                             (plist-get (cdr item) :command))
-                       result))))))
-        (dolist (group (aref layout 2))
-          (when (vectorp group)
-            (collect-suffixes (aref group 2))))))
-    (nreverse result)))
-
 ;;;; Customization group
 
 (ert-deftest test-madolt-group-exists ()

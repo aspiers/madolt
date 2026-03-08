@@ -124,7 +124,7 @@ ARGS are additional arguments from the transient."
   "Show log for BRANCH.
 ARGS are additional arguments from the transient."
   (interactive
-   (list (completing-read "Branch: " (madolt--branch-names))
+   (list (completing-read "Branch: " (madolt-branch-names))
          (transient-args 'madolt-log)))
   (madolt-log--show branch args))
 
@@ -405,14 +405,10 @@ Queries dolt log directly for HASH so it works regardless of
 which branch the commit belongs to."
   (car (madolt-log-entries 1 hash)))
 
-;;;; Branch name completion
-
-(defun madolt--branch-names ()
-  "Return a list of branch names in the current database."
-  (let ((lines (madolt-dolt-lines "branch")))
-    (mapcar (lambda (line)
-              (string-trim (replace-regexp-in-string "^\\*\\s-*" "" line)))
-            lines)))
+;; Branch name completion moved to madolt-dolt.el as `madolt-branch-names'.
+(define-obsolete-function-alias 'madolt--branch-names
+  #'madolt-branch-names "0.2.0"
+  "Use `madolt-branch-names' from madolt-dolt.el instead.")
 
 (provide 'madolt-log)
 ;;; madolt-log.el ends here

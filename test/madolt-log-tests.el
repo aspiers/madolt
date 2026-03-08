@@ -215,9 +215,9 @@ Returns in a state with 3 user commits plus the init commit."
 ;;;; Branch name completion
 
 (ert-deftest test-madolt-log-branch-names ()
-  "madolt--branch-names should return branch names."
+  "madolt-branch-names should return branch names."
   (madolt-with-test-database
-    (let ((names (madolt--branch-names)))
+    (let ((names (madolt-branch-names)))
       (should (member "main" names)))))
 
 ;;;; Log helpers

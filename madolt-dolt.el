@@ -320,5 +320,40 @@ TABLES is a list of table name strings."
   "Discard working changes to TABLE."
   (madolt--run "checkout" table))
 
+;;;; Branch operations
+
+(defun madolt-branch-names ()
+  "Return a list of branch names in the current database."
+  (let ((lines (madolt-dolt-lines "branch")))
+    (mapcar (lambda (line)
+              (string-trim (replace-regexp-in-string "^\\*\\s-*" "" line)))
+            lines)))
+
+(defun madolt-branch-create (name &optional start-point)
+  "Create a new branch NAME, optionally from START-POINT.
+Does not switch to the new branch."
+  (if start-point
+      (madolt--run "branch" name start-point)
+    (madolt--run "branch" name)))
+
+(defun madolt-branch-checkout (name)
+  "Switch to branch NAME."
+  (madolt--run "checkout" name))
+
+(defun madolt-branch-checkout-create (name &optional start-point)
+  "Create and switch to a new branch NAME, optionally from START-POINT."
+  (if start-point
+      (madolt--run "checkout" "-b" name start-point)
+    (madolt--run "checkout" "-b" name)))
+
+(defun madolt-branch-delete (name &optional force)
+  "Delete branch NAME.
+When FORCE is non-nil, use -D (force delete)."
+  (madolt--run "branch" (if force "-D" "-d") name))
+
+(defun madolt-branch-rename (old-name new-name)
+  "Rename branch OLD-NAME to NEW-NAME."
+  (madolt--run "branch" "-m" old-name new-name))
+
 (provide 'madolt-dolt)
 ;;; madolt-dolt.el ends here

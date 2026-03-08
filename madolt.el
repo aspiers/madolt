@@ -82,7 +82,8 @@ Interactively with a prefix argument, prompt for the directory."
 (transient-define-prefix madolt-dispatch ()
   "Invoke a Madolt command from a list of available commands."
   ["Transient commands"
-   [("c" "Commit"         madolt-commit)
+   [("b" "Branch"         madolt-branch)
+    ("c" "Commit"         madolt-commit)
     ("d" "Diff"           madolt-diff)
     ("l" "Log"            madolt-log)]
    [("j" "Status"         madolt-status)
