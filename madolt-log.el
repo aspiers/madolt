@@ -39,7 +39,7 @@
 (require 'madolt-dolt)
 (require 'madolt-mode)
 
-;; Forward declaration — madolt-diff provides the diff rendering
+;; Forward declarations — madolt-diff provides the diff rendering
 ;; for revision buffers.
 (declare-function madolt-diff--refresh-structured "madolt-diff" ())
 (declare-function madolt-diff--insert-table-diff "madolt-diff" (table-data))
@@ -223,19 +223,42 @@ ENTRY is a plist with keys :hash :refs :date :author :message."
       (magit-insert-section-body
         (madolt-log--insert-commit-diff hash)))))
 
+(defconst madolt-log--age-spec
+  `((?Y "year"   "years"   ,(round (* 60 60 24 365.2425)))
+    (?M "month"  "months"  ,(round (* 60 60 24 30.436875)))
+    (?w "week"   "weeks"   ,(* 60 60 24 7))
+    (?d "day"    "days"    ,(* 60 60 24))
+    (?h "hour"   "hours"   ,(* 60 60))
+    (?m "minute" "minutes" 60)
+    (?s "second" "seconds" 1))
+  "Time units for relative age formatting.
+Same as magit's `magit--age-spec'.")
+
+(defun madolt-log--relative-age (date)
+  "Format DATE (epoch seconds) as a relative age.
+Returns a list (COUNT UNIT) like (3 \"hours\").
+Reimplements the algorithm from magit's `magit--age' to avoid
+pulling in `magit-margin' (which triggers the full magit
+dependency chain and breaks batch tests)."
+  (named-let calc ((age (abs (- (float-time) date)))
+                   (spec madolt-log--age-spec))
+    (pcase-let* ((`((,_char ,unit ,units ,weight) . ,rest) spec)
+                 (cnt (round (/ age weight 1.0))))
+      (if (or (not rest)
+              (>= (/ age weight) 1))
+          (list cnt (if (= cnt 1) unit units))
+        (calc age rest)))))
+
 (defun madolt-log--format-date (date-string)
-  "Format DATE-STRING for the log display.
-Extract just the date portion (YYYY-MM-DD) if possible."
-  (if (and date-string (string-match "\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" date-string))
-      (match-string 1 date-string)
-    ;; Try to extract from dolt's date format: "Mon Jan 02 15:04:05 -0700 2006"
-    (if (and date-string
-             (string-match "\\([A-Z][a-z]\\{2\\}\\) \\([A-Z][a-z]\\{2\\}\\) \\([0-9]+\\) .* \\([0-9]\\{4\\}\\)" date-string))
-        (format "%s-%s-%s"
-                (match-string 4 date-string)
-                (match-string 2 date-string)
-                (match-string 3 date-string))
-      date-string)))
+  "Format DATE-STRING as a relative age like magit.
+Returns strings like \"2 hours\", \"3 days\", \"1 year\"."
+  (when date-string
+    (let ((time (ignore-errors (date-to-time date-string))))
+      (if time
+          (pcase-let ((`(,cnt ,unit)
+                       (madolt-log--relative-age (float-time time))))
+            (format "%d %s" cnt unit))
+        date-string))))
 
 (defun madolt-log--short-author (author)
   "Return a shortened version of AUTHOR.

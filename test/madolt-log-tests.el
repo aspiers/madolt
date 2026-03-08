@@ -223,13 +223,16 @@ Returns in a state with 3 user commits plus the init commit."
 ;;;; Log helpers
 
 (ert-deftest test-madolt-log-format-date ()
-  "Should extract date from dolt format."
-  ;; ISO format
-  (should (equal (madolt-log--format-date "2026-03-07 12:00:00")
-                 "2026-03-07"))
-  ;; Dolt's native format
-  (should (equal (madolt-log--format-date "Sat Mar 07 12:00:00 +0000 2026")
-                 "2026-Mar-07")))
+  "Should format dates as relative ages (e.g. \"3 hours\")."
+  ;; Valid date produces a relative age like "N unit(s)"
+  (should (string-match-p "^[0-9]+ [a-z]+$"
+                          (madolt-log--format-date "2026-03-07 12:00:00")))
+  ;; Dolt's native format also works
+  (should (string-match-p "^[0-9]+ [a-z]+$"
+                          (madolt-log--format-date
+                           "Sat Mar 07 12:00:00 +0000 2026")))
+  ;; nil input returns nil
+  (should (null (madolt-log--format-date nil))))
 
 (ert-deftest test-madolt-log-short-author ()
   "Should strip email from author string."
