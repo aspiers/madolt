@@ -250,8 +250,10 @@ TABLE-DATA is an alist from the JSON `tables' array."
             (propertize "  Schema changes"
                         'font-lock-face 'madolt-diff-column-header))
           (dolist (stmt schema-diff)
-            (insert (propertize (concat "    " stmt "\n")
-                                'font-lock-face 'madolt-diff-schema)))))
+            (let ((indented (replace-regexp-in-string
+                             "^" "    " stmt)))
+              (insert (propertize (concat indented "\n")
+                                  'font-lock-face 'madolt-diff-schema))))))
       ;; Data changes
       (when data-diff
         (dolist (row-change data-diff)

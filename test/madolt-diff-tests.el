@@ -365,5 +365,23 @@ Then modifies id=1 email, adds id=3, deletes id=2.  Nothing is staged."
     (let ((args (madolt-diff--build-args)))
       (should (member "users" args)))))
 
+;;;; Schema indentation
+
+(ert-deftest test-madolt-diff-schema-indentation ()
+  "Multi-line schema statements should be indented on every line."
+  (with-temp-buffer
+    (magit-section-mode)
+    (let ((inhibit-read-only t)
+          (table-data `((name . "test_table")
+                        (schema_diff "CREATE TABLE `t` (\n  `id` int,\n  `name` text\n);")
+                        (data_diff))))
+      (magit-insert-section (root)
+        (madolt-diff--insert-table-diff table-data))
+      (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+        ;; Every non-empty line of the schema should start with 4 spaces
+        (dolist (line (split-string text "\n" t))
+          (when (string-match-p "`" line)
+            (should (string-match-p "^    " line))))))))
+
 (provide 'madolt-diff-tests)
 ;;; madolt-diff-tests.el ends here
