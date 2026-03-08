@@ -156,41 +156,7 @@
 ;; push with a real local remote, and verify push/pull/fetch commands
 ;; invoke the CLI correctly via stubbing for the pull case.
 
-(defmacro madolt-with-file-remote (&rest body)
-  "Execute BODY in a dolt repo with a file:// origin pointing to another repo.
-Binds `origin-dir' to the path of the origin repository."
-  (declare (indent 0) (debug t))
-  (let ((orig (make-symbol "orig"))
-        (work (make-symbol "work")))
-    `(let ((,orig (file-name-as-directory (make-temp-file "madolt-origin-" t)))
-           (,work (file-name-as-directory (make-temp-file "madolt-work-" t))))
-       (unwind-protect
-           (let ((process-environment
-                  (append (list "NO_COLOR=1") process-environment)))
-             ;; Initialize origin repo with a commit
-             (let ((default-directory (file-truename ,orig)))
-               (call-process madolt-dolt-executable nil nil nil "init")
-               (call-process madolt-dolt-executable nil nil nil
-                             "config" "--local" "--add" "user.name" "Test User")
-               (call-process madolt-dolt-executable nil nil nil
-                             "config" "--local" "--add" "user.email" "test@example.com")
-               (madolt-test-create-table "t1" "id INT PRIMARY KEY")
-               (madolt-test-commit "origin init"))
-             ;; Set up working repo with origin remote
-             (let ((default-directory (file-truename ,work))
-                   (origin-dir (file-truename ,orig)))
-               (call-process madolt-dolt-executable nil nil nil "init")
-               (call-process madolt-dolt-executable nil nil nil
-                             "config" "--local" "--add" "user.name" "Test User")
-               (call-process madolt-dolt-executable nil nil nil
-                             "config" "--local" "--add" "user.email" "test@example.com")
-               (madolt-test-create-table "t1" "id INT PRIMARY KEY")
-               (madolt-test-commit "local init")
-               (madolt--run "remote" "add" "origin"
-                            (concat "file://" origin-dir))
-               ,@body))
-         (delete-directory ,orig t)
-         (delete-directory ,work t)))))
+;; madolt-with-file-remote is now in madolt-test-helpers.el
 
 (ert-deftest test-madolt-fetch-from-origin-succeeds ()
   "Fetching from origin should succeed with a file:// remote."

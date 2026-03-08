@@ -361,5 +361,48 @@ When FORCE is non-nil, use -D (force delete)."
   "Return a list of remote names."
   (mapcar #'car (madolt-remotes)))
 
+(defun madolt-remote-branch-exists-p (remote branch)
+  "Return non-nil if REMOTE has BRANCH.
+Checks `dolt branch -a' output for remotes/REMOTE/BRANCH."
+  (let ((ref (format "remotes/%s/%s" remote branch)))
+    (seq-some (lambda (line)
+                (string= (string-trim line) ref))
+              (madolt-dolt-lines "branch" "-a"))))
+
+;;;; Upstream tracking
+
+(defun madolt-upstream-ref (&optional branch)
+  "Return the upstream remote ref for BRANCH, or nil.
+Dolt does not have git-style upstream tracking, so this uses the
+convention of looking for origin/BRANCH.  If no remote named
+\"origin\" exists, the first configured remote is tried.
+BRANCH defaults to the current branch."
+  (let* ((branch (or branch (madolt-current-branch)))
+         (remotes (madolt-remote-names))
+         (remote (if (member "origin" remotes)
+                     "origin"
+                   (car remotes))))
+    (when (and remote branch
+               (madolt-remote-branch-exists-p remote branch))
+      (format "%s/%s" remote branch))))
+
+(defun madolt-unpushed-commits (&optional upstream)
+  "Return commits in HEAD that are not in UPSTREAM.
+UPSTREAM defaults to the result of `madolt-upstream-ref'.
+Returns a list of plists with keys :hash :refs :date :author :message,
+or nil if there is no upstream or no unpushed commits."
+  (let ((upstream (or upstream (madolt-upstream-ref))))
+    (when upstream
+      (madolt-log-entries 100 (format "%s..HEAD" upstream)))))
+
+(defun madolt-unpulled-commits (&optional upstream)
+  "Return commits in UPSTREAM that are not in HEAD.
+UPSTREAM defaults to the result of `madolt-upstream-ref'.
+Returns a list of plists with keys :hash :refs :date :author :message,
+or nil if there is no upstream or no unpulled commits."
+  (let ((upstream (or upstream (madolt-upstream-ref))))
+    (when upstream
+      (madolt-log-entries 100 (format "HEAD..%s" upstream)))))
+
 (provide 'madolt-dolt)
 ;;; madolt-dolt.el ends here

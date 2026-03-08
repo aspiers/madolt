@@ -477,5 +477,105 @@
   (should (equal (madolt--strip-ansi "") ""))
   (should (equal (madolt--strip-ansi nil) "")))
 
+;;;; Remote branch detection
+
+(ert-deftest test-madolt-remote-branch-exists-p-true ()
+  "madolt-remote-branch-exists-p returns non-nil when remote branch exists."
+  (madolt-with-file-remote
+    ;; Push to create remote tracking branch
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    (should (madolt-remote-branch-exists-p "origin" "main"))))
+
+(ert-deftest test-madolt-remote-branch-exists-p-false ()
+  "madolt-remote-branch-exists-p returns nil for non-existent branch."
+  (madolt-with-file-remote
+    (should-not (madolt-remote-branch-exists-p "origin" "nonexistent"))))
+
+;;;; Upstream tracking
+
+(ert-deftest test-madolt-upstream-ref-no-remote ()
+  "madolt-upstream-ref returns nil when no remotes are configured."
+  (madolt-with-test-database
+    (should (null (madolt-upstream-ref)))))
+
+(ert-deftest test-madolt-upstream-ref-with-remote ()
+  "madolt-upstream-ref returns origin/BRANCH when remote branch exists."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    (should (equal (madolt-upstream-ref) "origin/main"))))
+
+(ert-deftest test-madolt-upstream-ref-no-remote-branch ()
+  "madolt-upstream-ref returns nil when remote has no matching branch."
+  (madolt-with-file-remote
+    ;; Don't push or fetch, so no remote tracking branch exists
+    (should (null (madolt-upstream-ref)))))
+
+;;;; Unpushed / unpulled commits
+
+(ert-deftest test-madolt-unpushed-commits-with-ahead ()
+  "madolt-unpushed-commits returns local commits not on remote."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    ;; Make a local commit
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "local only")
+    (let ((commits (madolt-unpushed-commits)))
+      (should commits)
+      (should (= 1 (length commits)))
+      (should (equal "local only"
+                     (plist-get (car commits) :message))))))
+
+(ert-deftest test-madolt-unpushed-commits-none ()
+  "madolt-unpushed-commits returns nil when up to date."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    (let ((commits (madolt-unpushed-commits)))
+      (should (null commits)))))
+
+(ert-deftest test-madolt-unpushed-commits-no-upstream ()
+  "madolt-unpushed-commits returns nil when no upstream exists."
+  (madolt-with-test-database
+    (should (null (madolt-unpushed-commits)))))
+
+(ert-deftest test-madolt-unpulled-commits-with-behind ()
+  "madolt-unpulled-commits returns remote commits not in HEAD.
+Uses a stubbed upstream ref pointing to a local branch with
+extra commits, since dolt's file:// fetch does not pick up new
+remote commits reliably."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "shared base")
+    ;; Create a branch to simulate the remote being ahead
+    (madolt--run "branch" "fake-remote")
+    (madolt--run "checkout" "fake-remote")
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "remote only")
+    (madolt--run "checkout" "main")
+    ;; Stub upstream-ref to return "fake-remote"
+    (cl-letf (((symbol-function 'madolt-upstream-ref)
+               (lambda (&optional _branch) "fake-remote")))
+      (let ((commits (madolt-unpulled-commits)))
+        (should commits)
+        (should (= 1 (length commits)))
+        (should (equal "remote only"
+                       (plist-get (car commits) :message)))))))
+
+(ert-deftest test-madolt-unpulled-commits-none ()
+  "madolt-unpulled-commits returns nil when up to date."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    (let ((commits (madolt-unpulled-commits)))
+      (should (null commits)))))
+
+(ert-deftest test-madolt-unpulled-commits-no-upstream ()
+  "madolt-unpulled-commits returns nil when no upstream exists."
+  (madolt-with-test-database
+    (should (null (madolt-unpulled-commits)))))
+
 (provide 'madolt-dolt-tests)
 ;;; madolt-dolt-tests.el ends here

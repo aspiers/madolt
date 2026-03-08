@@ -293,5 +293,80 @@ The buffer is current during BODY and killed afterward."
         (should-not (string-match-p "Unstaged changes" text))
         (should-not (string-match-p "Untracked tables" text))))))
 
+;;;; Unpushed / unpulled sections
+
+(ert-deftest test-madolt-status-unpushed-shown ()
+  "The \"Unpushed to\" section appears when there are unpushed commits."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    ;; Create a local commit that hasn't been pushed
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "unpushed commit")
+    (madolt-with-status-buffer
+      (let ((text (buffer-string)))
+        (should (string-match-p "Unpushed to origin/main" text))
+        (should (string-match-p "unpushed commit" text))))))
+
+(ert-deftest test-madolt-status-unpushed-hidden-when-none ()
+  "The unpushed section is hidden when there are no unpushed commits."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    (madolt-with-status-buffer
+      (should-not (string-match-p "Unpushed to" (buffer-string))))))
+
+(ert-deftest test-madolt-status-unpulled-shown ()
+  "The \"Unpulled from\" section appears when there are unpulled commits.
+Stubs upstream functions since dolt file:// fetch has limitations."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "shared base")
+    ;; Create a branch to simulate remote being ahead
+    (madolt--run "branch" "fake-remote")
+    (madolt--run "checkout" "fake-remote")
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "upstream only")
+    (madolt--run "checkout" "main")
+    (cl-letf (((symbol-function 'madolt-upstream-ref)
+               (lambda (&optional _branch) "fake-remote")))
+      (madolt-with-status-buffer
+        (let ((text (buffer-string)))
+          (should (string-match-p "Unpulled from fake-remote" text))
+          (should (string-match-p "upstream only" text)))))))
+
+(ert-deftest test-madolt-status-unpulled-hidden-when-none ()
+  "The unpulled section is hidden when there are no unpulled commits."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    ;; No new commits on origin, so unpulled should be empty
+    (madolt-with-status-buffer
+      (should-not (string-match-p "Unpulled from" (buffer-string))))))
+
+(ert-deftest test-madolt-status-no-remote-no-pushed-unpulled ()
+  "No unpushed/unpulled sections appear when there is no remote."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-with-status-buffer
+      (let ((text (buffer-string)))
+        (should-not (string-match-p "Unpushed" text))
+        (should-not (string-match-p "Unpulled" text))))))
+
+(ert-deftest test-madolt-status-unpushed-commit-count ()
+  "The unpushed section shows the correct count of commits."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    ;; Make two local commits
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "first unpushed")
+    (madolt-test-insert-row "t2" "(1)")
+    (madolt-test-commit "second unpushed")
+    (madolt-with-status-buffer
+      (should (string-match-p "Unpushed to origin/main (2)"
+                              (buffer-string))))))
+
 (provide 'madolt-status-tests)
 ;;; madolt-status-tests.el ends here

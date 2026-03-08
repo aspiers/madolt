@@ -90,6 +90,8 @@
     madolt-insert-unstaged-changes
     madolt-insert-staged-changes
     madolt-insert-stashes
+    madolt-insert-unpulled-commits
+    madolt-insert-unpushed-commits
     madolt-insert-recent-commits)
   "Hook run to insert sections into the status buffer.
 Each function on the hook inserts one section."
@@ -212,6 +214,47 @@ If TABLES is empty, nothing is inserted."
           (magit-insert-section (stash line)
             (insert "  " line "\n")))
         (insert "\n")))))
+
+;;;; Unpulled / Unpushed commits
+
+(defun madolt--insert-commit-list-section (type label entries)
+  "Insert a section of TYPE with LABEL for commit ENTRIES.
+ENTRIES is a list of plists with :hash and :message keys.
+If ENTRIES is nil, nothing is inserted."
+  (when entries
+    (magit-insert-section ((eval type))
+      (magit-insert-heading
+        (propertize (format "%s (%d)" label (length entries))
+                    'font-lock-face 'madolt-section-heading))
+      (dolist (entry entries)
+        (let* ((hash (plist-get entry :hash))
+               (message (plist-get entry :message))
+               (short-hash (substring hash 0 (min 8 (length hash)))))
+          (magit-insert-section (commit hash)
+            (insert "  "
+                    (propertize short-hash 'font-lock-face 'madolt-hash)
+                    "  "
+                    (or message "")
+                    "\n"))))
+      (insert "\n"))))
+
+(defun madolt-insert-unpulled-commits ()
+  "Insert a section showing commits in upstream not in HEAD."
+  (let* ((upstream (madolt-upstream-ref))
+         (entries (madolt-unpulled-commits upstream)))
+    (madolt--insert-commit-list-section
+     'unpulled
+     (format "Unpulled from %s" (or upstream "upstream"))
+     entries)))
+
+(defun madolt-insert-unpushed-commits ()
+  "Insert a section showing commits in HEAD not in upstream."
+  (let* ((upstream (madolt-upstream-ref))
+         (entries (madolt-unpushed-commits upstream)))
+    (madolt--insert-commit-list-section
+     'unpushed
+     (format "Unpushed to %s" (or upstream "upstream"))
+     entries)))
 
 ;;;; Recent commits
 
