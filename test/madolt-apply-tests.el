@@ -226,5 +226,81 @@ The buffer is current during BODY and killed afterward."
       ;; After: staged section should disappear (only users was staged)
       (should-not (madolt-test--find-section 'staged)))))
 
+;;;; Row-level error messages
+
+(ert-deftest test-madolt-stage-on-row-diff-shows-dolt-message ()
+  "Staging on a row-diff section shows a dolt-specific error."
+  (with-temp-buffer
+    (let ((inhibit-read-only t))
+      (magit-insert-section (status)
+        (magit-insert-section (unstaged)
+          (magit-insert-heading "Unstaged changes")
+          (magit-insert-section (table "test-table")
+            (magit-insert-heading "test-table")
+            (magit-insert-section (row-diff '((id . 1)))
+              (insert "  + id=1\n"))))))
+    (madolt-test--goto-section 'row-diff)
+    (should (eq (madolt-apply--section-type) 'row-diff))
+    (let ((err (should-error (madolt-stage) :type 'user-error)))
+      (should (string-match-p "staging individual rows" (cadr err))))))
+
+(ert-deftest test-madolt-unstage-on-row-diff-shows-dolt-message ()
+  "Unstaging on a row-diff section shows a dolt-specific error."
+  (with-temp-buffer
+    (let ((inhibit-read-only t))
+      (magit-insert-section (status)
+        (magit-insert-section (staged)
+          (magit-insert-heading "Staged changes")
+          (magit-insert-section (table "test-table")
+            (magit-insert-heading "test-table")
+            (magit-insert-section (row-diff '((id . 1)))
+              (insert "  + id=1\n"))))))
+    (madolt-test--goto-section 'row-diff)
+    (let ((err (should-error (madolt-unstage) :type 'user-error)))
+      (should (string-match-p "unstaging individual rows" (cadr err))))))
+
+(ert-deftest test-madolt-discard-on-row-diff-shows-dolt-message ()
+  "Discarding on a row-diff section shows a dolt-specific error."
+  (with-temp-buffer
+    (let ((inhibit-read-only t))
+      (magit-insert-section (status)
+        (magit-insert-section (unstaged)
+          (magit-insert-heading "Unstaged changes")
+          (magit-insert-section (table "test-table")
+            (magit-insert-heading "test-table")
+            (magit-insert-section (row-diff '((id . 1)))
+              (insert "  + id=1\n"))))))
+    (madolt-test--goto-section 'row-diff)
+    (let ((err (should-error (madolt-discard) :type 'user-error)))
+      (should (string-match-p "discarding individual rows" (cadr err))))))
+
+(ert-deftest test-madolt-stage-on-schema-diff-shows-dolt-message ()
+  "Staging on a schema-diff section shows a dolt-specific error."
+  (with-temp-buffer
+    (let ((inhibit-read-only t))
+      (magit-insert-section (status)
+        (magit-insert-section (unstaged)
+          (magit-insert-heading "Unstaged changes")
+          (magit-insert-section (table "test-table")
+            (magit-insert-heading "test-table")
+            (magit-insert-section (schema-diff)
+              (insert "  ALTER TABLE ...\n"))))))
+    (madolt-test--goto-section 'schema-diff)
+    (should (eq (madolt-apply--section-type) 'schema-diff))
+    (let ((err (should-error (madolt-stage) :type 'user-error)))
+      (should (string-match-p "staging individual rows" (cadr err))))))
+
+(ert-deftest test-madolt-inside-row-p-false-on-table ()
+  "Inside-row-p returns nil when on a table section."
+  (with-temp-buffer
+    (let ((inhibit-read-only t))
+      (magit-insert-section (status)
+        (magit-insert-section (unstaged)
+          (magit-insert-heading "Unstaged changes")
+          (magit-insert-section (table "test-table")
+            (insert "test-table\n")))))
+    (madolt-test--goto-section 'table)
+    (should-not (madolt-apply--inside-row-p))))
+
 (provide 'madolt-apply-tests)
 ;;; madolt-apply-tests.el ends here

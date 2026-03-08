@@ -57,6 +57,14 @@
   (let ((section (magit-current-section)))
     (and section (oref section type))))
 
+(defun madolt-apply--inside-row-p ()
+  "Return non-nil if point is on a row-level or schema-level section.
+Dolt stages whole tables, not individual rows.  This detects when
+the user is trying to stage/unstage/discard a sub-table section
+so we can show a helpful error message."
+  (let ((type (madolt-apply--section-type)))
+    (memq type '(row-diff schema-diff))))
+
 ;;;; Stage
 
 (defun madolt-stage ()
@@ -74,6 +82,9 @@ that table.  On the section heading itself, stages all tables."
      ;; Unstaged or untracked section heading
      ((memq section-type '(unstaged untracked))
       (madolt-run-dolt "add" "."))
+     ;; Row-level section: Dolt doesn't support partial staging
+     ((madolt-apply--inside-row-p)
+      (user-error "Dolt doesn't support staging individual rows; stage the whole table instead"))
      (t
       (user-error "Nothing to stage here")))))
 
@@ -99,6 +110,9 @@ On the section heading itself, unstages all tables."
      ;; Staged section heading
      ((eq section-type 'staged)
       (madolt-run-dolt "reset"))
+     ;; Row-level section: Dolt doesn't support partial unstaging
+     ((madolt-apply--inside-row-p)
+      (user-error "Dolt doesn't support unstaging individual rows; unstage the whole table instead"))
      (t
       (user-error "Nothing to unstage here")))))
 
@@ -130,6 +144,9 @@ irreversible."
             (when (eq (oref child type) 'table)
               (madolt-call-dolt "checkout" (oref child value))))
           (madolt-refresh))))
+     ;; Row-level section: Dolt doesn't support partial discard
+     ((madolt-apply--inside-row-p)
+      (user-error "Dolt doesn't support discarding individual rows; discard the whole table instead"))
      (t
       (user-error "Nothing to discard here")))))
 
