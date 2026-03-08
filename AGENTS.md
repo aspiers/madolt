@@ -21,7 +21,12 @@ Override with `STRAIGHT_DIR=/path/to/packages`.
 
 ## Interactive QA Testing via tmux
 
-**Both automated AND interactive testing are required** when working on UI changes. Run unit tests first (`make test`), then verify interactively via tmux.
+**Both automated AND interactive testing are required** when working on
+UI changes. Run unit tests first (`make test`), then **ALWAYS** verify
+interactively via tmux before considering the work complete. This is
+**MANDATORY** — never skip interactive testing for any change that
+affects buffer display, process output, keybindings, or user-facing
+messages.
 
 Use a **dedicated tmux session called `madolt-test`** for interactive testing. This session runs Emacs with madolt loaded in a controlled environment that can be inspected programmatically via `emacsclient`.
 
