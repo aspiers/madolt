@@ -127,6 +127,69 @@ Then modifies id=1 email, adds id=3, deletes id=2.  Nothing is staged."
       (should (string-prefix-p "~" summary))
       (should (string-match-p "1 cell changed" summary)))))
 
+;;;; Value truncation
+
+(ert-deftest test-madolt-diff-truncate-value-short ()
+  "Values shorter than max-len should be returned unchanged."
+  (should (equal (madolt-diff--truncate-value "hello" 10) "hello")))
+
+(ert-deftest test-madolt-diff-truncate-value-exact ()
+  "Values exactly at max-len should be returned unchanged."
+  (should (equal (madolt-diff--truncate-value "hello" 5) "hello")))
+
+(ert-deftest test-madolt-diff-truncate-value-long ()
+  "Values longer than max-len should be truncated with ellipsis."
+  (should (equal (madolt-diff--truncate-value "hello world" 6) "hello…")))
+
+(ert-deftest test-madolt-diff-compute-widths-fits ()
+  "When all fields fit, return original lengths."
+  (let ((row '((id . 1) (name . "Alice"))))
+    ;; "id=1  name=Alice" = 2+1+1 + 2 + 4+1+5 = 16
+    (should (equal (madolt-diff--compute-value-widths row 100)
+                   '(1 5)))))
+
+(ert-deftest test-madolt-diff-compute-widths-truncates-longest ()
+  "Should truncate the longest value to fit within available space."
+  (let ((row '((id . 1) (summary . "This is a very long summary text")))
+        (madolt-diff-min-value-width 5))
+    ;; "id=1  summary=This is a very long summary text"
+    ;; key overhead: 2+1 + 7+1 + 2(sep) = 13, val total = 1+31 = 32
+    ;; At max-width 25: available = 25-13 = 12, need to fit 32 in 12
+    ;; id val (1) stays at 1, summary shrinks to 11 so total = 12
+    (let ((widths (madolt-diff--compute-value-widths row 25)))
+      (should (= (car widths) 1))
+      (should (< (cadr widths) 31))
+      ;; Total value widths must fit within available space
+      (should (<= (apply #'+ widths) 12)))))
+
+(ert-deftest test-madolt-diff-format-row-fields-no-width ()
+  "Without max-width, all values should be shown in full."
+  (let ((result (madolt-diff--format-row-fields
+                 '((id . 1) (name . "Alice")))))
+    (should (string-match-p "id=1" (substring-no-properties result)))
+    (should (string-match-p "name=Alice" (substring-no-properties result)))))
+
+(ert-deftest test-madolt-diff-format-row-fields-with-width ()
+  "With max-width, long values should be truncated to fit."
+  (let ((madolt-diff-min-value-width 5)
+        (result (madolt-diff--format-row-fields
+                 '((id . 1) (desc . "A very long description string"))
+                 20)))
+    (should (string-match-p "id=1" (substring-no-properties result)))
+    (should (string-match-p "…" (substring-no-properties result)))
+    ;; Result must actually fit within max-width
+    (should (<= (length (substring-no-properties result)) 20))))
+
+(ert-deftest test-madolt-diff-format-row-fields-preserves-faces ()
+  "Truncated values should still have proper faces."
+  (let ((madolt-diff-min-value-width 5)
+        (result (madolt-diff--format-row-fields
+                 '((id . 1) (desc . "A very long description"))
+                 20)))
+    ;; Column name should have madolt-diff-column-name face
+    (should (eq (get-text-property 0 'font-lock-face result)
+                'madolt-diff-column-name))))
+
 ;;;; Changed cell count
 
 (ert-deftest test-madolt-diff-changed-cell-count ()
