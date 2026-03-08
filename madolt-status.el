@@ -227,8 +227,12 @@ If TABLES is empty, nothing is inserted."
 
 (defun madolt--wash-table-diff ()
   "Insert diff content for the table section at point.
-Used as a washer function for lazy diff expansion."
-  (let* ((section (magit-current-section))
+Used as a washer function for lazy diff expansion.
+Uses `magit-insert-section--current' because the washer may run
+deferred (via `magit-section--opportunistic-wash') where point
+is at the section end and `magit-current-section' would return
+a sibling or parent."
+  (let* ((section magit-insert-section--current)
          (table (oref section value))
          (staged (eq 'staged
                      (oref (oref section parent) type))))
