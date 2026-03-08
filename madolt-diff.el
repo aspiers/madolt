@@ -50,32 +50,38 @@
 ;;;; Faces
 
 (defface madolt-diff-added
-  '((((class color) (background dark))  :background "#003300")
-    (((class color) (background light)) :background "#ccffcc"))
-  "Face for added rows."
+  '((t :inherit magit-diff-added))
+  "Face for added rows.  Inherits from `magit-diff-added'."
   :group 'madolt-faces)
 
 (defface madolt-diff-removed
-  '((((class color) (background dark))  :background "#330000")
-    (((class color) (background light)) :background "#ffcccc"))
-  "Face for deleted rows."
+  '((t :inherit magit-diff-removed))
+  "Face for deleted rows.  Inherits from `magit-diff-removed'."
   :group 'madolt-faces)
 
 (defface madolt-diff-old
-  '((((class color) (background dark))  :background "#332200")
-    (((class color) (background light)) :background "#fff0cc"))
+  '((t :inherit magit-diff-removed))
   "Face for old value of a modified row."
   :group 'madolt-faces)
 
 (defface madolt-diff-new
-  '((((class color) (background dark))  :background "#003322")
-    (((class color) (background light)) :background "#ccffe6"))
+  '((t :inherit magit-diff-added))
   "Face for new value of a modified row."
   :group 'madolt-faces)
 
 (defface madolt-diff-changed-cell
   '((t :weight bold :underline t))
   "Face for the specific cells that changed within a modified row."
+  :group 'madolt-faces)
+
+(defface madolt-diff-column-name
+  '((t :weight bold))
+  "Face for column names in row diff summaries."
+  :group 'madolt-faces)
+
+(defface madolt-diff-column-value
+  '((t :inherit default))
+  "Face for column values in row diff summaries."
   :group 'madolt-faces)
 
 (defface madolt-diff-table-heading
@@ -283,42 +289,67 @@ Return `added', `deleted', or `modified'."
      (t 'modified))))
 
 (defun madolt-diff--row-summary (row-change change-type)
-  "Return a one-line summary string for ROW-CHANGE of CHANGE-TYPE."
+  "Return a one-line summary string for ROW-CHANGE of CHANGE-TYPE.
+The +/-/~ prefix uses the appropriate added/removed face.
+Column names are bold, values use `madolt-diff-column-value'."
   (let ((from-row (alist-get 'from_row row-change))
         (to-row (alist-get 'to_row row-change)))
     (pcase change-type
       ('added
        (let ((fields (madolt-diff--format-row-fields to-row)))
-         (format "+ %s" fields)))
+         (concat (propertize "+" 'font-lock-face 'madolt-diff-added)
+                 " " fields)))
       ('deleted
        (let ((fields (madolt-diff--format-row-fields from-row)))
-         (format "- %s" fields)))
+         (concat (propertize "-" 'font-lock-face 'madolt-diff-removed)
+                 " " fields)))
       ('modified
        (let* ((pk-fields (madolt-diff--pk-summary from-row to-row))
               (changed (madolt-diff--changed-cell-count from-row to-row)))
-         (format "~ %s (%d cell%s changed)"
-                 pk-fields changed (if (= changed 1) "" "s")))))))
+         (concat (propertize "~" 'font-lock-face 'madolt-diff-old)
+                 " " pk-fields
+                 (format " (%d cell%s changed)"
+                         changed (if (= changed 1) "" "s"))))))))
 
 (defun madolt-diff--format-row-fields (row)
-  "Format ROW alist as key=value pairs for display."
+  "Format ROW alist as key=value pairs with per-component faces.
+Column names are bold, values use `madolt-diff-column-value',
+and equals signs match column name style without bold."
   (mapconcat (lambda (pair)
-               (format "%s=%s" (car pair) (cdr pair)))
+               (concat
+                (propertize (format "%s" (car pair))
+                            'font-lock-face 'madolt-diff-column-name)
+                (propertize "=" 'font-lock-face 'default)
+                (propertize (format "%s" (cdr pair))
+                            'font-lock-face 'madolt-diff-column-value)))
              row "  "))
 
 (defun madolt-diff--pk-summary (from-row to-row)
   "Return a summary of primary key fields from FROM-ROW and TO-ROW.
-Uses fields that are the same in both rows (assumed to be PK)."
+Uses fields that are the same in both rows (assumed to be PK).
+Column names are bold, values use `madolt-diff-column-value'."
   (let ((parts nil))
     (dolist (pair from-row)
       (let ((key (car pair))
             (val (cdr pair)))
         (when (equal val (alist-get key to-row))
-          (push (format "%s=%s" key val) parts))))
+          (push (concat
+                 (propertize (format "%s" key)
+                             'font-lock-face 'madolt-diff-column-name)
+                 (propertize "=" 'font-lock-face 'default)
+                 (propertize (format "%s" val)
+                             'font-lock-face 'madolt-diff-column-value))
+                parts))))
     (if parts
         (mapconcat #'identity (nreverse parts) " ")
       ;; Fallback: show first field from from-row
       (if from-row
-          (format "%s=%s" (caar from-row) (cdar from-row))
+          (concat
+           (propertize (format "%s" (caar from-row))
+                       'font-lock-face 'madolt-diff-column-name)
+           (propertize "=" 'font-lock-face 'default)
+           (propertize (format "%s" (cdar from-row))
+                       'font-lock-face 'madolt-diff-column-value))
         "?"))))
 
 (defun madolt-diff--changed-cell-count (from-row to-row)
@@ -334,17 +365,14 @@ Uses fields that are the same in both rows (assumed to be PK)."
     count))
 
 (defun madolt-diff--insert-row-diff (row-change)
-  "Insert a row-diff section for ROW-CHANGE."
+  "Insert a row-diff section for ROW-CHANGE.
+The summary line has per-component faces: +/-/~ prefix uses
+added/removed colours, column names are bold, values are plain."
   (let* ((change-type (madolt-diff--row-change-type row-change))
-         (summary (madolt-diff--row-summary row-change change-type))
-         (face (pcase change-type
-                 ('added   'madolt-diff-added)
-                 ('deleted 'madolt-diff-removed)
-                 ('modified 'madolt-diff-old))))
+         (summary (madolt-diff--row-summary row-change change-type)))
     (magit-insert-section (row-diff row-change)
       (magit-insert-heading
-        (propertize (concat madolt-diff--indent summary)
-                    'font-lock-face face))
+        (concat madolt-diff--indent summary))
       (madolt-diff--insert-row-details row-change change-type))))
 
 (defun madolt-diff--insert-row-details (row-change change-type)
@@ -358,7 +386,7 @@ Uses fields that are the same in both rows (assumed to be PK)."
          (insert (format "%s%s:  %s\n"
                          detail-indent
                          (propertize (symbol-name (car pair))
-                                     'font-lock-face 'bold)
+                                     'font-lock-face 'madolt-diff-column-name)
                          (propertize (format "%s" (cdr pair))
                                      'font-lock-face 'madolt-diff-added)))))
       ('deleted
@@ -366,7 +394,7 @@ Uses fields that are the same in both rows (assumed to be PK)."
          (insert (format "%s%s:  %s\n"
                          detail-indent
                          (propertize (symbol-name (car pair))
-                                     'font-lock-face 'bold)
+                                     'font-lock-face 'madolt-diff-column-name)
                          (propertize (format "%s" (cdr pair))
                                      'font-lock-face 'madolt-diff-removed)))))
       ('modified
@@ -389,7 +417,7 @@ Uses fields that are the same in both rows (assumed to be PK)."
             (insert (format "%s%s:  %s\n"
                             detail-indent
                             (propertize (symbol-name key)
-                                        'font-lock-face 'madolt-diff-context)
+                                        'font-lock-face 'madolt-diff-column-name)
                             (propertize (format "%s" old-val)
                                         'font-lock-face 'madolt-diff-context)))
           ;; Changed cell

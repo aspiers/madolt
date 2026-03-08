@@ -49,11 +49,13 @@ Then modifies id=1 email, adds id=3, deletes id=2.  Nothing is staged."
 
 (ert-deftest test-madolt-diff-faces-defined ()
   "All documented diff faces should be defined."
-  (dolist (face '(madolt-diff-added
+   (dolist (face '(madolt-diff-added
                   madolt-diff-removed
                   madolt-diff-old
                   madolt-diff-new
                   madolt-diff-changed-cell
+                  madolt-diff-column-name
+                  madolt-diff-column-value
                   madolt-diff-context
                   madolt-diff-schema
                   madolt-diff-table-heading
