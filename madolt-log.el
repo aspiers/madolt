@@ -105,7 +105,8 @@ Names longer than this are truncated with an ellipsis."
     :class transient-option
     :reader transient-read-number-N+)
    ("-s" "Show stat"   "--stat")
-   ("-m" "Merges only" "--merges")]
+   ("-m" "Merges only" "--merges")
+   ("-g" "Graph"       "--graph")]
   ["Log"
    ("l" "Current branch" madolt-log-current)
    ("o" "Other branch"   madolt-log-other)

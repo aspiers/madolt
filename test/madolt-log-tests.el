@@ -82,7 +82,7 @@ Returns in a state with 3 user commits plus the init commit."
         (when (listp suffix)
           (let ((arg (plist-get (cdr suffix) :argument)))
             (when arg (push arg all-args))))))
-    (dolist (arg '("--stat" "--merges"))
+    (dolist (arg '("--stat" "--merges" "--graph"))
       (should (member arg all-args)))))
 
 ;;;; Faces

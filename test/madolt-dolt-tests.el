@@ -358,6 +358,18 @@
             (when val
               (should-not (string-match-p "\033" val)))))))))
 
+(ert-deftest test-madolt-log-entries-with-graph ()
+  "madolt-log-entries parses correctly with --graph flag."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "graph test")
+    (let ((entries (madolt-log-entries 5 nil '("--graph"))))
+      (should (>= (length entries) 2))
+      (let ((entry (car entries)))
+        (should (stringp (plist-get entry :hash)))
+        (should (equal "graph test" (plist-get entry :message)))))))
+
 ;;;; Mutation operations
 
 (ert-deftest test-madolt-add-tables-stages ()

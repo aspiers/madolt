@@ -236,10 +236,15 @@ such as \"--merges\"."
          (current-date nil)
          (current-message-lines nil)
          (in-message nil))
-    (dolist (line (split-string clean-output "\n"))
+    (dolist (raw-line (split-string clean-output "\n"))
+      ;; Strip --graph decoration (e.g. "* ", "| ", "|\ ") from
+      ;; the start of each line so the parser sees clean output.
+      (let ((line (replace-regexp-in-string
+                   "^[|*/ \\\\]+ ?" "" raw-line)))
       (cond
-       ;; Commit line: "commit HASH" or "commit HASH (refs)"
-       ((string-match "^commit \\([a-z0-9]+\\)\\(?: (\\(.*\\))\\)?\\s-*$" line)
+       ;; Commit line: "commit HASH", "commit HASH (refs)", or
+       ;; "commit HASH(refs)" (--graph omits the space before parens)
+       ((string-match "^commit \\([a-z0-9]+\\)\\(?: ?(\\(.*\\))\\)?\\s-*$" line)
         ;; Save previous entry if any
         (when current-hash
           (push (list :hash current-hash
@@ -277,7 +282,7 @@ such as \"--merges\"."
        ((and in-message current-message-lines
              (string-match-p "^\\s-*$" line))
         ;; Could be multi-paragraph message; keep blank lines
-        (push "" current-message-lines))))
+         (push "" current-message-lines)))))
     ;; Don't forget the last entry
     (when current-hash
       (push (list :hash current-hash
