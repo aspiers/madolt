@@ -61,6 +61,26 @@
   "Face for ref annotations in the log buffer."
   :group 'madolt-faces)
 
+;;;; Margin configuration
+
+(defcustom madolt-log-margin-width 36
+  "Width of the right margin in log buffers.
+Includes space for author name and date."
+  :group 'madolt
+  :type 'integer)
+
+(defcustom madolt-log-author-width 16
+  "Maximum width for author names in the log margin.
+Names longer than this are truncated with an ellipsis."
+  :group 'madolt
+  :type 'integer)
+
+;; Set up right margin when log mode buffers are displayed.
+(add-hook 'madolt-log-mode-hook
+          (lambda ()
+            (add-hook 'window-configuration-change-hook
+                      #'madolt-log--set-window-margins nil t)))
+
 ;;;; Buffer-local variables
 
 (defvar-local madolt-log--rev nil
@@ -175,7 +195,8 @@ The limit is handled separately via `madolt-log--limit'."
           (insert (propertize "  (no commits)\n" 'font-lock-face 'shadow))
         (dolist (entry entries)
           (madolt-log--insert-commit-section entry)))
-      (insert "\n"))))
+      (insert "\n")))
+  (madolt-log--setup-margins))
 
 (defun madolt-log--insert-commit-section (entry)
   "Insert a commit section for ENTRY.
@@ -194,15 +215,10 @@ ENTRY is a plist with keys :hash :refs :date :author :message."
              (concat " " (propertize (format "(%s)" refs)
                                      'font-lock-face 'madolt-log-refs))
            "")
-         "  "
-         (propertize (or (madolt-log--format-date date) "")
-                     'font-lock-face 'madolt-log-date)
-         "  "
-         (propertize (or (madolt-log--short-author author) "")
-                     'font-lock-face 'madolt-log-author)
-         "  "
+         " "
          (or message "")
          "\n"))
+      (madolt-log--insert-margin author date)
       ;; Washer for TAB expansion: show structured diff
       (magit-insert-section-body
         (madolt-log--insert-commit-diff hash)))))
@@ -227,6 +243,44 @@ Strip email address if present."
   (if (and author (string-match "\\(.*?\\)\\s-*<" author))
       (string-trim (match-string 1 author))
     author))
+
+;;;; Right margin
+
+(defun madolt-log--insert-margin (author date)
+  "Insert a right-margin overlay with AUTHOR and DATE on the heading line."
+  (let* ((short-author (or (madolt-log--short-author author) ""))
+         (short-date (or (madolt-log--format-date date) ""))
+         (truncated-author (truncate-string-to-width
+                            short-author madolt-log-author-width nil nil t)))
+    (save-excursion
+      (forward-line -1)
+      (let ((o (make-overlay (1+ (point)) (line-end-position) nil t)))
+        (overlay-put o 'evaporate t)
+        (overlay-put
+         o 'before-string
+         (propertize
+          "o" 'display
+          (list (list 'margin 'right-margin)
+                (concat
+                 (propertize truncated-author 'font-lock-face 'madolt-log-author)
+                 " "
+                 (propertize short-date 'font-lock-face 'madolt-log-date)))))))))
+
+(defun madolt-log--setup-margins ()
+  "Set the right margin width for the current log buffer."
+  (dolist (window (get-buffer-window-list nil nil 0))
+    (set-window-margins window
+                        (car (window-margins window))
+                        madolt-log-margin-width)))
+
+(defun madolt-log--set-window-margins (&optional window)
+  "Ensure WINDOW has the right margin set for log display."
+  (when (or window (setq window (get-buffer-window)))
+    (with-current-buffer (window-buffer window)
+      (when (derived-mode-p 'madolt-log-mode)
+        (set-window-margins window
+                            (car (window-margins window))
+                            madolt-log-margin-width)))))
 
 ;;;; Commit diff expansion
 
