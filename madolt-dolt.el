@@ -150,6 +150,19 @@ If DIRECTORY is nil, use `default-directory'."
   (let ((branch (madolt-dolt-string "branch" "--show-current")))
     (and branch (string-trim branch))))
 
+(defun madolt-remotes ()
+  "Return an alist of (NAME . URL) for configured remotes.
+Parses the output of `dolt remote -v'."
+  (let ((lines (madolt-dolt-lines "remote" "-v"))
+        (result nil))
+    (dolist (line lines)
+      (when (string-match "^\\(\\S-+\\)\\s-+\\(\\S-+\\)" line)
+        (let ((name (match-string 1 line))
+              (url (match-string 2 line)))
+          (unless (assoc name result #'string=)
+            (push (cons name url) result)))))
+    (nreverse result)))
+
 ;;;; Status queries
 
 (defun madolt-status-tables ()

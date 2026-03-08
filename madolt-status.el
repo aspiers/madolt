@@ -57,6 +57,11 @@
   "Face for local branch names."
   :group 'madolt-faces)
 
+(defface madolt-branch-remote
+  '((t :inherit magit-branch-remote))
+  "Face for remote branch/URL names."
+  :group 'madolt-faces)
+
 (defface madolt-table-modified
   '((t :foreground "yellow3"))
   "Face for the \"modified\" table status."
@@ -112,13 +117,13 @@ Each function on the hook inserts one section."
 ;;;; Status header
 
 (defun madolt-insert-status-header ()
-  "Insert the status header showing branch and HEAD info."
+  "Insert the status header showing branch, HEAD, and remote info."
   (let* ((branch (madolt-current-branch))
          (head-entry (car (madolt-log-entries 1)))
          (hash (and head-entry (plist-get head-entry :hash)))
-         (message (and head-entry (plist-get head-entry :message))))
-    (insert (propertize "Head:" 'font-lock-face 'bold)
-            "   "
+         (message (and head-entry (plist-get head-entry :message)))
+         (remotes (madolt-remotes)))
+    (insert (propertize "Head:   " 'font-lock-face 'bold)
             (if branch
                 (propertize branch 'font-lock-face 'madolt-branch-local)
               "(detached)")
@@ -129,7 +134,14 @@ Each function on the hook inserts one section."
                         "  "
                         (or message ""))
               "")
-            "\n\n")))
+            "\n")
+    (dolist (remote remotes)
+      (insert (propertize "Remote: " 'font-lock-face 'bold)
+              (propertize (car remote) 'font-lock-face 'madolt-branch-remote)
+              " "
+              (propertize (cdr remote) 'font-lock-face 'shadow)
+              "\n"))
+    (insert "\n")))
 
 ;;;; Table change sections
 
