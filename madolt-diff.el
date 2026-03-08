@@ -98,6 +98,13 @@
   "Face for unchanged context in diffs."
   :group 'madolt-faces)
 
+;;;; Indentation
+
+(defvar madolt-diff--indent "  "
+  "Current indentation prefix for row-diff and schema sections.
+Dynamically bound to increase nesting depth when inserting
+diffs inside an already-indented context (e.g. status buffer).")
+
 ;;;; Buffer-local variables
 
 (defvar-local madolt-diff-args nil
@@ -247,13 +254,14 @@ TABLE-DATA is an alist from the JSON `tables' array."
       (when (and schema-diff (not (seq-empty-p schema-diff)))
         (magit-insert-section (schema-diff)
           (magit-insert-heading
-            (propertize "  Schema changes"
+            (propertize (concat madolt-diff--indent "Schema changes")
                         'font-lock-face 'madolt-diff-column-header))
-          (dolist (stmt schema-diff)
-            (let ((indented (replace-regexp-in-string
-                             "^" "    " stmt)))
-              (insert (propertize (concat indented "\n")
-                                  'font-lock-face 'madolt-diff-schema))))))
+          (let ((sql-indent (concat madolt-diff--indent "  ")))
+            (dolist (stmt schema-diff)
+              (let ((indented (replace-regexp-in-string
+                               "^" sql-indent stmt)))
+                (insert (propertize (concat indented "\n")
+                                    'font-lock-face 'madolt-diff-schema)))))))
       ;; Data changes
       (when data-diff
         (dolist (row-change data-diff)
@@ -335,7 +343,8 @@ Uses fields that are the same in both rows (assumed to be PK)."
                  ('modified 'madolt-diff-old))))
     (magit-insert-section (row-diff row-change t)
       (magit-insert-heading
-        (propertize (concat "  " summary) 'font-lock-face face))
+        (propertize (concat madolt-diff--indent summary)
+                    'font-lock-face face))
       ;; Body: details shown when section is expanded (level 4)
       (magit-insert-section-body
         (madolt-diff--insert-row-details row-change change-type)))))
@@ -343,18 +352,21 @@ Uses fields that are the same in both rows (assumed to be PK)."
 (defun madolt-diff--insert-row-details (row-change change-type)
   "Insert expanded detail lines for ROW-CHANGE of CHANGE-TYPE."
   (let ((from-row (alist-get 'from_row row-change))
-        (to-row (alist-get 'to_row row-change)))
+        (to-row (alist-get 'to_row row-change))
+        (detail-indent (concat madolt-diff--indent "    ")))
     (pcase change-type
       ('added
        (dolist (pair to-row)
-         (insert (format "      %s:  %s\n"
+         (insert (format "%s%s:  %s\n"
+                         detail-indent
                          (propertize (symbol-name (car pair))
                                      'font-lock-face 'bold)
                          (propertize (format "%s" (cdr pair))
                                      'font-lock-face 'madolt-diff-added)))))
       ('deleted
        (dolist (pair from-row)
-         (insert (format "      %s:  %s\n"
+         (insert (format "%s%s:  %s\n"
+                         detail-indent
                          (propertize (symbol-name (car pair))
                                      'font-lock-face 'bold)
                          (propertize (format "%s" (cdr pair))
@@ -365,7 +377,8 @@ Uses fields that are the same in both rows (assumed to be PK)."
 (defun madolt-diff--insert-modified-details (from-row to-row)
   "Insert cell-by-cell comparison for modified FROM-ROW vs TO-ROW."
   ;; Gather all keys preserving order from from-row, then add new keys
-  (let ((keys (mapcar #'car from-row)))
+  (let ((keys (mapcar #'car from-row))
+        (detail-indent (concat madolt-diff--indent "    ")))
     (dolist (pair to-row)
       (unless (memq (car pair) keys)
         (push (car pair) keys)))
@@ -375,13 +388,15 @@ Uses fields that are the same in both rows (assumed to be PK)."
             (new-val (alist-get key to-row)))
         (if (equal old-val new-val)
             ;; Unchanged cell
-            (insert (format "      %s:  %s\n"
+            (insert (format "%s%s:  %s\n"
+                            detail-indent
                             (propertize (symbol-name key)
                                         'font-lock-face 'madolt-diff-context)
                             (propertize (format "%s" old-val)
                                         'font-lock-face 'madolt-diff-context)))
           ;; Changed cell
-          (insert (format "      %s:  %s → %s\n"
+          (insert (format "%s%s:  %s → %s\n"
+                          detail-indent
                           (propertize (symbol-name key)
                                       'font-lock-face 'madolt-diff-changed-cell)
                           (propertize (format "%s" (or old-val "∅"))
@@ -477,29 +492,33 @@ BLOCK is a cons of (TABLE-NAME . BODY-TEXT)."
 Used by the status buffer's washer to show inline diffs.
 When STAGED is non-nil, show the staged diff.
 Each row change is a collapsible section: level 3 shows a
-one-line summary, TAB expands to level 4 with per-field details."
+one-line summary, TAB expands to level 4 with per-field details.
+Binds `madolt-diff--indent' to increase nesting depth since this
+content appears under a table heading in the status buffer."
   (let* ((json (if staged
                    (madolt-diff-json "--staged" table)
                  (madolt-diff-json table)))
-         (tables (and json (alist-get 'tables json))))
+         (tables (and json (alist-get 'tables json)))
+         (madolt-diff--indent "      "))
     (if (null tables)
-        (insert "      (no changes)\n")
+        (insert (concat madolt-diff--indent "(no changes)\n"))
       (let ((tbl (car tables)))
         (let ((schema-diff (alist-get 'schema_diff tbl))
               (data-diff (alist-get 'data_diff tbl)))
           (when (and schema-diff (not (seq-empty-p schema-diff)))
             (magit-insert-section (schema-diff)
               (magit-insert-heading
-                (propertize "  Schema changes"
+                (propertize (concat madolt-diff--indent "Schema changes")
                             'font-lock-face 'madolt-diff-column-header))
-              (dolist (stmt schema-diff)
-                (let ((indented (replace-regexp-in-string
-                                 "^" "    " stmt)))
-                  (insert (propertize (concat indented "\n")
-                                      'font-lock-face 'madolt-diff-schema))))))
+              (let ((sql-indent (concat madolt-diff--indent "  ")))
+                (dolist (stmt schema-diff)
+                  (let ((indented (replace-regexp-in-string
+                                   "^" sql-indent stmt)))
+                    (insert (propertize (concat indented "\n")
+                                        'font-lock-face 'madolt-diff-schema)))))))
           (if (null data-diff)
               (unless (and schema-diff (not (seq-empty-p schema-diff)))
-                (insert "      (schema change only)\n"))
+                (insert (concat madolt-diff--indent "(schema change only)\n")))
             (dolist (row-change data-diff)
               (madolt-diff--insert-row-diff row-change))))))))
 
