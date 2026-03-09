@@ -104,16 +104,15 @@ Interactively with a prefix argument, prompt for the directory."
     ("r" "Rebase"         madolt-rebase)
     ("V" "Revert"         madolt-revert)
     ("X" "Reset"          madolt-reset)
-    ("z" "Stash"          madolt-stash)]]
-  ["Transferring"
+    ("z" "Stash"          madolt-stash)]
    [("f" "Fetch"          madolt-fetch)
-    ("F" "Pull"           madolt-pull)]
-   [("P" "Push"           madolt-push)
+    ("F" "Pull"           madolt-pull)
+    ("P" "Push"           madolt-push)
     ("M" "Remote"         madolt-remote-manage)]]
   ["Inspecting"
    [("B" "Blame"          madolt-blame)
-    ("C" "Conflicts"      madolt-conflicts)]
-   [("e" "SQL query"      madolt-sql-query)]]
+    ("C" "Conflicts"      madolt-conflicts)
+    ("e" "SQL query"      madolt-sql-query)]]
   ["Applying changes"
    :if-derived madolt-mode
    [("s" "Stage"          madolt-stage)
@@ -124,13 +123,13 @@ Interactively with a prefix argument, prompt for the directory."
     ("U" "Unstage all"    madolt-unstage-all)]]
   ["Essential commands"
    :if-derived madolt-mode
-   [("g"   "Refresh current buffer"   madolt-refresh)
-    ("j"   "Status"                   madolt-status)
-    ("q"   "Bury current buffer"      quit-window)]
-   [("<tab>"    "Toggle section at point"  magit-section-toggle)
-    ("<return>" "Visit thing at point"     madolt-visit-thing)
-    ("w"        "Copy section value"       madolt-copy-section-value)
-    ("$"        "Process buffer"           madolt-process-buffer)]])
+   [("g"   "Refresh buffer"          madolt-refresh)
+    ("j"   "Status"                  madolt-status)
+    ("q"   "Bury buffer"             quit-window)]
+   [("<tab>"    "Toggle section"     magit-section-toggle)
+    ("<return>" "Visit thing"        madolt-visit-thing)
+    ("w"        "Copy section value" madolt-copy-section-value)
+    ("$"        "Process buffer"     madolt-process-buffer)]])
 
 (provide 'madolt)
 ;;; madolt.el ends here
