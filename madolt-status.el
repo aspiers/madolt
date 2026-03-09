@@ -44,7 +44,8 @@
 
 (defface madolt-section-heading
   '((t :inherit magit-section-heading))
-  "Face for section headings in madolt buffers."
+  "Face for section headings in madolt buffers.
+No longer used; headings now rely on `magit-insert-heading' auto-face."
   :group 'madolt-faces)
 
 (defface madolt-hash
@@ -63,22 +64,34 @@
   :group 'madolt-faces)
 
 (defface madolt-table-modified
-  '((t :foreground "yellow3"))
+  '((((class color) (background light))
+     :foreground "goldenrod4")
+    (((class color) (background dark))
+     :foreground "yellow3"))
   "Face for the \"modified\" table status."
   :group 'madolt-faces)
 
 (defface madolt-table-new
-  '((t :foreground "green3"))
+  '((((class color) (background light))
+     :foreground "green4")
+    (((class color) (background dark))
+     :foreground "green3"))
   "Face for the \"new table\" status."
   :group 'madolt-faces)
 
 (defface madolt-table-deleted
-  '((t :foreground "red3"))
+  '((((class color) (background light))
+     :foreground "red4")
+    (((class color) (background dark))
+     :foreground "red3"))
   "Face for the \"deleted\" table status."
   :group 'madolt-faces)
 
 (defface madolt-table-renamed
-  '((t :foreground "cyan3"))
+  '((((class color) (background light))
+     :foreground "DarkCyan")
+    (((class color) (background dark))
+     :foreground "cyan3"))
   "Face for the \"renamed\" table status."
   :group 'madolt-faces)
 
@@ -148,17 +161,17 @@ Used to suppress the recent commits section when upstream info is shown.")
          (remotes (madolt-remotes))
          (server-info (madolt-sql-server-info)))
     ;; Database line
-    (insert (propertize "Database: " 'font-lock-face 'bold)
+    (insert (format "%-10s" "Database:")
             (propertize db-name 'font-lock-face 'madolt-branch-local)
             "\n")
     ;; Path line
-    (insert (propertize "Path:     " 'font-lock-face 'bold)
+    (insert (format "%-10s" "Path:")
             (propertize (abbreviate-file-name db-dir)
                         'font-lock-face 'shadow)
             "\n")
     ;; SQL server line (if running)
     (when server-info
-      (insert (propertize "Server:   " 'font-lock-face 'bold)
+      (insert (format "%-10s" "Server:")
               (propertize (format "localhost:%d"
                                   (plist-get server-info :port))
                           'font-lock-face 'madolt-branch-remote)
@@ -167,7 +180,7 @@ Used to suppress the recent commits section when upstream info is shown.")
                           'font-lock-face 'shadow)
               "\n"))
     ;; Head line
-    (insert (propertize "Head:     " 'font-lock-face 'bold)
+    (insert (format "%-10s" "Head:")
             (if branch
                 (propertize branch 'font-lock-face 'madolt-branch-local)
               "(detached)")
@@ -181,12 +194,12 @@ Used to suppress the recent commits section when upstream info is shown.")
             "\n")
     ;; Upstream line (if tracking a remote branch)
     (when upstream
-      (insert (propertize "Upstream: " 'font-lock-face 'bold)
+      (insert (format "%-10s" "Upstream:")
               (propertize upstream 'font-lock-face 'madolt-branch-remote)
               "\n"))
     ;; Remote lines
     (dolist (remote remotes)
-      (insert (propertize "Remote:   " 'font-lock-face 'bold)
+      (insert (format "%-10s" "Remote:")
               (propertize (car remote) 'font-lock-face 'madolt-branch-remote)
               " "
               (propertize (cdr remote) 'font-lock-face 'shadow)
@@ -207,8 +220,7 @@ Only shown when there are conflicts (after a merge with conflicts)."
     (when tables
       (magit-insert-section (conflicts)
         (magit-insert-heading
-          (propertize (format "Merge conflicts (%d)" (length tables))
-                      'font-lock-face 'madolt-section-heading))
+          (format "Merge conflicts (%d)" (length tables)))
         (dolist (entry tables)
           (let ((table (car entry))
                 (status (cdr entry)))
@@ -238,8 +250,7 @@ If TABLES is empty, nothing is inserted."
   (when tables
     (magit-insert-section ((eval type))
       (magit-insert-heading
-        (propertize (format "%s (%d)" label (length tables))
-                    'font-lock-face 'madolt-section-heading))
+        (format "%s (%d)" label (length tables)))
       (dolist (entry tables)
         (let ((table (car entry))
               (status (cdr entry)))
@@ -283,8 +294,7 @@ If TABLES is empty, nothing is inserted."
     (when lines
       (magit-insert-section (stashes)
         (magit-insert-heading
-          (propertize (format "Stashes (%d)" (length lines))
-                      'font-lock-face 'madolt-section-heading))
+          (format "Stashes (%d)" (length lines)))
         (dolist (line lines)
           (magit-insert-section (stash line)
             (insert "  " line "\n")))
@@ -299,8 +309,7 @@ If ENTRIES is nil, nothing is inserted."
   (when entries
     (magit-insert-section ((eval type))
       (magit-insert-heading
-        (propertize (format "%s (%d)" label (length entries))
-                    'font-lock-face 'madolt-section-heading))
+        (format "%s (%d)" label (length entries)))
       (dolist (entry entries)
         (let* ((hash (plist-get entry :hash))
                (message (plist-get entry :message))
@@ -345,9 +354,7 @@ matching magit's or-recent pattern."
     (let ((entries (madolt-log-entries 10)))
       (when entries
         (magit-insert-section (recent)
-          (magit-insert-heading
-            (propertize "Recent commits"
-                        'font-lock-face 'madolt-section-heading))
+          (magit-insert-heading "Recent commits")
           (dolist (entry entries)
             (let* ((hash (plist-get entry :hash))
                    (message (plist-get entry :message))

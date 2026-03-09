@@ -85,7 +85,7 @@
   :group 'madolt-faces)
 
 (defface madolt-diff-table-heading
-  '((t :weight bold :height 1.1))
+  '((t :weight bold :extend t))
   "Face for table diff headings."
   :group 'madolt-faces)
 
@@ -100,7 +100,10 @@
   :group 'madolt-faces)
 
 (defface madolt-diff-context
-  '((t :inherit shadow))
+  '((((class color) (background light))
+     :foreground "grey50" :extend t)
+    (((class color) (background dark))
+     :foreground "grey70" :extend t))
   "Face for unchanged context in diffs."
   :group 'madolt-faces)
 

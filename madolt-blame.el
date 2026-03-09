@@ -103,10 +103,9 @@
          (output (madolt--strip-ansi (cdr result))))
     (magit-insert-section (blame)
       (magit-insert-heading
-        (propertize (if rev
-                        (format "Blame for %s at %s:" table rev)
-                      (format "Blame for %s:" table))
-                    'font-lock-face 'magit-section-heading))
+        (if rev
+            (format "Blame for %s at %s:" table rev)
+          (format "Blame for %s:" table)))
       (if (zerop exit-code)
           (if (string-blank-p (string-trim output))
               (insert (propertize "  (no rows)\n"

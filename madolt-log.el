@@ -49,12 +49,18 @@
 ;;;; Faces
 
 (defface madolt-log-date
-  '((t :inherit shadow))
+  '((((class color) (background light))
+     :foreground "grey30" :slant normal :weight normal)
+    (((class color) (background dark))
+     :foreground "grey80" :slant normal :weight normal))
   "Face for dates in the log buffer."
   :group 'madolt-faces)
 
 (defface madolt-log-author
-  '((t :foreground "cyan3"))
+  '((((class color) (background light))
+     :foreground "firebrick" :slant normal :weight normal)
+    (((class color) (background dark))
+     :foreground "tomato" :slant normal :weight normal))
   "Face for author names in the log buffer."
   :group 'madolt-faces)
 
@@ -203,8 +209,7 @@ The limit is handled separately via `madolt-log--limit'."
                   (madolt-log--filter-log-args madolt-log--args))))
     (magit-insert-section (log)
       (magit-insert-heading
-        (propertize (format "Commits on %s:" (or madolt-log--rev "HEAD"))
-                    'font-lock-face 'magit-section-heading))
+        (format "Commits on %s:" (or madolt-log--rev "HEAD")))
       (if (null entries)
           (insert (propertize "  (no commits)\n" 'font-lock-face 'shadow))
         (dolist (entry entries)

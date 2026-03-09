@@ -45,12 +45,12 @@
 ;;;; Faces
 
 (defface madolt-process-ok
-  '((t :inherit success))
+  '((t :inherit magit-section-heading :foreground "green"))
   "Face for zero exit codes in the process buffer."
   :group 'madolt-faces)
 
 (defface madolt-process-ng
-  '((t :inherit error))
+  '((t :inherit magit-section-heading :foreground "red"))
   "Face for non-zero exit codes in the process buffer."
   :group 'madolt-faces)
 

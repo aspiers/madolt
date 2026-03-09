@@ -158,8 +158,7 @@ Parses `dolt status' output for unmerged tables."
                       (format "Conflicts in %s:" madolt-conflicts--table)
                     "Conflicts (all tables):")))
     (magit-insert-section (conflicts)
-      (magit-insert-heading
-        (propertize heading 'font-lock-face 'magit-section-heading))
+      (magit-insert-heading heading)
       (if (zerop exit-code)
           (if (string-blank-p (string-trim output))
               (insert (propertize "  (no conflicts)\n"

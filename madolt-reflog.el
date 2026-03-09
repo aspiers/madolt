@@ -118,8 +118,7 @@ When ALL is non-nil, show all refs including hidden ones."
                     (format "Reflog for %s:" madolt-reflog--ref))
                    (t "Reflog:"))))
     (magit-insert-section (reflog)
-      (magit-insert-heading
-        (propertize heading 'font-lock-face 'magit-section-heading))
+      (magit-insert-heading heading)
       (if (null entries)
           (insert (propertize "  (no reflog entries)\n"
                               'font-lock-face 'shadow))

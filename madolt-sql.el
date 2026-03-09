@@ -98,8 +98,7 @@ Prompts for QUERY via the minibuffer with history support."
          (output (madolt--strip-ansi (cdr result))))
     (magit-insert-section (sql-result)
       (magit-insert-heading
-        (propertize (format "SQL: %s" query)
-                    'font-lock-face 'magit-section-heading))
+        (format "SQL: %s" query))
       (if (zerop exit-code)
           (if (string-blank-p (string-trim output))
               (insert (propertize "  Query executed successfully (no output)\n"
