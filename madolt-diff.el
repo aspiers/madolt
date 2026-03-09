@@ -111,6 +111,39 @@
 Dynamically bound to increase nesting depth when inserting
 diffs inside an already-indented context (e.g. status buffer).")
 
+;;;; Row limits
+
+(defcustom madolt-diff-max-rows 100
+  "Maximum number of row changes to display per table in a diff buffer.
+When a table diff contains more rows than this limit, only the
+first N rows are shown and a \"Type + to show more\" button is
+inserted.  Pressing \"+\" doubles the limit and refreshes.
+Set to nil to disable the limit entirely."
+  :group 'madolt
+  :type '(choice (integer :tag "Max rows per table")
+                 (const :tag "No limit" nil)))
+
+(defcustom madolt-diff-section-max-rows 20
+  "Maximum number of row changes to display in inline status diffs.
+This applies to the diff shown when expanding a table entry in
+the status buffer.  Lower than `madolt-diff-max-rows' since
+performance matters most in the status buffer."
+  :group 'madolt
+  :type '(choice (integer :tag "Max rows per table")
+                 (const :tag "No limit" nil)))
+
+(defcustom madolt-diff-raw-max-lines 200
+  "Maximum number of output lines to display per table in raw diff mode.
+This counts all lines including headers and separators."
+  :group 'madolt
+  :type '(choice (integer :tag "Max lines per table")
+                 (const :tag "No limit" nil)))
+
+(defvar-local madolt-diff--row-limit nil
+  "Current row limit for the diff buffer.
+Initialized from `madolt-diff-max-rows' and doubled by `+'.
+When nil, use the defcustom value.")
+
 ;;;; Truncation
 
 (defcustom madolt-diff-min-value-width 15
@@ -191,6 +224,17 @@ ARGS are additional arguments from the transient."
   (interactive (list (transient-args 'madolt-diff)))
   (madolt-diff--show-buffer args nil nil t nil))
 
+;;;; Row limit expansion
+
+(defun madolt-diff-double-limit ()
+  "Double the number of diff rows shown per table and refresh."
+  (interactive)
+  (let ((current (or madolt-diff--row-limit
+                     madolt-diff-max-rows
+                     100)))
+    (setq madolt-diff--row-limit (* current 2)))
+  (madolt-refresh))
+
 ;;;; Buffer setup
 
 (defun madolt-diff--show-buffer (args revisions table raw-mode staged)
@@ -255,12 +299,17 @@ Return a flat list of strings."
         (dolist (tbl tables)
           (madolt-diff--insert-table-diff tbl))))))
 
-(defun madolt-diff--insert-table-diff (table-data)
+(defun madolt-diff--insert-table-diff (table-data &optional max-rows)
   "Insert a table-diff section for TABLE-DATA.
-TABLE-DATA is an alist from the JSON `tables' array."
+TABLE-DATA is an alist from the JSON `tables' array.
+MAX-ROWS, if non-nil, limits how many row changes are shown.
+When omitted, uses `madolt-diff--row-limit' or `madolt-diff-max-rows'."
   (let ((name (alist-get 'name table-data))
         (schema-diff (alist-get 'schema_diff table-data))
-        (data-diff (alist-get 'data_diff table-data)))
+        (data-diff (alist-get 'data_diff table-data))
+        (limit (or max-rows
+                   madolt-diff--row-limit
+                   madolt-diff-max-rows)))
     (magit-insert-section (table-diff name t)
       (magit-insert-heading
         (propertize (format "modified  %s" name)
@@ -277,10 +326,18 @@ TABLE-DATA is an alist from the JSON `tables' array."
                                "^" sql-indent stmt)))
                 (insert (propertize (concat indented "\n")
                                     'font-lock-face 'madolt-diff-schema)))))))
-      ;; Data changes
+      ;; Data changes (with row limit)
       (when data-diff
-        (dolist (row-change data-diff)
-          (madolt-diff--insert-row-diff row-change)))
+        (let ((total (length data-diff))
+              (shown 0))
+          (dolist (row-change data-diff)
+            (when (or (null limit) (< shown limit))
+              (madolt-diff--insert-row-diff row-change)
+              (cl-incf shown)))
+          (when (and limit (> total limit))
+            (madolt-insert-show-more-button
+             shown total
+             'madolt-mode-map 'madolt-diff-double-limit))))
       (insert "\n"))))
 
 ;;;; Diff statistics
@@ -594,14 +651,24 @@ Return a list of (TABLE-NAME . BODY-TEXT) cons cells."
 (defun madolt-diff--insert-raw-table-section (block)
   "Insert a raw table-diff section for BLOCK.
 BLOCK is a cons of (TABLE-NAME . BODY-TEXT)."
-  (let ((name (car block))
-        (body (cdr block)))
+  (let* ((name (car block))
+         (body (cdr block))
+         (lines (split-string body "\n"))
+         (total (length lines))
+         (limit (or madolt-diff--row-limit madolt-diff-raw-max-lines)))
     (magit-insert-section (table-diff name t)
       (magit-insert-heading
         (propertize (format "Table: %s" name)
                     'font-lock-face 'madolt-diff-table-heading))
-      (dolist (line (split-string body "\n"))
-        (insert (madolt-diff--propertize-raw-line line) "\n"))
+      (let ((shown 0))
+        (dolist (line lines)
+          (when (or (null limit) (< shown limit))
+            (insert (madolt-diff--propertize-raw-line line) "\n")
+            (cl-incf shown)))
+        (when (and limit (> total limit))
+          (madolt-insert-show-more-button
+           shown total
+           'madolt-mode-map 'madolt-diff-double-limit)))
       (insert "\n"))))
 
 (defun madolt-diff--propertize-raw-line (line)
@@ -648,7 +715,8 @@ content appears under a table heading in the status buffer."
                    (madolt-diff-json "--staged" table)
                  (madolt-diff-json table)))
          (tables (and json (alist-get 'tables json)))
-         (madolt-diff--indent "      "))
+         (madolt-diff--indent "      ")
+         (limit madolt-diff-section-max-rows))
     (if (null tables)
         (insert (concat madolt-diff--indent "(no changes)\n"))
       (let ((tbl (car tables)))
@@ -668,8 +736,16 @@ content appears under a table heading in the status buffer."
           (if (null data-diff)
               (unless (and schema-diff (not (seq-empty-p schema-diff)))
                 (insert (concat madolt-diff--indent "(schema change only)\n")))
-            (dolist (row-change data-diff)
-              (madolt-diff--insert-row-diff row-change))))))))
+            (let ((total (length data-diff))
+                  (shown 0))
+              (dolist (row-change data-diff)
+                (when (or (null limit) (< shown limit))
+                  (madolt-diff--insert-row-diff row-change)
+                  (cl-incf shown)))
+              (when (and limit (> total limit))
+                (madolt-insert-show-more-button
+                 shown total
+                 'madolt-mode-map 'madolt-diff-double-limit)))))))))
 
 ;;;; Table name completion
 

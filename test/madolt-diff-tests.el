@@ -480,5 +480,127 @@ indicator to show misleading ellipsis characters."
           (when (string-match-p "`" line)
             (should (string-match-p "^    " line))))))))
 
+;;;; Row limits
+
+(ert-deftest test-madolt-diff-max-rows-defcustom ()
+  "madolt-diff-max-rows should default to 100."
+  (should (= madolt-diff-max-rows 100)))
+
+(ert-deftest test-madolt-diff-section-max-rows-defcustom ()
+  "madolt-diff-section-max-rows should default to 20."
+  (should (= madolt-diff-section-max-rows 20)))
+
+(ert-deftest test-madolt-diff-raw-max-lines-defcustom ()
+  "madolt-diff-raw-max-lines should default to 200."
+  (should (= madolt-diff-raw-max-lines 200)))
+
+(ert-deftest test-madolt-diff-table-diff-truncates-at-limit ()
+  "madolt-diff--insert-table-diff truncates rows at the given limit."
+  (with-temp-buffer
+    (magit-section-mode)
+    (let* ((inhibit-read-only t)
+           ;; Create 10 row changes
+           (rows (cl-loop for i from 1 to 10
+                          collect `((to_row . ((id . ,i) (name . ,(format "row%d" i))))
+                                    (diff_type . "added"))))
+           (table-data `((name . "test_table")
+                         (data_diff . ,rows))))
+      (magit-insert-section (root)
+        (madolt-diff--insert-table-diff table-data 3))
+      ;; Should have 3 row-diff sections plus a longer section
+      (let ((row-sections (madolt-test--sections-of-type 'row-diff))
+            (longer-sections (madolt-test--sections-of-type 'longer)))
+        (should (= (length row-sections) 3))
+        (should (= (length longer-sections) 1))))))
+
+(ert-deftest test-madolt-diff-table-diff-no-truncation-when-under-limit ()
+  "madolt-diff--insert-table-diff shows all rows when under the limit."
+  (with-temp-buffer
+    (magit-section-mode)
+    (let* ((inhibit-read-only t)
+           (rows (cl-loop for i from 1 to 3
+                          collect `((to_row . ((id . ,i)))
+                                    (diff_type . "added"))))
+           (table-data `((name . "test_table")
+                         (data_diff . ,rows))))
+      (magit-insert-section (root)
+        (madolt-diff--insert-table-diff table-data 5))
+      (let ((row-sections (madolt-test--sections-of-type 'row-diff))
+            (longer-sections (madolt-test--sections-of-type 'longer)))
+        (should (= (length row-sections) 3))
+        (should (= (length longer-sections) 0))))))
+
+(ert-deftest test-madolt-diff-table-diff-nil-limit-shows-all ()
+  "madolt-diff--insert-table-diff shows all rows when limit is nil."
+  (with-temp-buffer
+    (magit-section-mode)
+    (let* ((inhibit-read-only t)
+           (madolt-diff-max-rows nil)
+           (rows (cl-loop for i from 1 to 10
+                          collect `((to_row . ((id . ,i)))
+                                    (diff_type . "added"))))
+           (table-data `((name . "test_table")
+                         (data_diff . ,rows))))
+      (magit-insert-section (root)
+        (madolt-diff--insert-table-diff table-data nil))
+      (let ((row-sections (madolt-test--sections-of-type 'row-diff)))
+        (should (= (length row-sections) 10))))))
+
+(ert-deftest test-madolt-diff-show-more-button-shows-counts ()
+  "The show-more button shows the correct shown/total counts."
+  (with-temp-buffer
+    (magit-section-mode)
+    (let* ((inhibit-read-only t)
+           (rows (cl-loop for i from 1 to 10
+                          collect `((to_row . ((id . ,i)))
+                                    (diff_type . "added"))))
+           (table-data `((name . "test_table")
+                         (data_diff . ,rows))))
+      (magit-insert-section (root)
+        (madolt-diff--insert-table-diff table-data 3))
+      (should (string-match-p "3 of 10 shown" (buffer-string))))))
+
+(ert-deftest test-madolt-diff-double-limit-doubles ()
+  "madolt-diff-double-limit doubles madolt-diff--row-limit."
+  (with-temp-buffer
+    (madolt-diff-mode)
+    (let ((madolt-diff--row-limit 50))
+      ;; Mock madolt-refresh to avoid side effects
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-diff-double-limit)
+        (should (= madolt-diff--row-limit 100))))))
+
+(ert-deftest test-madolt-diff-double-limit-from-defcustom ()
+  "madolt-diff-double-limit uses defcustom when buffer-local is nil."
+  (with-temp-buffer
+    (madolt-diff-mode)
+    (let ((madolt-diff--row-limit nil)
+          (madolt-diff-max-rows 50))
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-diff-double-limit)
+        (should (= madolt-diff--row-limit 100))))))
+
+(ert-deftest test-madolt-diff-raw-truncates-at-limit ()
+  "madolt-diff--insert-raw-table-section truncates lines at the limit."
+  (with-temp-buffer
+    (magit-section-mode)
+    (let* ((inhibit-read-only t)
+           (madolt-diff--row-limit 3)
+           (body (mapconcat #'identity
+                            '("diff --dolt a/t b/t"
+                              "| + | 1 | Alice |"
+                              "| + | 2 | Bob |"
+                              "| + | 3 | Charlie |"
+                              "| + | 4 | Diana |"
+                              "| + | 5 | Erik |")
+                            "\n"))
+           (block (cons "t" body)))
+      (magit-insert-section (root)
+        (madolt-diff--insert-raw-table-section block))
+      ;; Should show 3 lines plus a show-more button
+      (let ((longer-sections (madolt-test--sections-of-type 'longer)))
+        (should (= (length longer-sections) 1))
+        (should (string-match-p "3 of 6 shown" (buffer-string)))))))
+
 (provide 'madolt-diff-tests)
 ;;; madolt-diff-tests.el ends here
