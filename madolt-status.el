@@ -90,8 +90,8 @@
     madolt-insert-unstaged-changes
     madolt-insert-staged-changes
     madolt-insert-stashes
-    madolt-insert-unpulled-commits
     madolt-insert-unpushed-commits
+    madolt-insert-unpulled-commits
     madolt-insert-recent-commits)
   "Hook run to insert sections into the status buffer.
 Each function on the hook inserts one section."
@@ -103,42 +103,61 @@ Each function on the hook inserts one section."
 (defvar-local madolt--status-tables-cache nil
   "Cached result of `madolt-status-tables' for the current refresh cycle.")
 
+(defvar-local madolt--upstream-ref-cache 'unset
+  "Cached result of `madolt-upstream-ref' for the current refresh cycle.
+The value `unset' means not yet computed.")
+
 (defun madolt--cached-status-tables ()
-  "Return the cached status tables, fetching once per refresh cycle."
+  "Return cached status tables, computing if needed."
   (or madolt--status-tables-cache
       (setq madolt--status-tables-cache (madolt-status-tables))))
+
+(defun madolt--cached-upstream-ref ()
+  "Return cached upstream ref, computing if needed."
+  (when (eq madolt--upstream-ref-cache 'unset)
+    (setq madolt--upstream-ref-cache (madolt-upstream-ref)))
+  madolt--upstream-ref-cache)
 
 ;;;; Refresh
 
 (defun madolt-status-refresh-buffer ()
   "Refresh the status buffer by running `madolt-status-sections-hook'."
   (setq madolt--status-tables-cache nil)
+  (setq madolt--upstream-ref-cache 'unset)
   (magit-insert-section (status)
     (run-hooks 'madolt-status-sections-hook)))
 
 ;;;; Status header
 
 (defun madolt-insert-status-header ()
-  "Insert the status header showing branch, HEAD, and remote info."
+  "Insert the status header showing branch, HEAD, upstream, and remote info."
   (let* ((branch (madolt-current-branch))
          (head-entry (car (madolt-log-entries 1)))
          (hash (and head-entry (plist-get head-entry :hash)))
          (message (and head-entry (plist-get head-entry :message)))
+         (upstream (madolt--cached-upstream-ref))
          (remotes (madolt-remotes)))
-    (insert (propertize "Head:   " 'font-lock-face 'bold)
+    ;; Head line
+    (insert (propertize "Head:     " 'font-lock-face 'bold)
             (if branch
                 (propertize branch 'font-lock-face 'madolt-branch-local)
               "(detached)")
             (if hash
-                (concat "  "
+                (concat " "
                         (propertize (substring hash 0 (min 8 (length hash)))
                                     'font-lock-face 'madolt-hash)
-                        "  "
+                        " "
                         (or message ""))
               "")
             "\n")
+    ;; Upstream line (if tracking a remote branch)
+    (when upstream
+      (insert (propertize "Upstream: " 'font-lock-face 'bold)
+              (propertize upstream 'font-lock-face 'madolt-branch-remote)
+              "\n"))
+    ;; Remote lines
     (dolist (remote remotes)
-      (insert (propertize "Remote: " 'font-lock-face 'bold)
+      (insert (propertize "Remote:   " 'font-lock-face 'bold)
               (propertize (car remote) 'font-lock-face 'madolt-branch-remote)
               " "
               (propertize (cdr remote) 'font-lock-face 'shadow)
@@ -240,7 +259,7 @@ If ENTRIES is nil, nothing is inserted."
 
 (defun madolt-insert-unpulled-commits ()
   "Insert a section showing commits in upstream not in HEAD."
-  (let* ((upstream (madolt-upstream-ref))
+  (let* ((upstream (madolt--cached-upstream-ref))
          (entries (madolt-unpulled-commits upstream)))
     (madolt--insert-commit-list-section
      'unpulled
@@ -249,7 +268,7 @@ If ENTRIES is nil, nothing is inserted."
 
 (defun madolt-insert-unpushed-commits ()
   "Insert a section showing commits in HEAD not in upstream."
-  (let* ((upstream (madolt-upstream-ref))
+  (let* ((upstream (madolt--cached-upstream-ref))
          (entries (madolt-unpushed-commits upstream)))
     (madolt--insert-commit-list-section
      'unpushed

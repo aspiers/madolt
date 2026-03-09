@@ -93,25 +93,25 @@ Interactively with a prefix argument, prompt for the directory."
 (transient-define-prefix madolt-dispatch ()
   "Invoke a Madolt command from a list of available commands."
   ["Transient commands"
-   [("A" "Cherry-pick"    madolt-cherry-pick)
-    ("b" "Branch"         madolt-branch)
+   [("b" "Branch"         madolt-branch)
     ("c" "Commit"         madolt-commit)
     ("d" "Diff"           madolt-diff)
-    ("f" "Fetch"          madolt-fetch)
     ("l" "Log"            madolt-log)
     ("m" "Merge"          madolt-merge)
     ("t" "Tag"            madolt-tag)]
-   [("B" "Blame"          madolt-blame)
-    ("C" "Conflicts"      madolt-conflicts)
-    ("e" "SQL query"      madolt-sql-query)
-    ("F" "Pull"           madolt-pull)
-    ("M" "Remote"         madolt-remote-manage)
-    ("P" "Push"           madolt-push)
+   [("A" "Cherry-pick"    madolt-cherry-pick)
     ("r" "Rebase"         madolt-rebase)
     ("V" "Revert"         madolt-revert)
-    ("z" "Stash"          madolt-stash)
-    ("j" "Status"         madolt-status)
-    ("$" "Process"        madolt-process-buffer)]]
+    ("z" "Stash"          madolt-stash)]]
+  ["Transferring"
+   [("f" "Fetch"          madolt-fetch)
+    ("F" "Pull"           madolt-pull)]
+   [("P" "Push"           madolt-push)
+    ("M" "Remote"         madolt-remote-manage)]]
+  ["Inspecting"
+   [("B" "Blame"          madolt-blame)
+    ("C" "Conflicts"      madolt-conflicts)]
+   [("e" "SQL query"      madolt-sql-query)]]
   ["Applying changes"
    :if-derived madolt-mode
    [("s" "Stage"          madolt-stage)
@@ -122,10 +122,12 @@ Interactively with a prefix argument, prompt for the directory."
     ("U" "Unstage all"    madolt-unstage-all)]]
   ["Essential commands"
    :if-derived madolt-mode
-   [("g"        "       Refresh current buffer"  madolt-refresh)
-    ("q"        "       Bury current buffer"     quit-window)]
-   [("<tab>"    "       Toggle section at point" magit-section-toggle)
-    ("<return>" "       Visit thing at point"    madolt-visit-thing)]])
+   [("g"   "Refresh current buffer"   madolt-refresh)
+    ("j"   "Status"                   madolt-status)
+    ("q"   "Bury current buffer"      quit-window)]
+   [("<tab>"    "Toggle section at point"  magit-section-toggle)
+    ("<return>" "Visit thing at point"     madolt-visit-thing)
+    ("$"        "Process buffer"           madolt-process-buffer)]])
 
 (provide 'madolt)
 ;;; madolt.el ends here
