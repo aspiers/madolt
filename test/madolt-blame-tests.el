@@ -169,5 +169,37 @@
               (should (equal madolt-blame--table "t1")))
           (kill-buffer buf))))))
 
+;;;; Row limit
+
+(ert-deftest test-madolt-blame-limit-default ()
+  "madolt-blame--limit should default to 200."
+  (with-temp-buffer
+    (madolt-blame-mode)
+    (should (= madolt-blame--limit 200))))
+
+(ert-deftest test-madolt-blame-double-limit ()
+  "madolt-blame-double-limit should double the limit."
+  (with-temp-buffer
+    (madolt-blame-mode)
+    (setq madolt-blame--limit 100)
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-blame-double-limit))
+    (should (= madolt-blame--limit 200))))
+
+(ert-deftest test-madolt-blame-no-show-more-when-under-limit ()
+  "Show-more button should NOT appear when output fits within the limit."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY, name VARCHAR(50)")
+    (madolt-test-insert-row "t1" "(1, 'Alice')")
+    (madolt-test-commit "init")
+    (cl-letf (((symbol-function 'madolt-display-buffer) #'ignore))
+      (let ((buf (madolt-blame--show "t1" nil)))
+        (unwind-protect
+            (with-current-buffer buf
+              (should-not (string-match-p "show more"
+                                          (buffer-substring-no-properties
+                                           (point-min) (point-max)))))
+          (kill-buffer buf))))))
+
 (provide 'madolt-blame-tests)
 ;;; madolt-blame-tests.el ends here

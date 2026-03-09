@@ -44,6 +44,17 @@
 (defvar-local madolt-blame--rev nil
   "Optional revision to start blame from.")
 
+(defvar-local madolt-blame--limit 200
+  "Number of blame output lines to show.")
+
+;;;; Row limit expansion
+
+(defun madolt-blame-double-limit ()
+  "Double the number of blame lines shown and refresh."
+  (interactive)
+  (setq madolt-blame--limit (* madolt-blame--limit 2))
+  (madolt-refresh))
+
 ;;;; Blame mode
 
 (define-derived-mode madolt-blame-mode madolt-mode "Madolt Blame"
@@ -109,9 +120,18 @@
 
 (defun madolt-blame--insert-result (output)
   "Insert tabular blame OUTPUT into the current buffer."
-  (let ((lines (split-string output "\n" t)))
+  (let* ((lines (split-string output "\n" t))
+         (total (length lines))
+         (limit madolt-blame--limit)
+         (shown 0))
     (dolist (line lines)
-      (insert (madolt-blame--fontify-line line) "\n"))))
+      (when (< shown limit)
+        (insert (madolt-blame--fontify-line line) "\n")
+        (cl-incf shown)))
+    (when (> total limit)
+      (madolt-insert-show-more-button
+       shown total
+       'madolt-mode-map 'madolt-blame-double-limit))))
 
 (defun madolt-blame--fontify-line (line)
   "Apply faces to a blame result LINE."

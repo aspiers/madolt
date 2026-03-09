@@ -45,6 +45,17 @@
 (defvar-local madolt-conflicts--table nil
   "The table whose conflicts are shown, or nil for all.")
 
+(defvar-local madolt-conflicts--limit 200
+  "Number of conflict output lines to show.")
+
+;;;; Row limit expansion
+
+(defun madolt-conflicts-double-limit ()
+  "Double the number of conflict lines shown and refresh."
+  (interactive)
+  (setq madolt-conflicts--limit (* madolt-conflicts--limit 2))
+  (madolt-refresh))
+
 ;;;; Conflicts mode
 
 (define-derived-mode madolt-conflicts-mode madolt-mode "Madolt Conflicts"
@@ -162,9 +173,18 @@ Parses `dolt status' output for unmerged tables."
 
 (defun madolt-conflicts--insert-result (output)
   "Insert tabular conflict OUTPUT into the current buffer."
-  (let ((lines (split-string output "\n" t)))
+  (let* ((lines (split-string output "\n" t))
+         (total (length lines))
+         (limit madolt-conflicts--limit)
+         (shown 0))
     (dolist (line lines)
-      (insert (madolt-conflicts--fontify-line line) "\n"))))
+      (when (< shown limit)
+        (insert (madolt-conflicts--fontify-line line) "\n")
+        (cl-incf shown)))
+    (when (> total limit)
+      (madolt-insert-show-more-button
+       shown total
+       'madolt-mode-map 'madolt-conflicts-double-limit))))
 
 (defun madolt-conflicts--fontify-line (line)
   "Apply faces to a conflict result LINE."

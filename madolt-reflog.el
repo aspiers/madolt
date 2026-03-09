@@ -44,6 +44,17 @@
 (defvar-local madolt-reflog--all nil
   "When non-nil, show all refs including hidden ones.")
 
+(defvar-local madolt-reflog--limit 100
+  "Number of reflog entries to show.")
+
+;;;; Row limit expansion
+
+(defun madolt-reflog-double-limit ()
+  "Double the number of reflog entries shown and refresh."
+  (interactive)
+  (setq madolt-reflog--limit (* madolt-reflog--limit 2))
+  (madolt-refresh))
+
 ;;;; Reflog mode
 
 (define-derived-mode madolt-reflog-mode madolt-mode "Madolt Reflog"
@@ -95,13 +106,17 @@ When ALL is non-nil, show all refs including hidden ones."
 
 (defun madolt-reflog-refresh-buffer ()
   "Refresh the reflog buffer by inserting entry sections."
-  (let ((entries (madolt-reflog-entries
-                  madolt-reflog--ref madolt-reflog--all))
-        (heading (cond
-                  (madolt-reflog--all "Reflog (all refs):")
-                  (madolt-reflog--ref
-                   (format "Reflog for %s:" madolt-reflog--ref))
-                  (t "Reflog:"))))
+  (let* ((all-entries (madolt-reflog-entries
+                       madolt-reflog--ref madolt-reflog--all))
+         (total (length all-entries))
+         (entries (if (> total madolt-reflog--limit)
+                      (seq-take all-entries madolt-reflog--limit)
+                    all-entries))
+         (heading (cond
+                   (madolt-reflog--all "Reflog (all refs):")
+                   (madolt-reflog--ref
+                    (format "Reflog for %s:" madolt-reflog--ref))
+                   (t "Reflog:"))))
     (magit-insert-section (reflog)
       (magit-insert-heading
         (propertize heading 'font-lock-face 'magit-section-heading))
@@ -109,7 +124,11 @@ When ALL is non-nil, show all refs including hidden ones."
           (insert (propertize "  (no reflog entries)\n"
                               'font-lock-face 'shadow))
         (dolist (entry entries)
-          (madolt-reflog--insert-entry entry)))
+          (madolt-reflog--insert-entry entry))
+        (when (> total madolt-reflog--limit)
+          (madolt-insert-show-more-button
+           (length entries) total
+           'madolt-mode-map 'madolt-reflog-double-limit)))
       (insert "\n"))))
 
 (defun madolt-reflog--insert-entry (entry)

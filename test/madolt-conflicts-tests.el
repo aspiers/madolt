@@ -213,5 +213,36 @@ Merges feature into main, producing a conflict."
                                        (point-min) (point-max)))))
           (kill-buffer buf))))))
 
+;;;; Row limit
+
+(ert-deftest test-madolt-conflicts-limit-default ()
+  "madolt-conflicts--limit should default to 200."
+  (with-temp-buffer
+    (madolt-conflicts-mode)
+    (should (= madolt-conflicts--limit 200))))
+
+(ert-deftest test-madolt-conflicts-double-limit ()
+  "madolt-conflicts-double-limit should double the limit."
+  (with-temp-buffer
+    (madolt-conflicts-mode)
+    (setq madolt-conflicts--limit 100)
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-conflicts-double-limit))
+    (should (= madolt-conflicts--limit 200))))
+
+(ert-deftest test-madolt-conflicts-no-show-more-when-under-limit ()
+  "Show-more button should NOT appear when output fits within the limit."
+  (madolt-with-test-database
+    (madolt-test-create-conflict)
+    (cl-letf (((symbol-function 'madolt-display-buffer) #'ignore))
+      (let ((buf (madolt-conflicts--show "t")))
+        (unwind-protect
+            (with-current-buffer buf
+              ;; With only 1 conflict row, output should be well under 200 lines
+              (should-not (string-match-p "show more"
+                                          (buffer-substring-no-properties
+                                           (point-min) (point-max)))))
+          (kill-buffer buf))))))
+
 (provide 'madolt-conflicts-tests)
 ;;; madolt-conflicts-tests.el ends here

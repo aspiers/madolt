@@ -198,5 +198,36 @@
                                        (point-min) (point-max)))))
           (kill-buffer buf))))))
 
+;;;; Row limit
+
+(ert-deftest test-madolt-reflog-limit-default ()
+  "madolt-reflog--limit should default to 100."
+  (with-temp-buffer
+    (madolt-reflog-mode)
+    (should (= madolt-reflog--limit 100))))
+
+(ert-deftest test-madolt-reflog-double-limit ()
+  "madolt-reflog-double-limit should double the limit."
+  (with-temp-buffer
+    (madolt-reflog-mode)
+    (setq madolt-reflog--limit 50)
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-reflog-double-limit))
+    (should (= madolt-reflog--limit 100))))
+
+(ert-deftest test-madolt-reflog-no-show-more-when-under-limit ()
+  "Show-more button should NOT appear when entries fit within the limit."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (cl-letf (((symbol-function 'madolt-display-buffer) #'ignore))
+      (let ((buf (madolt-reflog--show "main" nil)))
+        (unwind-protect
+            (with-current-buffer buf
+              (should-not (string-match-p "show more"
+                                          (buffer-substring-no-properties
+                                           (point-min) (point-max)))))
+          (kill-buffer buf))))))
+
 (provide 'madolt-reflog-tests)
 ;;; madolt-reflog-tests.el ends here
