@@ -54,6 +54,7 @@
 (require 'madolt-merge)
 (require 'madolt-rebase)
 (require 'madolt-blame)
+(require 'madolt-conflicts)
 (require 'madolt-reflog)
 (require 'madolt-sql)
 (require 'madolt-remote)
@@ -101,6 +102,7 @@ Interactively with a prefix argument, prompt for the directory."
     ("m" "Merge"          madolt-merge)
     ("t" "Tag"            madolt-tag)]
    [("B" "Blame"          madolt-blame)
+    ("C" "Conflicts"      madolt-conflicts)
     ("e" "SQL query"      madolt-sql-query)
     ("F" "Pull"           madolt-pull)
     ("M" "Remote"         madolt-remote-manage)

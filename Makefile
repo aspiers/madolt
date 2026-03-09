@@ -19,7 +19,8 @@ LOAD_PATH = -L . -L test $(DEPS_LOAD_PATH)
 SRCS = madolt-dolt.el madolt-process.el madolt-mode.el madolt.el \
        madolt-status.el madolt-apply.el madolt-commit.el \
        madolt-diff.el madolt-log.el madolt-branch.el \
-       madolt-blame.el madolt-cherry-pick.el madolt-merge.el madolt-rebase.el \
+       madolt-blame.el madolt-conflicts.el \
+       madolt-cherry-pick.el madolt-merge.el madolt-rebase.el \
        madolt-reflog.el madolt-sql.el madolt-remote.el \
        madolt-stash.el madolt-tag.el
 
