@@ -290,5 +290,207 @@ Returns in a state with 3 user commits plus the init commit."
   (should (eq (madolt-log--extract-limit '("-n10" "--stat")) 10))
   (should (eq (madolt-log--extract-limit '("--stat")) nil)))
 
+;;;; Merge commit parsing
+
+(ert-deftest test-madolt-log-entries-parents-nil-for-normal ()
+  "Normal commits should have nil :parents."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "Normal commit")
+    (let* ((entry (car (madolt-log-entries 1))))
+      (should-not (plist-get entry :parents)))))
+
+(ert-deftest test-madolt-log-entries-parents-for-merge ()
+  "Merge commits should have :parents with two hashes."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "init")
+    ;; Create divergent branch
+    (call-process madolt-dolt-executable nil nil nil
+                  "checkout" "-b" "feat")
+    (madolt-test-insert-row "t1" "(2)")
+    (madolt-test-commit "feat commit")
+    (call-process madolt-dolt-executable nil nil nil
+                  "checkout" "main")
+    (madolt-test-insert-row "t1" "(3)")
+    (madolt-test-commit "main commit")
+    ;; Merge with --no-ff to force merge commit
+    (call-process madolt-dolt-executable nil nil nil
+                  "merge" "feat" "--no-ff" "-m" "Merge feat")
+    (let* ((entry (car (madolt-log-entries 1))))
+      (should (plist-get entry :parents))
+      (should (= 2 (length (plist-get entry :parents))))
+      (should (equal "Merge feat" (plist-get entry :message))))))
+
+;;;; Diff statistics
+
+(ert-deftest test-madolt-diff-table-stat-added ()
+  "Should count added rows."
+  (let ((table-data '((name . "t1")
+                      (schema_diff)
+                      (data_diff ((from_row) (to_row (id . 1)))
+                                 ((from_row) (to_row (id . 2)))))))
+    (let ((stat (madolt-diff--table-stat table-data)))
+      (should (equal "t1" (plist-get stat :name)))
+      (should (= 2 (plist-get stat :added)))
+      (should (= 0 (plist-get stat :deleted)))
+      (should (= 0 (plist-get stat :modified))))))
+
+(ert-deftest test-madolt-diff-table-stat-deleted ()
+  "Should count deleted rows."
+  (let ((table-data '((name . "t1")
+                      (schema_diff)
+                      (data_diff ((from_row (id . 1)) (to_row))))))
+    (let ((stat (madolt-diff--table-stat table-data)))
+      (should (= 0 (plist-get stat :added)))
+      (should (= 1 (plist-get stat :deleted)))
+      (should (= 0 (plist-get stat :modified))))))
+
+(ert-deftest test-madolt-diff-table-stat-modified ()
+  "Should count modified rows."
+  (let ((table-data '((name . "t1")
+                      (schema_diff)
+                      (data_diff ((from_row (id . 1) (val . "a"))
+                                  (to_row (id . 1) (val . "b")))))))
+    (let ((stat (madolt-diff--table-stat table-data)))
+      (should (= 0 (plist-get stat :added)))
+      (should (= 0 (plist-get stat :deleted)))
+      (should (= 1 (plist-get stat :modified))))))
+
+(ert-deftest test-madolt-diff-table-stat-schema-changed ()
+  "Should detect schema changes."
+  (let ((table-data '((name . "t1")
+                      (schema_diff "ALTER TABLE t1 ADD COLUMN x INT")
+                      (data_diff))))
+    (let ((stat (madolt-diff--table-stat table-data)))
+      (should (plist-get stat :schema-changed)))))
+
+(ert-deftest test-madolt-diff-compute-stats-multiple-tables ()
+  "Should compute stats for multiple tables."
+  (let ((tables (list '((name . "t1")
+                        (schema_diff)
+                        (data_diff ((from_row) (to_row (id . 1)))))
+                      '((name . "t2")
+                        (schema_diff)
+                        (data_diff ((from_row (id . 2)) (to_row)))))))
+    (let ((stats (madolt-diff--compute-stats tables)))
+      (should (= 2 (length stats)))
+      (should (= 1 (plist-get (car stats) :added)))
+      (should (= 1 (plist-get (cadr stats) :deleted))))))
+
+;;;; Revision buffer improvements
+
+(ert-deftest test-madolt-log-revision-shows-parent ()
+  "Revision buffer should show parent hash."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "First")
+    (madolt-test-insert-row "t1" "(2)")
+    (madolt-test-commit "Second")
+    (let* ((entries (madolt-log-entries 2))
+           (newest (car entries))
+           (hash (plist-get newest :hash)))
+      (with-temp-buffer
+        (madolt-revision-mode)
+        (setq madolt-revision--hash hash)
+        (let ((inhibit-read-only t))
+          (madolt-revision-refresh-buffer))
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          (should (string-match-p "Parent:" text)))))))
+
+(ert-deftest test-madolt-log-revision-shows-merge-parents ()
+  "Revision buffer should show Merge: line for merge commits."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "init")
+    (call-process madolt-dolt-executable nil nil nil
+                  "checkout" "-b" "feat")
+    (madolt-test-insert-row "t1" "(2)")
+    (madolt-test-commit "feat commit")
+    (call-process madolt-dolt-executable nil nil nil
+                  "checkout" "main")
+    (madolt-test-insert-row "t1" "(3)")
+    (madolt-test-commit "main commit")
+    (call-process madolt-dolt-executable nil nil nil
+                  "merge" "feat" "--no-ff" "-m" "Merge feat")
+    (let* ((entry (car (madolt-log-entries 1)))
+           (hash (plist-get entry :hash)))
+      (with-temp-buffer
+        (madolt-revision-mode)
+        (setq madolt-revision--hash hash)
+        (let ((inhibit-read-only t))
+          (madolt-revision-refresh-buffer))
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          (should (string-match-p "Merge:" text)))))))
+
+(ert-deftest test-madolt-log-revision-shows-stat-summary ()
+  "Revision buffer should show diff stat summary."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "init")
+    (madolt-test-insert-row "t1" "(2)")
+    (madolt-test-commit "add row")
+    (let* ((entry (car (madolt-log-entries 1)))
+           (hash (plist-get entry :hash)))
+      (with-temp-buffer
+        (madolt-revision-mode)
+        (setq madolt-revision--hash hash)
+        (let ((inhibit-read-only t))
+          (madolt-revision-refresh-buffer))
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          ;; Should show table name in stat
+          (should (string-match-p "t1" text))
+          ;; Should show row count stat
+          (should (string-match-p "1 table changed" text))
+          ;; Should show added count
+          (should (string-match-p "1 added" text)))))))
+
+(ert-deftest test-madolt-log-revision-full-message ()
+  "Revision buffer should display the full commit message."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "First line of message")
+    (let* ((entry (car (madolt-log-entries 1)))
+           (hash (plist-get entry :hash)))
+      (with-temp-buffer
+        (madolt-revision-mode)
+        (setq madolt-revision--hash hash)
+        (let ((inhibit-read-only t))
+          (madolt-revision-refresh-buffer))
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          (should (string-match-p "First line of message" text)))))))
+
+(ert-deftest test-madolt-log-revision-no-parent-for-initial ()
+  "Revision buffer should not show Parent: for the initial commit."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "Initial")
+    ;; Get the very first commit (init commits from dolt init + our commit)
+    ;; Use the last entry to find one with no parent
+    (let* ((entries (madolt-log-entries 100))
+           ;; The last entry is the dolt init commit which has no parent
+           (init-entry (car (last entries)))
+           (hash (plist-get init-entry :hash)))
+      (with-temp-buffer
+        (madolt-revision-mode)
+        (setq madolt-revision--hash hash)
+        (let ((inhibit-read-only t))
+          (madolt-revision-refresh-buffer))
+        (let ((text (buffer-substring-no-properties
+                     (point-min) (point-max))))
+          (should-not (string-match-p "Parent:" text))
+          (should-not (string-match-p "Merge:" text)))))))
+
 (provide 'madolt-log-tests)
 ;;; madolt-log-tests.el ends here

@@ -219,11 +219,13 @@ ARGS are additional arguments passed to `dolt diff'."
 
 (defun madolt-log-entries (&optional n rev extra-args)
   "Return the last N commits as a list of plists.
-Each plist has keys :hash :refs :date :author :message.
+Each plist has keys :hash :refs :date :author :message :parents.
 N defaults to 10.  REV is the revision to show (branch name,
 tag, or commit hash); when nil, dolt shows the current branch.
 EXTRA-ARGS is a list of additional dolt log arguments
-such as \"--merges\"."
+such as \"--merges\".
+The :parents key holds a list of parent hash strings (from the
+Merge: line); it is nil for non-merge commits."
   (let* ((args (append (list "log" "-n" (number-to-string (or n 10)))
                        (madolt--flatten-args extra-args)
                        (when rev (list rev))))
@@ -234,6 +236,7 @@ such as \"--merges\"."
          (current-refs nil)
          (current-author nil)
          (current-date nil)
+         (current-parents nil)
          (current-message-lines nil)
          (in-message nil))
     (dolist (raw-line (split-string clean-output "\n"))
@@ -251,6 +254,7 @@ such as \"--merges\"."
                       :refs current-refs
                       :date current-date
                       :author current-author
+                      :parents current-parents
                       :message (string-trim
                                 (mapconcat #'identity
                                            (nreverse current-message-lines)
@@ -260,8 +264,13 @@ such as \"--merges\"."
         (setq current-refs (match-string 2 line))
         (setq current-author nil)
         (setq current-date nil)
+        (setq current-parents nil)
         (setq current-message-lines nil)
         (setq in-message nil))
+       ;; Merge line: "Merge: HASH1 HASH2"
+       ((string-match "^Merge:\\s-+\\(.*\\)$" line)
+        (setq current-parents
+              (split-string (string-trim (match-string 1 line)))))
        ;; Author line
        ((string-match "^Author:\\s-+\\(.*\\)$" line)
         (setq current-author (string-trim (match-string 1 line))))
@@ -289,6 +298,7 @@ such as \"--merges\"."
                   :refs current-refs
                   :date current-date
                   :author current-author
+                  :parents current-parents
                   :message (string-trim
                             (mapconcat #'identity
                                        (nreverse current-message-lines)

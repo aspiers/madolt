@@ -283,6 +283,30 @@ TABLE-DATA is an alist from the JSON `tables' array."
           (madolt-diff--insert-row-diff row-change)))
       (insert "\n"))))
 
+;;;; Diff statistics
+
+(defun madolt-diff--table-stat (table-data)
+  "Compute row-level change stats for TABLE-DATA.
+TABLE-DATA is an alist from the JSON `tables' array.
+Return a plist (:name :added :deleted :modified :schema-changed)."
+  (let ((name (alist-get 'name table-data))
+        (schema-diff (alist-get 'schema_diff table-data))
+        (data-diff (alist-get 'data_diff table-data))
+        (added 0) (deleted 0) (modified 0))
+    (dolist (row-change data-diff)
+      (pcase (madolt-diff--row-change-type row-change)
+        ('added (cl-incf added))
+        ('deleted (cl-incf deleted))
+        ('modified (cl-incf modified))))
+    (list :name name
+          :added added :deleted deleted :modified modified
+          :schema-changed (and schema-diff (not (seq-empty-p schema-diff))))))
+
+(defun madolt-diff--compute-stats (tables)
+  "Compute per-table stats for a list of TABLES from JSON diff.
+Return a list of plists, one per table."
+  (mapcar #'madolt-diff--table-stat tables))
+
 ;;;; Row diff rendering
 
 (defun madolt-diff--row-change-type (row-change)

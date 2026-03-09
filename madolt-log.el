@@ -368,15 +368,32 @@ Shows per-table row-level diffs, matching the status buffer style."
   "Refresh the revision buffer."
   (let* ((hash madolt-revision--hash)
          (entry (madolt-log--find-entry hash))
-         (parent (madolt-log--parent-hash hash)))
+         (parents (plist-get entry :parents))
+         (parent (or (car parents)
+                     (madolt-log--parent-hash hash))))
     (magit-insert-section (revision)
-      ;; Commit metadata
+      ;; Commit metadata header
       (insert (propertize "commit " 'font-lock-face 'bold)
               (propertize hash 'font-lock-face 'madolt-hash))
       (when-let ((refs (and entry (plist-get entry :refs))))
         (insert " " (propertize (format "(%s)" refs)
                                 'font-lock-face 'madolt-log-refs)))
       (insert "\n")
+      ;; Parent/Merge line
+      (cond
+       (parents
+        (insert (propertize "Merge:  " 'font-lock-face 'bold)
+                (mapconcat
+                 (lambda (p)
+                   (propertize (substring p 0 (min 8 (length p)))
+                               'font-lock-face 'madolt-hash))
+                 parents " ")
+                "\n"))
+       (parent
+        (insert (propertize "Parent: " 'font-lock-face 'bold)
+                (propertize (substring parent 0 (min 8 (length parent)))
+                            'font-lock-face 'madolt-hash)
+                "\n")))
       (when entry
         (insert (propertize "Author: " 'font-lock-face 'bold)
                 (propertize (or (plist-get entry :author) "unknown")
@@ -386,18 +403,64 @@ Shows per-table row-level diffs, matching the status buffer style."
                 (propertize (or (plist-get entry :date) "unknown")
                             'font-lock-face 'madolt-log-date)
                 "\n\n")
-        (insert "    " (or (plist-get entry :message) "") "\n\n"))
-      ;; Diff
+        ;; Full commit message (may be multi-line)
+        (let ((message (or (plist-get entry :message) "")))
+          (dolist (line (split-string message "\n"))
+            (insert "    " line "\n"))
+          (insert "\n")))
+      ;; Diff with stat summary
       (let* ((diff-args (if parent
                             (list parent hash)
                           (list hash)))
              (json (apply #'madolt-diff-json diff-args))
              (tables (and json (alist-get 'tables json))))
         (if tables
-            (dolist (tbl tables)
-              (madolt-diff--insert-table-diff tbl))
+            (progn
+              ;; Stat summary
+              (madolt-revision--insert-stat-summary tables)
+              ;; Detailed diff
+              (dolist (tbl tables)
+                (madolt-diff--insert-table-diff tbl)))
           (insert (propertize "(no changes)\n"
                               'font-lock-face 'shadow)))))))
+
+(defun madolt-revision--insert-stat-summary (tables)
+  "Insert a compact diff stat summary for TABLES.
+TABLES is the `tables' list from JSON diff output."
+  (let* ((stats (madolt-diff--compute-stats tables))
+         (n (length stats))
+         (total-added (apply #'+ (mapcar (lambda (s) (plist-get s :added)) stats)))
+         (total-deleted (apply #'+ (mapcar (lambda (s) (plist-get s :deleted)) stats)))
+         (total-modified (apply #'+ (mapcar (lambda (s) (plist-get s :modified)) stats))))
+    ;; Per-table stat lines
+    (dolist (stat stats)
+      (let* ((name (plist-get stat :name))
+             (added (plist-get stat :added))
+             (deleted (plist-get stat :deleted))
+             (modified (plist-get stat :modified))
+             (schema (plist-get stat :schema-changed))
+             (parts nil))
+        (when (> added 0)
+          (push (propertize (format "%d+" added) 'font-lock-face 'madolt-diff-added) parts))
+        (when (> deleted 0)
+          (push (propertize (format "%d-" deleted) 'font-lock-face 'madolt-diff-removed) parts))
+        (when (> modified 0)
+          (push (propertize (format "%d~" modified) 'font-lock-face 'madolt-diff-changed-cell) parts))
+        (when schema
+          (push (propertize "schema" 'font-lock-face 'madolt-diff-schema) parts))
+        ;; If no data/schema changes (e.g. table added with rows counted as adds)
+        ;; show "added" or similar
+        (when (and (null parts) (= 0 added) (= 0 deleted) (= 0 modified) (not schema))
+          (push (propertize "changed" 'font-lock-face 'shadow) parts))
+        (insert " " (propertize name 'font-lock-face 'madolt-diff-table-heading)
+                " | " (string-join (nreverse parts) " ") "\n")))
+    ;; Summary line
+    (insert (propertize
+             (format " %d %s changed, %d added(+), %d deleted(-), %d modified(~)\n"
+                     n (if (= n 1) "table" "tables")
+                     total-added total-deleted total-modified)
+             'font-lock-face 'shadow))
+    (insert "\n")))
 
 (defun madolt-log--find-entry (hash)
   "Find and return the log entry plist for HASH.
