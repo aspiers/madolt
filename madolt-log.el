@@ -117,6 +117,14 @@ Names longer than this are truncated with an ellipsis."
    ("O" "Current branch" madolt-reflog-current)
    ("p" "Other ref"      madolt-reflog-other)])
 
+;;;; Row limit expansion
+
+(defun madolt-log-double-limit ()
+  "Double the number of log entries shown and refresh."
+  (interactive)
+  (setq madolt-log--limit (* madolt-log--limit 2))
+  (madolt-refresh))
+
 ;;;; Log commands
 
 (defun madolt-log-current (&optional args)
@@ -200,7 +208,12 @@ The limit is handled separately via `madolt-log--limit'."
       (if (null entries)
           (insert (propertize "  (no commits)\n" 'font-lock-face 'shadow))
         (dolist (entry entries)
-          (madolt-log--insert-commit-section entry)))
+          (madolt-log--insert-commit-section entry))
+        ;; Show-more button when we hit the limit
+        (when (= (length entries) madolt-log--limit)
+          (madolt-insert-show-more-button
+           (length entries) nil
+           'madolt-mode-map 'madolt-log-double-limit)))
       (insert "\n")))
   (madolt-log--setup-margins))
 

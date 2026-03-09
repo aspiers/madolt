@@ -212,6 +212,49 @@ Returns in a state with 3 user commits plus the init commit."
       (let ((commits (madolt-log-test--sections-of-type 'commit)))
         (should (= (length commits) 2))))))
 
+(ert-deftest test-madolt-log-show-more-button-when-at-limit ()
+  "Show-more button should appear when entries equal the limit."
+  (madolt-with-test-database
+    (madolt-log-test-setup-multi-commit)
+    (with-temp-buffer
+      (madolt-log-mode)
+      (setq madolt-log--rev "main")
+      ;; 4 commits total (3 user + 1 init); set limit to 2
+      (setq madolt-log--limit 2)
+      (let ((inhibit-read-only t))
+        (madolt-log-refresh-buffer))
+      ;; Should have a longer section
+      (let ((longer (madolt-log-test--sections-of-type 'longer)))
+        (should (= 1 (length longer))))
+      ;; Button text should mention "show more"
+      (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+        (should (string-match-p "show more" text))))))
+
+(ert-deftest test-madolt-log-no-show-more-when-under-limit ()
+  "Show-more button should NOT appear when entries are fewer than the limit."
+  (madolt-with-test-database
+    (madolt-log-test-setup-multi-commit)
+    (with-temp-buffer
+      (madolt-log-mode)
+      (setq madolt-log--rev "main")
+      ;; 4 commits total; set limit higher
+      (setq madolt-log--limit 100)
+      (let ((inhibit-read-only t))
+        (madolt-log-refresh-buffer))
+      ;; Should NOT have a longer section
+      (let ((longer (madolt-log-test--sections-of-type 'longer)))
+        (should (= 0 (length longer)))))))
+
+(ert-deftest test-madolt-log-double-limit ()
+  "madolt-log-double-limit should double the limit."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--limit 25)
+    ;; Mock madolt-refresh to avoid needing a real database
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-log-double-limit))
+    (should (= madolt-log--limit 50))))
+
 ;;;; Branch name completion
 
 (ert-deftest test-madolt-log-branch-names ()
