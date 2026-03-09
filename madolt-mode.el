@@ -40,6 +40,7 @@
 
 ;; Forward declarations for commands defined in other madolt files.
 ;; These avoid byte-compiler warnings without circular requires.
+(declare-function madolt-cherry-pick "madolt-cherry-pick" ())
 (declare-function madolt-clean "madolt-apply" ())
 (declare-function madolt-stage "madolt-apply" ())
 (declare-function madolt-stage-all "madolt-apply" ())
@@ -53,6 +54,7 @@
 (declare-function madolt-log "madolt-log" ())
 (declare-function madolt-merge "madolt-merge" ())
 (declare-function madolt-pull "madolt-remote" ())
+(declare-function madolt-revert "madolt-cherry-pick" ())
 (declare-function madolt-tag "madolt-tag" ())
 (declare-function madolt-push "madolt-remote" ())
 (declare-function madolt-dispatch "madolt" ())
@@ -100,6 +102,8 @@ navigation, expand/collapse, visibility levels, and highlighting."
   (keymap-set map "U"   #'madolt-unstage-all)
   (keymap-set map "k"   #'madolt-discard)
   (keymap-set map "x"   #'madolt-clean)
+  ;; Cherry-pick (autoloaded from madolt-cherry-pick.el)
+  (keymap-set map "A"   #'madolt-cherry-pick)
   ;; Branch (autoloaded from madolt-branch.el)
   (keymap-set map "b"   #'madolt-branch)
   ;; Commit (autoloaded from madolt-commit.el)
@@ -114,6 +118,8 @@ navigation, expand/collapse, visibility levels, and highlighting."
   (keymap-set map "l"   #'madolt-log)
   ;; Merge (autoloaded from madolt-merge.el)
   (keymap-set map "m"   #'madolt-merge)
+  ;; Revert (autoloaded from madolt-cherry-pick.el)
+  (keymap-set map "V"   #'madolt-revert)
   ;; Tag (autoloaded from madolt-tag.el)
   (keymap-set map "t"   #'madolt-tag)
   ;; Navigation

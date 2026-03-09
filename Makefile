@@ -18,7 +18,8 @@ LOAD_PATH = -L . -L test $(DEPS_LOAD_PATH)
 # Emacs Lisp source files (in dependency order)
 SRCS = madolt-dolt.el madolt-process.el madolt-mode.el madolt.el \
        madolt-status.el madolt-apply.el madolt-commit.el \
-       madolt-diff.el madolt-log.el madolt-branch.el madolt-merge.el \
+       madolt-diff.el madolt-log.el madolt-branch.el \
+       madolt-cherry-pick.el madolt-merge.el \
        madolt-remote.el madolt-tag.el
 
 # Test files

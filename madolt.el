@@ -48,6 +48,7 @@
 (require 'madolt-apply)
 (require 'madolt-commit)
 (require 'madolt-branch)
+(require 'madolt-cherry-pick)
 (require 'madolt-diff)
 (require 'madolt-log)
 (require 'madolt-merge)
@@ -86,7 +87,8 @@ Interactively with a prefix argument, prompt for the directory."
 (transient-define-prefix madolt-dispatch ()
   "Invoke a Madolt command from a list of available commands."
   ["Transient commands"
-   [("b" "Branch"         madolt-branch)
+   [("A" "Cherry-pick"    madolt-cherry-pick)
+    ("b" "Branch"         madolt-branch)
     ("c" "Commit"         madolt-commit)
     ("d" "Diff"           madolt-diff)
     ("f" "Fetch"          madolt-fetch)
@@ -95,6 +97,7 @@ Interactively with a prefix argument, prompt for the directory."
     ("t" "Tag"            madolt-tag)]
    [("F" "Pull"           madolt-pull)
     ("P" "Push"           madolt-push)
+    ("V" "Revert"         madolt-revert)
     ("j" "Status"         madolt-status)
     ("$" "Process"        madolt-process-buffer)]]
   ["Applying changes"
