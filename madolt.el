@@ -53,6 +53,7 @@
 (require 'madolt-log)
 (require 'madolt-merge)
 (require 'madolt-remote)
+(require 'madolt-stash)
 (require 'madolt-tag)
 
 ;;;; Customization
@@ -98,6 +99,7 @@ Interactively with a prefix argument, prompt for the directory."
    [("F" "Pull"           madolt-pull)
     ("P" "Push"           madolt-push)
     ("V" "Revert"         madolt-revert)
+    ("z" "Stash"          madolt-stash)
     ("j" "Status"         madolt-status)
     ("$" "Process"        madolt-process-buffer)]]
   ["Applying changes"

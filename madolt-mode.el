@@ -55,6 +55,7 @@
 (declare-function madolt-merge "madolt-merge" ())
 (declare-function madolt-pull "madolt-remote" ())
 (declare-function madolt-revert "madolt-cherry-pick" ())
+(declare-function madolt-stash "madolt-stash" ())
 (declare-function madolt-tag "madolt-tag" ())
 (declare-function madolt-push "madolt-remote" ())
 (declare-function madolt-dispatch "madolt" ())
@@ -122,6 +123,8 @@ navigation, expand/collapse, visibility levels, and highlighting."
   (keymap-set map "V"   #'madolt-revert)
   ;; Tag (autoloaded from madolt-tag.el)
   (keymap-set map "t"   #'madolt-tag)
+  ;; Stash (autoloaded from madolt-stash.el)
+  (keymap-set map "z"   #'madolt-stash)
   ;; Navigation
   (keymap-set map "RET" #'madolt-visit-thing))
 
