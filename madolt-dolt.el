@@ -314,6 +314,33 @@ Merge: line); it is nil for non-merge commits."
             entries))
     (nreverse entries)))
 
+;;;; Reflog queries
+
+(defun madolt-reflog-entries (&optional ref all)
+  "Return reflog entries as a list of plists.
+Each plist has keys :hash :refs :message.
+REF is an optional branch/tag name to filter (default: all refs
+for current branch).  When ALL is non-nil, pass --all to show
+hidden refs too.
+
+Dolt reflog output format (one line per entry):
+  HASH (refs) message"
+  (let* ((args (append (list "reflog")
+                       (when all (list "--all"))
+                       (when ref (list ref))))
+         (output (cdr (apply #'madolt--run args)))
+         (clean (madolt--strip-ansi output))
+         (entries nil))
+    (dolist (line (split-string clean "\n" t))
+      (when (string-match
+             "^\\([a-z0-9]+\\)\\s-+(\\(.*?\\))\\s-+\\(.*\\)$"
+             line)
+        (push (list :hash (match-string 1 line)
+                    :refs (match-string 2 line)
+                    :message (string-trim (match-string 3 line)))
+              entries)))
+    (nreverse entries)))
+
 ;;;; Mutation operations
 
 (defun madolt-add-tables (tables)

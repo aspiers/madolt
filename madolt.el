@@ -53,6 +53,7 @@
 (require 'madolt-log)
 (require 'madolt-merge)
 (require 'madolt-rebase)
+(require 'madolt-reflog)
 (require 'madolt-remote)
 (require 'madolt-stash)
 (require 'madolt-tag)

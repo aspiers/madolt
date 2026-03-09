@@ -40,9 +40,11 @@
 (require 'madolt-mode)
 
 ;; Forward declarations — madolt-diff provides the diff rendering
-;; for revision buffers.
+;; for revision buffers; madolt-reflog provides reflog commands.
 (declare-function madolt-diff--refresh-structured "madolt-diff" ())
 (declare-function madolt-diff--insert-table-diff "madolt-diff" (table-data))
+(declare-function madolt-reflog-current "madolt-reflog" ())
+(declare-function madolt-reflog-other "madolt-reflog" (ref))
 
 ;;;; Faces
 
@@ -110,7 +112,10 @@ Names longer than this are truncated with an ellipsis."
   ["Log"
    ("l" "Current branch" madolt-log-current)
    ("o" "Other branch"   madolt-log-other)
-   ("h" "HEAD"           madolt-log-head)])
+   ("h" "HEAD"           madolt-log-head)]
+  ["Reflog"
+   ("O" "Current branch" madolt-reflog-current)
+   ("p" "Other ref"      madolt-reflog-other)])
 
 ;;;; Log commands
 
