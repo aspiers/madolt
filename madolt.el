@@ -53,6 +53,7 @@
 (require 'madolt-log)
 (require 'madolt-merge)
 (require 'madolt-rebase)
+(require 'madolt-reset)
 (require 'madolt-blame)
 (require 'madolt-conflicts)
 (require 'madolt-reflog)
@@ -102,6 +103,7 @@ Interactively with a prefix argument, prompt for the directory."
    [("A" "Cherry-pick"    madolt-cherry-pick)
     ("r" "Rebase"         madolt-rebase)
     ("V" "Revert"         madolt-revert)
+    ("X" "Reset"          madolt-reset)
     ("z" "Stash"          madolt-stash)]]
   ["Transferring"
    [("f" "Fetch"          madolt-fetch)
