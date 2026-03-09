@@ -47,8 +47,11 @@
 (require 'madolt-status)
 (require 'madolt-apply)
 (require 'madolt-commit)
+(require 'madolt-branch)
 (require 'madolt-diff)
 (require 'madolt-log)
+(require 'madolt-merge)
+(require 'madolt-remote)
 
 ;;;; Customization
 
@@ -86,7 +89,8 @@ Interactively with a prefix argument, prompt for the directory."
     ("c" "Commit"         madolt-commit)
     ("d" "Diff"           madolt-diff)
     ("f" "Fetch"          madolt-fetch)
-    ("l" "Log"            madolt-log)]
+    ("l" "Log"            madolt-log)
+    ("m" "Merge"          madolt-merge)]
    [("F" "Pull"           madolt-pull)
     ("P" "Push"           madolt-push)
     ("j" "Status"         madolt-status)
