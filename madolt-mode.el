@@ -100,19 +100,20 @@ MODE-MAP is the keymap symbol (e.g. \\='madolt-mode-map) used to
 resolve the keybinding in the button label.
 DOUBLE-FN is the symbol of the function that doubles the limit
 and refreshes."
-  (magit-insert-section (longer)
-    (insert-text-button
-     (substitute-command-keys
-      (format "Type \\<%s>\\[%s] to show more%s"
-              mode-map double-fn
-              (if total
-                  (format " (%d of %d shown)" shown total)
-                (format " (%d shown)" shown))))
-     'action (lambda (_button)
-               (call-interactively double-fn))
-     'follow-link t
-     'mouse-face 'magit-section-highlight)
-    (insert "\n")))
+  (let ((next (min (* shown 2) (or total (* shown 2)))))
+    (magit-insert-section (longer)
+      (insert-text-button
+       (substitute-command-keys
+        (format "Type \\<%s>\\[%s] to show more%s"
+                mode-map 'madolt-show-more
+                (if total
+                    (format " (%d of %d shown; next: %d)" shown total next)
+                  (format " (%d shown; next: %d)" shown next))))
+       'action (lambda (_button)
+                 (call-interactively double-fn))
+       'follow-link t
+       'mouse-face 'magit-section-highlight)
+      (insert "\n"))))
 
 (defun madolt--find-longer-section (&optional root)
   "Find the first `longer' section in ROOT's subtree.

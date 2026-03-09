@@ -260,14 +260,16 @@
       (should (eq (oref longer-section type) 'longer)))))
 
 (ert-deftest test-madolt-insert-show-more-button-shows-counts ()
-  "madolt-insert-show-more-button shows shown/total counts."
+  "madolt-insert-show-more-button shows shown/total counts and next."
   (with-temp-buffer
     (madolt-mode)
     (let ((inhibit-read-only t))
       (magit-insert-section (root)
         (madolt-insert-show-more-button
          5 10 'madolt-mode-map 'madolt-show-more)))
-    (should (string-match-p "5 of 10 shown" (buffer-string)))))
+    (let ((text (buffer-string)))
+      (should (string-match-p "5 of 10 shown" text))
+      (should (string-match-p "next: 10" text)))))
 
 (ert-deftest test-madolt-insert-show-more-button-unknown-total ()
   "madolt-insert-show-more-button handles nil total."
@@ -279,7 +281,32 @@
          5 nil 'madolt-mode-map 'madolt-show-more)))
     (let ((text (buffer-string)))
       (should (string-match-p "5 shown" text))
-      (should-not (string-match-p "of" text)))))
+      (should-not (string-match-p "of" text))
+      (should (string-match-p "next: 10" text)))))
+
+(ert-deftest test-madolt-insert-show-more-button-next-capped-at-total ()
+  "Next count should not exceed total."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t))
+      (magit-insert-section (root)
+        (madolt-insert-show-more-button
+         8 12 'madolt-mode-map 'madolt-show-more)))
+    (let ((text (buffer-string)))
+      ;; 8*2=16 but total is 12, so next should be 12
+      (should (string-match-p "next: 12" text)))))
+
+(ert-deftest test-madolt-insert-show-more-button-keybinding-shows-plus ()
+  "Button label should show the + keybinding, not M-x."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t))
+      (magit-insert-section (root)
+        (madolt-insert-show-more-button
+         5 10 'madolt-mode-map 'madolt-show-more)))
+    (let ((text (buffer-string)))
+      (should (string-match-p "Type \\+" text))
+      (should-not (string-match-p "M-x" text)))))
 
 (ert-deftest test-madolt-insert-show-more-button-has-text-button ()
   "The show-more section contains an Emacs text button."
