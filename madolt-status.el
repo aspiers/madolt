@@ -86,6 +86,7 @@
 
 (defcustom madolt-status-sections-hook
   '(madolt-insert-status-header
+    madolt-insert-merge-conflicts
     madolt-insert-untracked-tables
     madolt-insert-unstaged-changes
     madolt-insert-staged-changes
@@ -163,6 +164,33 @@ The value `unset' means not yet computed.")
               (propertize (cdr remote) 'font-lock-face 'shadow)
               "\n"))
     (insert "\n")))
+
+;;;; Merge conflicts section
+
+(defface madolt-table-conflict
+  '((t :foreground "red" :weight bold))
+  "Face for the conflict status in table entries."
+  :group 'madolt-faces)
+
+(defun madolt-insert-merge-conflicts ()
+  "Insert a section showing tables with unresolved merge conflicts.
+Only shown when there are conflicts (after a merge with conflicts)."
+  (let ((tables (alist-get 'conflicts (madolt--cached-status-tables))))
+    (when tables
+      (magit-insert-section (conflicts)
+        (magit-insert-heading
+          (propertize (format "Merge conflicts (%d)" (length tables))
+                      'font-lock-face 'madolt-section-heading))
+        (dolist (entry tables)
+          (let ((table (car entry))
+                (status (cdr entry)))
+            (magit-insert-section (table table)
+              (insert "  "
+                      (propertize (format "%-16s" status)
+                                  'font-lock-face 'madolt-table-conflict)
+                      table
+                      "\n"))))
+        (insert "\n")))))
 
 ;;;; Table change sections
 

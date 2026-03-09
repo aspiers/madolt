@@ -190,13 +190,15 @@ Parses the output of `dolt remote -v'."
 Return value is:
   ((staged    . ((TABLE . STATUS) ...))
    (unstaged  . ((TABLE . STATUS) ...))
-   (untracked . ((TABLE . STATUS) ...)))
+   (untracked . ((TABLE . STATUS) ...))
+   (conflicts . ((TABLE . STATUS) ...)))
 where STATUS is a string like \"modified\", \"new table\", \"renamed\",
-\"deleted\"."
+\"deleted\", or \"both modified\"."
   (let ((output (cdr (madolt--run "status")))
         (staged nil)
         (unstaged nil)
         (untracked nil)
+        (conflicts nil)
         (current-section nil))
     (dolist (line (split-string output "\n"))
       (cond
@@ -206,6 +208,8 @@ where STATUS is a string like \"modified\", \"new table\", \"renamed\",
         (setq current-section 'unstaged))
        ((string-match-p "^Untracked tables:" line)
         (setq current-section 'untracked))
+       ((string-match-p "^Unmerged paths:" line)
+        (setq current-section 'conflicts))
        ;; Table entry lines are tab-indented: "\tstatus:  table_name"
        ((string-match "^\t\\([a-z ]+\\):\\s-+\\(\\S-+\\)" line)
         (let ((status (string-trim (match-string 1 line)))
@@ -213,10 +217,12 @@ where STATUS is a string like \"modified\", \"new table\", \"renamed\",
           (pcase current-section
             ('staged    (push (cons table status) staged))
             ('unstaged  (push (cons table status) unstaged))
-            ('untracked (push (cons table status) untracked)))))))
+            ('untracked (push (cons table status) untracked))
+            ('conflicts (push (cons table status) conflicts)))))))
     `((staged    . ,(nreverse staged))
       (unstaged  . ,(nreverse unstaged))
-      (untracked . ,(nreverse untracked)))))
+      (untracked . ,(nreverse untracked))
+      (conflicts . ,(nreverse conflicts)))))
 
 ;;;; Diff queries
 

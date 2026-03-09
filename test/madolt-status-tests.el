@@ -344,6 +344,75 @@ Stubs upstream functions since dolt file:// fetch has limitations."
     (madolt-with-status-buffer
       (should-not (string-match-p "Unpulled from" (buffer-string))))))
 
+;;;; Merge conflicts section
+
+(ert-deftest test-madolt-status-conflicts-section-visible ()
+  "The \"Merge conflicts\" section appears when there are conflicts."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY, val INT")
+    (madolt-test-insert-row "t1" "(1, 10)")
+    (madolt-test-commit "init")
+    ;; Create a branch with a conflicting change
+    (madolt-branch-checkout-create "feature")
+    (madolt-test-update-row "t1" "val = 20" "id = 1")
+    (madolt-test-commit "feature change")
+    ;; Make a conflicting change on main
+    (madolt-branch-checkout "main")
+    (madolt-test-update-row "t1" "val = 30" "id = 1")
+    (madolt-test-commit "main change")
+    ;; Merge feature into main (should produce conflicts)
+    (madolt--run "merge" "feature")
+    (madolt-with-status-buffer
+      (should (string-match-p "Merge conflicts" (buffer-string))))))
+
+(ert-deftest test-madolt-status-conflicts-lists-tables ()
+  "Conflicting tables are listed in the merge conflicts section."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY, val INT")
+    (madolt-test-insert-row "t1" "(1, 10)")
+    (madolt-test-commit "init")
+    (madolt-branch-checkout-create "feature")
+    (madolt-test-update-row "t1" "val = 20" "id = 1")
+    (madolt-test-commit "feature change")
+    (madolt-branch-checkout "main")
+    (madolt-test-update-row "t1" "val = 30" "id = 1")
+    (madolt-test-commit "main change")
+    (madolt--run "merge" "feature")
+    (madolt-with-status-buffer
+      (should (string-match-p "t1" (buffer-string))))))
+
+(ert-deftest test-madolt-status-conflicts-hidden-when-none ()
+  "The merge conflicts section is not shown when there are no conflicts."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-with-status-buffer
+      (should-not (string-match-p "Merge conflicts" (buffer-string))))))
+
+(ert-deftest test-madolt-status-conflicts-section-type ()
+  "Conflict table sections have the conflicts section type."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY, val INT")
+    (madolt-test-insert-row "t1" "(1, 10)")
+    (madolt-test-commit "init")
+    (madolt-branch-checkout-create "feature")
+    (madolt-test-update-row "t1" "val = 20" "id = 1")
+    (madolt-test-commit "feature change")
+    (madolt-branch-checkout "main")
+    (madolt-test-update-row "t1" "val = 30" "id = 1")
+    (madolt-test-commit "main change")
+    (madolt--run "merge" "feature")
+    (madolt-with-status-buffer
+      (let ((found nil))
+        (madolt-test--walk-sections
+         (lambda (section)
+           (when (eq (oref section type) 'conflicts)
+             (setq found t)))
+         magit-root-section)
+        (should found)))))
+
+;;;; No remote sections
+
 (ert-deftest test-madolt-status-no-remote-no-pushed-unpulled ()
   "No unpushed/unpulled sections appear when there is no remote."
   (madolt-with-test-database
