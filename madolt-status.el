@@ -131,13 +131,36 @@ The value `unset' means not yet computed.")
 ;;;; Status header
 
 (defun madolt-insert-status-header ()
-  "Insert the status header showing branch, HEAD, upstream, and remote info."
-  (let* ((branch (madolt-current-branch))
+  "Insert the status header showing database, branch, and remote info."
+  (let* ((db-dir (or madolt-buffer-database-dir default-directory))
+         (db-name (file-name-nondirectory
+                   (directory-file-name db-dir)))
+         (branch (madolt-current-branch))
          (head-entry (car (madolt-log-entries 1)))
          (hash (and head-entry (plist-get head-entry :hash)))
          (message (and head-entry (plist-get head-entry :message)))
          (upstream (madolt--cached-upstream-ref))
-         (remotes (madolt-remotes)))
+         (remotes (madolt-remotes))
+         (server-info (madolt-sql-server-info)))
+    ;; Database line
+    (insert (propertize "Database: " 'font-lock-face 'bold)
+            (propertize db-name 'font-lock-face 'madolt-branch-local)
+            "\n")
+    ;; Path line
+    (insert (propertize "Path:     " 'font-lock-face 'bold)
+            (propertize (abbreviate-file-name db-dir)
+                        'font-lock-face 'shadow)
+            "\n")
+    ;; SQL server line (if running)
+    (when server-info
+      (insert (propertize "Server:   " 'font-lock-face 'bold)
+              (propertize (format "localhost:%d"
+                                  (plist-get server-info :port))
+                          'font-lock-face 'madolt-branch-remote)
+              (propertize (format " (pid %d)"
+                                  (plist-get server-info :pid))
+                          'font-lock-face 'shadow)
+              "\n"))
     ;; Head line
     (insert (propertize "Head:     " 'font-lock-face 'bold)
             (if branch

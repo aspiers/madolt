@@ -168,6 +168,35 @@
   (madolt-with-test-database
     (should (equal (madolt-current-branch) "main"))))
 
+;;;; SQL server info
+
+(ert-deftest test-madolt-sql-server-info-nil-when-no-file ()
+  "madolt-sql-server-info returns nil when no server info file exists."
+  (madolt-with-test-database
+    (should-not (madolt-sql-server-info))))
+
+(ert-deftest test-madolt-sql-server-info-nil-when-stale ()
+  "madolt-sql-server-info returns nil when PID is not running."
+  (madolt-with-test-database
+    ;; Write a fake info file with a PID that doesn't exist
+    (let ((info-file (expand-file-name ".dolt/sql-server.info")))
+      (with-temp-file info-file
+        (insert "9999999:3306:fake-uuid"))
+      (should-not (madolt-sql-server-info)))))
+
+(ert-deftest test-madolt-sql-server-info-returns-plist ()
+  "madolt-sql-server-info returns (:pid PID :port PORT) for a live server."
+  (madolt-with-test-database
+    ;; Write an info file with our own PID (guaranteed to exist)
+    (let ((info-file (expand-file-name ".dolt/sql-server.info"))
+          (my-pid (emacs-pid)))
+      (with-temp-file info-file
+        (insert (format "%d:13306:fake-uuid" my-pid)))
+      (let ((result (madolt-sql-server-info)))
+        (should result)
+        (should (= (plist-get result :pid) my-pid))
+        (should (= (plist-get result :port) 13306))))))
+
 ;;;; Status parser
 
 (ert-deftest test-madolt-status-tables-clean ()

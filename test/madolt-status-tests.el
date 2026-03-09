@@ -58,6 +58,46 @@ The buffer is current during BODY and killed afterward."
         ;; Should contain an abbreviated hash (8 alphanumeric chars)
         (should (string-match-p "[a-z0-9]\\{8\\}" text))))))
 
+(ert-deftest test-madolt-status-header-shows-database-name ()
+  "The status header displays the database name."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-with-status-buffer
+      (let ((text (buffer-string)))
+        (should (string-match-p "Database:" text))))))
+
+(ert-deftest test-madolt-status-header-shows-path ()
+  "The status header displays the database filesystem path."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-with-status-buffer
+      (let ((text (buffer-string)))
+        (should (string-match-p "Path:" text))))))
+
+(ert-deftest test-madolt-status-header-no-server-when-not-running ()
+  "The status header does not show Server: when no server is running."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-with-status-buffer
+      (should-not (string-match-p "Server:" (buffer-string))))))
+
+(ert-deftest test-madolt-status-header-shows-server-when-running ()
+  "The status header shows Server: when sql-server info is present."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    ;; Stub the server info function to simulate a running server
+    (cl-letf (((symbol-function 'madolt-sql-server-info)
+               (lambda () '(:pid 12345 :port 3306))))
+      (madolt-with-status-buffer
+        (let ((text (buffer-string)))
+          (should (string-match-p "Server:" text))
+          (should (string-match-p "localhost:3306" text))
+          (should (string-match-p "pid 12345" text)))))))
+
 ;;;; Staged changes section
 
 (ert-deftest test-madolt-status-staged-section-visible ()

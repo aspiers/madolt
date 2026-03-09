@@ -145,6 +145,24 @@ Return nil if not in a dolt database."
 If DIRECTORY is nil, use `default-directory'."
   (not (null (madolt-database-dir directory))))
 
+(defun madolt-sql-server-info ()
+  "Return sql-server info if a dolt sql-server is running, or nil.
+The info file `.dolt/sql-server.info' contains PID:PORT:UUID when
+a server is running.  Returns a plist (:pid PID :port PORT) if
+the file exists and the process is still alive, nil otherwise."
+  (let ((info-file (expand-file-name ".dolt/sql-server.info"
+                                     default-directory)))
+    (when (file-exists-p info-file)
+      (let ((contents (with-temp-buffer
+                        (insert-file-contents info-file)
+                        (string-trim (buffer-string)))))
+        (when (string-match "\\`\\([0-9]+\\):\\([0-9]+\\):" contents)
+          (let ((pid (string-to-number (match-string 1 contents)))
+                (port (string-to-number (match-string 2 contents))))
+            (when (and (> pid 0)
+                       (file-exists-p (format "/proc/%d" pid)))
+              (list :pid pid :port port))))))))
+
 (defun madolt-current-branch ()
   "Return the name of the current Dolt branch as a string."
   (let ((branch (madolt-dolt-string "branch" "--show-current")))
