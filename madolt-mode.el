@@ -60,6 +60,7 @@
 (declare-function madolt-stash "madolt-stash" ())
 (declare-function madolt-tag "madolt-tag" ())
 (declare-function madolt-push "madolt-remote" ())
+(declare-function madolt-sql-query "madolt-sql" (query))
 (declare-function madolt-dispatch "madolt" ())
 (declare-function madolt-visit-thing "madolt-status" ())
 
@@ -120,6 +121,8 @@ navigation, expand/collapse, visibility levels, and highlighting."
   (keymap-set map "P"   #'madolt-push)
   ;; Log (autoloaded from madolt-log.el)
   (keymap-set map "l"   #'madolt-log)
+  ;; SQL (autoloaded from madolt-sql.el)
+  (keymap-set map "e"   #'madolt-sql-query)
   ;; Merge (autoloaded from madolt-merge.el)
   (keymap-set map "m"   #'madolt-merge)
   ;; Rebase (autoloaded from madolt-rebase.el)

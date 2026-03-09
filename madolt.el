@@ -54,6 +54,7 @@
 (require 'madolt-merge)
 (require 'madolt-rebase)
 (require 'madolt-reflog)
+(require 'madolt-sql)
 (require 'madolt-remote)
 (require 'madolt-stash)
 (require 'madolt-tag)
@@ -98,7 +99,8 @@ Interactively with a prefix argument, prompt for the directory."
     ("l" "Log"            madolt-log)
     ("m" "Merge"          madolt-merge)
     ("t" "Tag"            madolt-tag)]
-   [("F" "Pull"           madolt-pull)
+   [("e" "SQL query"      madolt-sql-query)
+    ("F" "Pull"           madolt-pull)
     ("M" "Remote"         madolt-remote-manage)
     ("P" "Push"           madolt-push)
     ("r" "Rebase"         madolt-rebase)
