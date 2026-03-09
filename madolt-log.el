@@ -289,24 +289,36 @@ Strip email address if present."
 ;;;; Right margin
 
 (defun madolt-log--insert-margin (author date)
-  "Insert a right-margin overlay with AUTHOR and DATE on the heading line."
+  "Insert a right-margin overlay with AUTHOR and DATE on the heading line.
+The author is left-aligned and truncated to `madolt-log-author-width'.
+The date is right-aligned within `madolt-log-margin-width'."
   (let* ((short-author (or (madolt-log--short-author author) ""))
          (short-date (or (madolt-log--format-date date) ""))
          (truncated-author (truncate-string-to-width
-                            short-author madolt-log-author-width nil nil t)))
+                            short-author madolt-log-author-width nil nil t))
+         ;; Pad author to fixed width for column alignment
+         (padded-author (truncate-string-to-width
+                         truncated-author madolt-log-author-width nil ?\s))
+         ;; Right-align date: pad with spaces between author and date
+         (date-width (length short-date))
+         (gap (max 1 (- madolt-log-margin-width
+                       madolt-log-author-width
+                       date-width)))
+         (margin-text (concat
+                       (propertize padded-author
+                                  'font-lock-face 'madolt-log-author)
+                       (make-string gap ?\s)
+                       (propertize short-date
+                                  'font-lock-face 'madolt-log-date))))
     (save-excursion
       (forward-line -1)
       (let ((o (make-overlay (1+ (point)) (line-end-position) nil t)))
         (overlay-put o 'evaporate t)
         (overlay-put
          o 'before-string
-         (propertize
-          "o" 'display
-          (list (list 'margin 'right-margin)
-                (concat
-                 (propertize truncated-author 'font-lock-face 'madolt-log-author)
-                 " "
-                 (propertize short-date 'font-lock-face 'madolt-log-date)))))))))
+         (propertize "o" 'display
+                     (list (list 'margin 'right-margin)
+                           margin-text)))))))
 
 (defun madolt-log--setup-margins ()
   "Set the right margin width for the current log buffer."

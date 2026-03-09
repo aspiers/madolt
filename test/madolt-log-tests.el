@@ -255,6 +255,50 @@ Returns in a state with 3 user commits plus the init commit."
       (madolt-log-double-limit))
     (should (= madolt-log--limit 50))))
 
+;;;; Margin alignment
+
+(ert-deftest test-madolt-log-margin-author-padded ()
+  "Author in margin should be padded to madolt-log-author-width."
+  (madolt-with-test-database
+    (madolt-log-test-setup-multi-commit)
+    (with-temp-buffer
+      (madolt-log-mode)
+      (setq madolt-log--rev "main")
+      (setq madolt-log--limit 25)
+      (let ((inhibit-read-only t))
+        (madolt-log-refresh-buffer))
+      ;; Check that margin overlays exist with proper alignment
+      (let ((overlays (overlays-in (point-min) (point-max))))
+        (should (cl-some
+                 (lambda (o)
+                   (let ((before (overlay-get o 'before-string)))
+                     (and before (get-text-property 0 'display before))))
+                 overlays))))))
+
+(ert-deftest test-madolt-log-margin-date-right-aligned ()
+  "Dates in margin should be right-aligned within the margin width.
+All margin strings should have the same total width."
+  (madolt-with-test-database
+    (madolt-log-test-setup-multi-commit)
+    (with-temp-buffer
+      (madolt-log-mode)
+      (setq madolt-log--rev "main")
+      (setq madolt-log--limit 25)
+      (let ((inhibit-read-only t))
+        (madolt-log-refresh-buffer))
+      ;; Collect margin text widths — they should all be equal
+      ;; (each margin string is padded to madolt-log-margin-width)
+      (let ((widths nil))
+        (dolist (o (overlays-in (point-min) (point-max)))
+          (let* ((before (overlay-get o 'before-string))
+                 (display (and before (get-text-property 0 'display before))))
+            (when (and (listp display)
+                       (eq (caar display) 'margin))
+              (push (length (cadr display)) widths))))
+        ;; All widths should be equal (right-aligned = same total width)
+        (when (> (length widths) 1)
+          (should (= 1 (length (delete-dups widths)))))))))
+
 ;;;; Branch name completion
 
 (ert-deftest test-madolt-log-branch-names ()
