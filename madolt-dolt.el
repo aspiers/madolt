@@ -171,6 +171,18 @@ Parses the output of `dolt remote -v'."
   "Remove the remote named NAME."
   (madolt--run "remote" "remove" name))
 
+;;;; Table queries
+
+(defun madolt-table-names ()
+  "Return a list of all table names in the current database."
+  (let ((result (madolt-dolt-json "sql" "-q" "SHOW TABLES" "-r" "json")))
+    (when result
+      (let ((rows (alist-get 'rows result)))
+        (mapcar (lambda (row)
+                  ;; The key name varies: "Tables_in_<dbname>"
+                  (cdr (car row)))
+                rows)))))
+
 ;;;; Status queries
 
 (defun madolt-status-tables ()
