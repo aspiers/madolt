@@ -52,6 +52,7 @@
 (require 'madolt-log)
 (require 'madolt-merge)
 (require 'madolt-remote)
+(require 'madolt-tag)
 
 ;;;; Customization
 
@@ -90,7 +91,8 @@ Interactively with a prefix argument, prompt for the directory."
     ("d" "Diff"           madolt-diff)
     ("f" "Fetch"          madolt-fetch)
     ("l" "Log"            madolt-log)
-    ("m" "Merge"          madolt-merge)]
+    ("m" "Merge"          madolt-merge)
+    ("t" "Tag"            madolt-tag)]
    [("F" "Pull"           madolt-pull)
     ("P" "Push"           madolt-push)
     ("j" "Status"         madolt-status)

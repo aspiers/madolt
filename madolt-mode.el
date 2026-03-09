@@ -53,6 +53,7 @@
 (declare-function madolt-log "madolt-log" ())
 (declare-function madolt-merge "madolt-merge" ())
 (declare-function madolt-pull "madolt-remote" ())
+(declare-function madolt-tag "madolt-tag" ())
 (declare-function madolt-push "madolt-remote" ())
 (declare-function madolt-dispatch "madolt" ())
 (declare-function madolt-visit-thing "madolt-status" ())
@@ -113,6 +114,8 @@ navigation, expand/collapse, visibility levels, and highlighting."
   (keymap-set map "l"   #'madolt-log)
   ;; Merge (autoloaded from madolt-merge.el)
   (keymap-set map "m"   #'madolt-merge)
+  ;; Tag (autoloaded from madolt-tag.el)
+  (keymap-set map "t"   #'madolt-tag)
   ;; Navigation
   (keymap-set map "RET" #'madolt-visit-thing))
 

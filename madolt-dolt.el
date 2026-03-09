@@ -404,5 +404,26 @@ or nil if there is no upstream or no unpulled commits."
     (when upstream
       (madolt-log-entries 100 (format "HEAD..%s" upstream)))))
 
+;;;; Tag operations
+
+(defun madolt-tag-names ()
+  "Return a list of tag names in the current database."
+  (mapcar #'string-trim (madolt-dolt-lines "tag")))
+
+(defun madolt-tag-create (name &optional ref message)
+  "Create a tag NAME, optionally at REF with MESSAGE.
+When MESSAGE is non-nil, create an annotated tag."
+  (let ((args (list "tag")))
+    (when message
+      (setq args (append args (list "-m" message))))
+    (setq args (append args (list name)))
+    (when ref
+      (setq args (append args (list ref))))
+    (apply #'madolt--run args)))
+
+(defun madolt-tag-delete (name)
+  "Delete tag NAME."
+  (madolt--run "tag" "-d" name))
+
 (provide 'madolt-dolt)
 ;;; madolt-dolt.el ends here
