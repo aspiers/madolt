@@ -13,8 +13,10 @@ Require emacs
 Require dolt
 
 Set Shell "bash"
-Set FontSize 15
+Set FontSize 13
 Set FontFamily "SauceCodePro Nerd Font Mono"
+Set LetterSpacing 0
+Set LineHeight 1.1
 Set Width 1200
 Set Height 750
 Set Padding 12
