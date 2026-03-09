@@ -90,6 +90,20 @@ navigation, expand/collapse, visibility levels, and highlighting."
 (define-derived-mode madolt-log-mode madolt-mode "Madolt Log"
   "Mode for madolt log buffers.")
 
+;;;; Copy section value
+
+(defun madolt-copy-section-value ()
+  "Copy the value of the section at point to the kill ring.
+For table sections, copies the table name.  For commit sections,
+copies the full commit hash."
+  (interactive)
+  (if-let ((section (magit-current-section))
+           (value (oref section value)))
+      (let ((text (format "%s" value)))
+        (kill-new text)
+        (message "Copied: %s" text))
+    (user-error "No section value at point")))
+
 ;;;; Keymap
 
 ;; define-derived-mode creates madolt-mode-map with the parent mode's
@@ -142,6 +156,8 @@ navigation, expand/collapse, visibility levels, and highlighting."
   (keymap-set map "t"   #'madolt-tag)
   ;; Stash (autoloaded from madolt-stash.el)
   (keymap-set map "z"   #'madolt-stash)
+  ;; Copy
+  (keymap-set map "w"   #'madolt-copy-section-value)
   ;; Navigation
   (keymap-set map "RET" #'madolt-visit-thing))
 

@@ -129,6 +129,7 @@ Interactively with a prefix argument, prompt for the directory."
     ("q"   "Bury current buffer"      quit-window)]
    [("<tab>"    "Toggle section at point"  magit-section-toggle)
     ("<return>" "Visit thing at point"     madolt-visit-thing)
+    ("w"        "Copy section value"       madolt-copy-section-value)
     ("$"        "Process buffer"           madolt-process-buffer)]])
 
 (provide 'madolt)

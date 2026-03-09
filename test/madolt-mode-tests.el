@@ -13,6 +13,7 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'madolt-test-helpers)
+(require 'madolt)
 (require 'madolt-mode)
 
 ;;;; Major mode
@@ -185,6 +186,58 @@
     (dolist (binding expected-bindings)
       (should (eq (keymap-lookup madolt-mode-map (car binding))
                   (cdr binding))))))
+
+;;;; Copy section value
+
+(ert-deftest test-madolt-mode-map-has-copy ()
+  "The mode map should bind 'w' to madolt-copy-section-value."
+  (should (eq (keymap-lookup madolt-mode-map "w")
+              #'madolt-copy-section-value)))
+
+(ert-deftest test-madolt-copy-section-value-copies-table ()
+  "madolt-copy-section-value copies the table name to kill ring."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          (child-section nil))
+      (magit-insert-section (root)
+        (setq child-section
+              (magit-insert-section (table "my_table")
+                (insert "  modified    my_table\n"))))
+      ;; Position on the child section
+      (goto-char (oref child-section start))
+      (should (eq (oref (magit-current-section) type) 'table))
+      (madolt-copy-section-value)
+      (should (equal (car kill-ring) "my_table")))))
+
+(ert-deftest test-madolt-copy-section-value-copies-commit-hash ()
+  "madolt-copy-section-value copies the commit hash to kill ring."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          (child-section nil))
+      (magit-insert-section (root)
+        (setq child-section
+              (magit-insert-section (commit "abc12345def67890")
+                (insert "  abc12345  Initial commit\n"))))
+      (goto-char (oref child-section start))
+      (should (eq (oref (magit-current-section) type) 'commit))
+      (madolt-copy-section-value)
+      (should (equal (car kill-ring) "abc12345def67890")))))
+
+(ert-deftest test-madolt-copy-section-value-errors-on-no-value ()
+  "madolt-copy-section-value errors when section has no value."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          (child-section nil))
+      (magit-insert-section (root)
+        (setq child-section
+              (magit-insert-section (staged)
+                (magit-insert-heading "Staged changes")
+                (insert "  content\n"))))
+      (goto-char (oref child-section start))
+      (should-error (madolt-copy-section-value) :type 'user-error))))
 
 ;;;; Display
 
