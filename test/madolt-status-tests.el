@@ -384,6 +384,33 @@ Stubs upstream functions since dolt file:// fetch has limitations."
     (madolt-with-status-buffer
       (should-not (string-match-p "Unpulled from" (buffer-string))))))
 
+;;;; Recent commits conditional (or-recent pattern)
+
+(ert-deftest test-madolt-status-recent-hidden-when-unpushed ()
+  "Recent commits should NOT appear when unpushed section is shown."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "unpushed commit")
+    (madolt-with-status-buffer
+      (let ((text (buffer-string)))
+        ;; Unpushed section should be shown
+        (should (string-match-p "Unpushed to" text))
+        ;; Recent commits should NOT be shown
+        (should-not (string-match-p "Recent commits" text))))))
+
+(ert-deftest test-madolt-status-recent-shown-when-no-upstream ()
+  "Recent commits should appear when there is no upstream (no remote)."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "local commit")
+    (madolt-with-status-buffer
+      (let ((text (buffer-string)))
+        (should (string-match-p "Recent commits" text))
+        (should-not (string-match-p "Unpushed to" text))
+        (should-not (string-match-p "Unpulled from" text))))))
+
 ;;;; Merge conflicts section
 
 (ert-deftest test-madolt-status-conflicts-section-visible ()

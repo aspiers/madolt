@@ -108,6 +108,10 @@ Each function on the hook inserts one section."
   "Cached result of `madolt-upstream-ref' for the current refresh cycle.
 The value `unset' means not yet computed.")
 
+(defvar-local madolt--upstream-sections-inserted nil
+  "Non-nil when unpushed or unpulled sections were inserted this refresh.
+Used to suppress the recent commits section when upstream info is shown.")
+
 (defun madolt--cached-status-tables ()
   "Return cached status tables, computing if needed."
   (or madolt--status-tables-cache
@@ -125,6 +129,7 @@ The value `unset' means not yet computed.")
   "Refresh the status buffer by running `madolt-status-sections-hook'."
   (setq madolt--status-tables-cache nil)
   (setq madolt--upstream-ref-cache 'unset)
+  (setq madolt--upstream-sections-inserted nil)
   (magit-insert-section (status)
     (run-hooks 'madolt-status-sections-hook)))
 
@@ -312,6 +317,8 @@ If ENTRIES is nil, nothing is inserted."
   "Insert a section showing commits in upstream not in HEAD."
   (let* ((upstream (madolt--cached-upstream-ref))
          (entries (madolt-unpulled-commits upstream)))
+    (when entries
+      (setq madolt--upstream-sections-inserted t))
     (madolt--insert-commit-list-section
      'unpulled
      (format "Unpulled from %s" (or upstream "upstream"))
@@ -321,6 +328,8 @@ If ENTRIES is nil, nothing is inserted."
   "Insert a section showing commits in HEAD not in upstream."
   (let* ((upstream (madolt--cached-upstream-ref))
          (entries (madolt-unpushed-commits upstream)))
+    (when entries
+      (setq madolt--upstream-sections-inserted t))
     (madolt--insert-commit-list-section
      'unpushed
      (format "Unpushed to %s" (or upstream "upstream"))
@@ -329,24 +338,27 @@ If ENTRIES is nil, nothing is inserted."
 ;;;; Recent commits
 
 (defun madolt-insert-recent-commits ()
-  "Insert the recent commits section."
-  (let ((entries (madolt-log-entries 10)))
-    (when entries
-      (magit-insert-section (recent)
-        (magit-insert-heading
-          (propertize "Recent commits"
-                      'font-lock-face 'madolt-section-heading))
-        (dolist (entry entries)
-          (let* ((hash (plist-get entry :hash))
-                 (message (plist-get entry :message))
-                 (short-hash (substring hash 0 (min 8 (length hash)))))
-            (magit-insert-section (commit hash)
-              (insert "  "
-                      (propertize short-hash 'font-lock-face 'madolt-hash)
-                      "  "
-                      (or message "")
-                      "\n"))))
-        (insert "\n")))))
+  "Insert the recent commits section.
+Only shown when no unpushed/unpulled sections were inserted,
+matching magit's or-recent pattern."
+  (unless madolt--upstream-sections-inserted
+    (let ((entries (madolt-log-entries 10)))
+      (when entries
+        (magit-insert-section (recent)
+          (magit-insert-heading
+            (propertize "Recent commits"
+                        'font-lock-face 'madolt-section-heading))
+          (dolist (entry entries)
+            (let* ((hash (plist-get entry :hash))
+                   (message (plist-get entry :message))
+                   (short-hash (substring hash 0 (min 8 (length hash)))))
+              (magit-insert-section (commit hash)
+                (insert "  "
+                        (propertize short-hash 'font-lock-face 'madolt-hash)
+                        "  "
+                        (or message "")
+                        "\n"))))
+          (insert "\n"))))))
 
 ;;;; Inline diff washer
 
