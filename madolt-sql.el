@@ -47,6 +47,17 @@
 (defvar-local madolt-sql--query nil
   "The SQL query shown in this result buffer.")
 
+(defvar-local madolt-sql--limit 1000
+  "Number of SQL result output lines to show.")
+
+;;;; Row limit expansion
+
+(defun madolt-sql-double-limit ()
+  "Double the number of SQL result lines shown and refresh."
+  (interactive)
+  (setq madolt-sql--limit (* madolt-sql--limit 2))
+  (madolt-refresh))
+
 ;;;; SQL result mode
 
 (define-derived-mode madolt-sql-mode madolt-mode "Madolt SQL"
@@ -102,9 +113,18 @@ Prompts for QUERY via the minibuffer with history support."
 
 (defun madolt-sql--insert-result (output)
   "Insert tabular OUTPUT from dolt sql into the current buffer."
-  (let ((lines (split-string output "\n" t)))
+  (let* ((lines (split-string output "\n" t))
+         (total (length lines))
+         (limit madolt-sql--limit)
+         (shown 0))
     (dolist (line lines)
-      (insert (madolt-sql--fontify-line line) "\n"))))
+      (when (< shown limit)
+        (insert (madolt-sql--fontify-line line) "\n")
+        (cl-incf shown)))
+    (when (> total limit)
+      (madolt-insert-show-more-button
+       shown total
+       'madolt-mode-map 'madolt-sql-double-limit))))
 
 (defun madolt-sql--fontify-line (line)
   "Apply faces to a tabular result LINE.

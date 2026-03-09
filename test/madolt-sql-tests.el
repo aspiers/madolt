@@ -199,5 +199,37 @@
                   (should (string-match-p "2" content)))))
           (kill-buffer buf))))))
 
+;;;; Row limit
+
+(ert-deftest test-madolt-sql-limit-default ()
+  "madolt-sql--limit should default to 1000."
+  (with-temp-buffer
+    (madolt-sql-mode)
+    (should (= madolt-sql--limit 1000))))
+
+(ert-deftest test-madolt-sql-double-limit ()
+  "madolt-sql-double-limit should double the limit."
+  (with-temp-buffer
+    (madolt-sql-mode)
+    (setq madolt-sql--limit 500)
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-sql-double-limit))
+    (should (= madolt-sql--limit 1000))))
+
+(ert-deftest test-madolt-sql-no-show-more-when-under-limit ()
+  "Show-more button should NOT appear when output fits within the limit."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "init")
+    (cl-letf (((symbol-function 'madolt-display-buffer) #'ignore))
+      (let ((buf (madolt-sql-query "SELECT * FROM t1")))
+        (unwind-protect
+            (with-current-buffer buf
+              (should-not (string-match-p "show more"
+                                          (buffer-substring-no-properties
+                                           (point-min) (point-max)))))
+          (kill-buffer buf))))))
+
 (provide 'madolt-sql-tests)
 ;;; madolt-sql-tests.el ends here
