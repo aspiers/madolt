@@ -350,6 +350,14 @@ All margin strings should have the same total width."
   "madolt-revision-mode should derive from madolt-diff-mode."
   (should (get 'madolt-revision-mode 'derived-mode-parent)))
 
+(ert-deftest test-madolt-log-revision-default-visibility ()
+  "Revision mode should default to level 2 (table-diffs shown, row-diffs hidden)."
+  (with-temp-buffer
+    (madolt-revision-mode)
+    (let ((alist magit-section-initial-visibility-alist))
+      (should (eq (alist-get 'table-diff alist) 'show))
+      (should (eq (alist-get 'row-diff alist) 'hide)))))
+
 (ert-deftest test-madolt-log-revision-shows-metadata ()
   "Revision buffer should show commit metadata."
   (madolt-with-test-database

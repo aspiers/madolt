@@ -397,7 +397,12 @@ Shows per-table row-level diffs, matching the status buffer style."
 ;;;; Revision mode
 
 (define-derived-mode madolt-revision-mode madolt-diff-mode "Madolt Rev"
-  "Mode for showing a single commit's details and diff.")
+  "Mode for showing a single commit's details and diff."
+  ;; Default to level 2: table-diff sections expanded showing
+  ;; row-diff/schema-diff headings, but row-diff bodies hidden.
+  (setq-local magit-section-initial-visibility-alist
+              '((table-diff . show)
+                (row-diff . hide))))
 
 (defun madolt-revision-refresh-buffer ()
   "Refresh the revision buffer."
