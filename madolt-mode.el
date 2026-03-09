@@ -229,6 +229,15 @@ restore cursor position."
                          section rel-pos)))
             ;; Section not found; go to beginning
             (goto-char (point-min))))
+        ;; Apply section visibility: show/hide overlays based on
+        ;; the `hidden' slot (which was set from the visibility
+        ;; cache during section creation).  Bind
+        ;; `magit-section-cache-visibility' to nil so this pass
+        ;; doesn't overwrite the cache.  This mirrors what
+        ;; `magit-refresh-buffer' does in magit-mode.el.
+        (when magit-root-section
+          (let ((magit-section-cache-visibility nil))
+            (magit-section-show magit-root-section)))
         ;; Update highlighting on the freshly built sections, then
         ;; mark this buffer as refreshed so
         ;; magit-section-post-command-hook skips its redundant

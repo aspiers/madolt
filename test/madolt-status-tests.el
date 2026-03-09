@@ -411,6 +411,74 @@ Stubs upstream functions since dolt file:// fetch has limitations."
          magit-root-section)
         (should found)))))
 
+;;;; Section visibility preservation
+
+(ert-deftest test-madolt-status-visibility-preserved-on-refresh ()
+  "Expanded table sections remain expanded after refresh."
+  (madolt-with-test-database
+    (madolt-test-setup-populated-db)
+    (madolt-with-status-buffer
+      ;; Find a table section (they start hidden)
+      (let ((table-section nil))
+        (madolt-test--walk-sections
+         (lambda (section)
+           (when (and (eq (oref section type) 'table)
+                      (not table-section))
+             (setq table-section section)))
+         magit-root-section)
+        (should table-section)
+        (should (oref table-section hidden))
+        ;; Expand the section
+        (goto-char (oref table-section start))
+        (let ((inhibit-read-only t))
+          (magit-section-show table-section))
+        (should-not (oref table-section hidden))
+        ;; Remember which table we expanded
+        (let ((table-name (oref table-section value)))
+          ;; Refresh the buffer
+          (madolt-refresh)
+          ;; Find the same table section again
+          (let ((new-section nil))
+            (madolt-test--walk-sections
+             (lambda (section)
+               (when (and (eq (oref section type) 'table)
+                          (equal (oref section value) table-name))
+                 (setq new-section section)))
+             magit-root-section)
+            (should new-section)
+            ;; It should still be expanded (not hidden)
+            (should-not (oref new-section hidden))))))))
+
+(ert-deftest test-madolt-status-collapsed-sections-stay-collapsed ()
+  "Collapsed sections remain collapsed after refresh."
+  (madolt-with-test-database
+    (madolt-test-setup-populated-db)
+    (madolt-with-status-buffer
+      ;; Find a top-level section like 'staged'
+      (let ((staged-section nil))
+        (madolt-test--walk-sections
+         (lambda (section)
+           (when (eq (oref section type) 'staged)
+             (setq staged-section section)))
+         magit-root-section)
+        (should staged-section)
+        ;; Collapse it
+        (goto-char (oref staged-section start))
+        (magit-section-hide staged-section)
+        (should (oref staged-section hidden))
+        ;; Refresh
+        (madolt-refresh)
+        ;; Find the staged section again
+        (let ((new-section nil))
+          (madolt-test--walk-sections
+           (lambda (section)
+             (when (eq (oref section type) 'staged)
+               (setq new-section section)))
+           magit-root-section)
+          (should new-section)
+          ;; It should still be collapsed
+          (should (oref new-section hidden)))))))
+
 ;;;; No remote sections
 
 (ert-deftest test-madolt-status-no-remote-no-pushed-unpulled ()
