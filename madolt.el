@@ -97,6 +97,7 @@ Interactively with a prefix argument, prompt for the directory."
     ("m" "Merge"          madolt-merge)
     ("t" "Tag"            madolt-tag)]
    [("F" "Pull"           madolt-pull)
+    ("M" "Remote"         madolt-remote-manage)
     ("P" "Push"           madolt-push)
     ("V" "Revert"         madolt-revert)
     ("z" "Stash"          madolt-stash)

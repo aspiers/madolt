@@ -163,6 +163,14 @@ Parses the output of `dolt remote -v'."
             (push (cons name url) result)))))
     (nreverse result)))
 
+(defun madolt-remote-add (name url)
+  "Add a remote with NAME pointing to URL."
+  (madolt--run "remote" "add" name url))
+
+(defun madolt-remote-remove (name)
+  "Remove the remote named NAME."
+  (madolt--run "remote" "remove" name))
+
 ;;;; Status queries
 
 (defun madolt-status-tables ()

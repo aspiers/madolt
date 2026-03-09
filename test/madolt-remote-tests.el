@@ -200,5 +200,117 @@
         (madolt-pull-from-origin nil)
         (should (equal called-args '("pull" "origin")))))))
 
+;;;; Remote management transient
+
+(ert-deftest test-madolt-remote-manage-is-transient ()
+  "madolt-remote-manage should be a transient prefix."
+  (should (get 'madolt-remote-manage 'transient--layout)))
+
+(ert-deftest test-madolt-remote-manage-has-add-suffix ()
+  "madolt-remote-manage should have an 'a' suffix for adding."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-remote-manage)))
+    (should (assoc "a" suffixes))
+    (should (eq (cdr (assoc "a" suffixes))
+                'madolt-remote-add-command))))
+
+(ert-deftest test-madolt-remote-manage-has-remove-suffix ()
+  "madolt-remote-manage should have a 'k' suffix for removing."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-remote-manage)))
+    (should (assoc "k" suffixes))
+    (should (eq (cdr (assoc "k" suffixes))
+                'madolt-remote-remove-command))))
+
+(ert-deftest test-madolt-dispatch-has-remote-manage ()
+  "The dispatch menu has an \"M\" binding for remote management."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "M" suffixes))
+    (should (eq (cdr (assoc "M" suffixes)) 'madolt-remote-manage))))
+
+(ert-deftest test-madolt-mode-map-has-remote-manage ()
+  "The mode map should bind 'M' to madolt-remote-manage."
+  (should (eq (keymap-lookup madolt-mode-map "M") #'madolt-remote-manage)))
+
+;;;; Remote add/remove backend
+
+(ert-deftest test-madolt-remote-add-creates-remote ()
+  "madolt-remote-add should create a new remote."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (let ((result (madolt-remote-add "upstream" "file:///tmp/fake-upstream")))
+      (should (zerop (car result)))
+      (should (member "upstream" (madolt-remote-names))))))
+
+(ert-deftest test-madolt-remote-remove-deletes-remote ()
+  "madolt-remote-remove should delete an existing remote."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-remote-add "upstream" "file:///tmp/fake-upstream")
+    (should (member "upstream" (madolt-remote-names)))
+    (let ((result (madolt-remote-remove "upstream")))
+      (should (zerop (car result)))
+      (should-not (member "upstream" (madolt-remote-names))))))
+
+;;;; Remote add/remove commands
+
+(ert-deftest test-madolt-remote-add-command-creates ()
+  "madolt-remote-add-command should add a remote via the CLI."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-remote-add-command "test-remote" "file:///tmp/test-remote" nil))
+    (should (member "test-remote" (madolt-remote-names)))))
+
+(ert-deftest test-madolt-remote-add-command-empty-name-errors ()
+  "madolt-remote-add-command should error on empty name."
+  (should-error (madolt-remote-add-command "" "file:///tmp/test" nil)
+                :type 'user-error))
+
+(ert-deftest test-madolt-remote-add-command-empty-url-errors ()
+  "madolt-remote-add-command should error on empty URL."
+  (should-error (madolt-remote-add-command "test" "" nil)
+                :type 'user-error))
+
+(ert-deftest test-madolt-remote-remove-command-removes ()
+  "madolt-remote-remove-command should remove a remote with confirmation."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-remote-add "doomed" "file:///tmp/doomed")
+    (should (member "doomed" (madolt-remote-names)))
+    (cl-letf (((symbol-function 'yes-or-no-p) (lambda (_) t))
+              ((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-remote-remove-command "doomed"))
+    (should-not (member "doomed" (madolt-remote-names)))))
+
+(ert-deftest test-madolt-remote-remove-command-aborts-on-deny ()
+  "madolt-remote-remove-command should abort when user denies confirmation."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-remote-add "kept" "file:///tmp/kept")
+    (should (member "kept" (madolt-remote-names)))
+    (cl-letf (((symbol-function 'yes-or-no-p) (lambda (_) nil))
+              ((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-remote-remove-command "kept"))
+    (should (member "kept" (madolt-remote-names)))))
+
+(ert-deftest test-madolt-remote-add-with-fetch-flag ()
+  "madolt-remote-add-command with -f flag should also fetch."
+  (madolt-with-file-remote
+    (let (fetch-called)
+      (cl-letf (((symbol-function 'madolt-call-dolt)
+                 (lambda (&rest args)
+                   (when (equal (car args) "fetch")
+                     (setq fetch-called args))
+                   '(0 . "")))
+                ((symbol-function 'madolt-refresh) #'ignore))
+        ;; Add a second remote and pass -f flag
+        (madolt-remote-add-command "second" "file:///tmp/second" '("-f"))
+        (should fetch-called)
+        (should (equal (cadr fetch-called) "second"))))))
+
 (provide 'madolt-remote-tests)
 ;;; madolt-remote-tests.el ends here

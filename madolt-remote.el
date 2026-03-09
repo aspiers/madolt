@@ -152,5 +152,50 @@ ARGS are additional arguments from the transient."
     (madolt-refresh)
     (madolt-remote--report "Push" remote result)))
 
+;;;; Remote management transient
+
+;;;###autoload (autoload 'madolt-remote-manage "madolt-remote" nil t)
+(transient-define-prefix madolt-remote-manage ()
+  "Add, configure or remove a remote."
+  ["Arguments for add"
+   ("-f" "Fetch after add" "-f")]
+  ["Actions"
+   ("a" "Add"    madolt-remote-add-command)
+   ("k" "Remove" madolt-remote-remove-command)])
+
+(defun madolt-remote-add-command (name url &optional args)
+  "Add a remote named NAME pointing to URL.
+ARGS are additional arguments from the transient."
+  (interactive
+   (list (read-string "Remote name: ")
+         (read-string "Remote URL: ")
+         (transient-args 'madolt-remote-manage)))
+  (when (string-empty-p name)
+    (user-error "Remote name cannot be empty"))
+  (when (string-empty-p url)
+    (user-error "Remote URL cannot be empty"))
+  (let ((result (madolt-remote-add name url)))
+    (if (zerop (car result))
+        (progn
+          (when (member "-f" args)
+            (madolt-call-dolt "fetch" name))
+          (madolt-refresh)
+          (message "Added remote %s -> %s" name url))
+      (user-error "Failed to add remote %s: %s"
+                  name (string-trim (cdr result))))))
+
+(defun madolt-remote-remove-command (name)
+  "Remove the remote named NAME (with confirmation)."
+  (interactive
+   (list (madolt-remote--read-remote "Remove remote: ")))
+  (when (yes-or-no-p (format "Remove remote %s? " name))
+    (let ((result (madolt-remote-remove name)))
+      (if (zerop (car result))
+          (progn
+            (madolt-refresh)
+            (message "Removed remote %s" name))
+        (user-error "Failed to remove remote %s: %s"
+                    name (string-trim (cdr result)))))))
+
 (provide 'madolt-remote)
 ;;; madolt-remote.el ends here
