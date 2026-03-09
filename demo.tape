@@ -66,14 +66,20 @@ Sleep 3s
 Type "c"
 Sleep 1.5s
 
-# Press 'c' for normal commit
+# Press 'c' to open the commit message buffer
 Type "c"
+Sleep 1.5s
+
+# Type commit message (summary + body) in the dedicated buffer
+Type "Add projects table, update department budgets"
+Enter
+Enter
+Type "Stage the new projects table and department budget changes."
 Sleep 1s
 
-# Type commit message in the minibuffer
-Type "Add projects table, update department budgets"
-Sleep 500ms
-Enter
+# Finalize the commit with C-c C-c
+Ctrl+C
+Ctrl+C
 Sleep 3s
 
 # === Scene 6: View the commit log ===
