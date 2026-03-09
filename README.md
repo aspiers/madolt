@@ -9,6 +9,8 @@ Git-like version control operations on SQL databases.  The core
 workflow is: **view status -> stage tables -> commit -> view
 history**.
 
+![madolt demo](demo.gif)
+
 ## Features
 
 - **Status buffer** -- shows current branch, staged/unstaged/untracked

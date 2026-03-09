@@ -14,7 +14,7 @@ Require dolt
 
 Set Shell "bash"
 Set FontSize 15
-Set FontFamily "JetBrains Mono"
+Set FontFamily "SauceCodePro Nerd Font Mono"
 Set Width 1200
 Set Height 750
 Set Padding 12
