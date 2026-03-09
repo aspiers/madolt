@@ -239,6 +239,145 @@
       (goto-char (oref child-section start))
       (should-error (madolt-copy-section-value) :type 'user-error))))
 
+;;;; Show more (row-limit expansion)
+
+(ert-deftest test-madolt-mode-map-has-show-more ()
+  "The mode map should bind '+' to madolt-show-more."
+  (should (eq (keymap-lookup madolt-mode-map "+")
+              #'madolt-show-more)))
+
+(ert-deftest test-madolt-insert-show-more-button-creates-section ()
+  "madolt-insert-show-more-button inserts a longer section with a button."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          (longer-section nil))
+      (magit-insert-section (root)
+        (setq longer-section
+              (madolt-insert-show-more-button
+               5 10 'madolt-mode-map 'madolt-show-more)))
+      (should longer-section)
+      (should (eq (oref longer-section type) 'longer)))))
+
+(ert-deftest test-madolt-insert-show-more-button-shows-counts ()
+  "madolt-insert-show-more-button shows shown/total counts."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t))
+      (magit-insert-section (root)
+        (madolt-insert-show-more-button
+         5 10 'madolt-mode-map 'madolt-show-more)))
+    (should (string-match-p "5 of 10 shown" (buffer-string)))))
+
+(ert-deftest test-madolt-insert-show-more-button-unknown-total ()
+  "madolt-insert-show-more-button handles nil total."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t))
+      (magit-insert-section (root)
+        (madolt-insert-show-more-button
+         5 nil 'madolt-mode-map 'madolt-show-more)))
+    (let ((text (buffer-string)))
+      (should (string-match-p "5 shown" text))
+      (should-not (string-match-p "of" text)))))
+
+(ert-deftest test-madolt-insert-show-more-button-has-text-button ()
+  "The show-more section contains an Emacs text button."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          (longer-section nil))
+      (magit-insert-section (root)
+        (setq longer-section
+              (madolt-insert-show-more-button
+               5 10 'madolt-mode-map 'madolt-show-more)))
+      (goto-char (oref longer-section start))
+      (should (button-at (point))))))
+
+(ert-deftest test-madolt-show-more-activates-button ()
+  "madolt-show-more calls the double function via the button."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          (called nil)
+          (longer-section nil))
+      (cl-letf (((symbol-function 'madolt-test-double-fn)
+                 (lambda ()
+                   (interactive)
+                   (setq called t))))
+        (magit-insert-section (root)
+          (magit-insert-section (items)
+            (insert "some content\n"))
+          (setq longer-section
+                (madolt-insert-show-more-button
+                 5 10 'madolt-mode-map 'madolt-test-double-fn)))
+        ;; Position on the longer section
+        (goto-char (oref longer-section start))
+        (madolt-show-more)
+        (should called)))))
+
+(ert-deftest test-madolt-show-more-errors-when-nothing-to-expand ()
+  "madolt-show-more errors when there is no longer section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t))
+      (magit-insert-section (root)
+        (insert "no expandable sections\n")))
+    (goto-char (point-min))
+    (should-error (madolt-show-more) :type 'user-error)))
+
+(ert-deftest test-madolt-show-more-finds-longer-section ()
+  "madolt-show-more finds and activates a longer section from elsewhere."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          (called nil)
+          (items-section nil))
+      (cl-letf (((symbol-function 'madolt-test-double-fn)
+                 (lambda ()
+                   (interactive)
+                   (setq called t))))
+        (magit-insert-section (root)
+          (setq items-section
+                (magit-insert-section (items)
+                  (insert "some content\n")))
+          (madolt-insert-show-more-button
+           5 10 'madolt-mode-map 'madolt-test-double-fn))
+        ;; Position on the items section, not the longer section
+        (goto-char (oref items-section start))
+        (should-not (eq (oref (magit-current-section) type) 'longer))
+        (madolt-show-more)
+        (should called)))))
+
+(ert-deftest test-madolt-maybe-show-more-respects-flag ()
+  "madolt-maybe-show-more only activates when madolt-auto-show-more is set."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          (called nil)
+          (longer-section nil))
+      (cl-letf (((symbol-function 'madolt-test-double-fn)
+                 (lambda ()
+                   (interactive)
+                   (setq called t))))
+        (magit-insert-section (root)
+          (setq longer-section
+                (madolt-insert-show-more-button
+                 5 10 'madolt-mode-map 'madolt-test-double-fn)))
+        (goto-char (oref longer-section start))
+        ;; With flag off (default), should not activate
+        (let ((madolt-auto-show-more nil))
+          (madolt-maybe-show-more longer-section)
+          (should-not called))
+        ;; With flag on, should activate
+        (let ((madolt-auto-show-more t))
+          (madolt-maybe-show-more longer-section)
+          (should called))))))
+
+(ert-deftest test-madolt-auto-show-more-default-off ()
+  "madolt-auto-show-more defaults to nil."
+  (should-not madolt-auto-show-more))
+
 ;;;; Display
 
 (ert-deftest test-madolt--buffer-name ()

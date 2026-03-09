@@ -90,6 +90,74 @@ navigation, expand/collapse, visibility levels, and highlighting."
 (define-derived-mode madolt-log-mode madolt-mode "Madolt Log"
   "Mode for madolt log buffers.")
 
+;;;; Show more (row-limit expansion)
+
+(defun madolt-insert-show-more-button (shown total mode-map double-fn)
+  "Insert a \"show more\" button section when results are truncated.
+SHOWN is the number of items currently displayed.
+TOTAL is the total number available, or nil if unknown.
+MODE-MAP is the keymap symbol (e.g. \\='madolt-mode-map) used to
+resolve the keybinding in the button label.
+DOUBLE-FN is the symbol of the function that doubles the limit
+and refreshes."
+  (magit-insert-section (longer)
+    (insert-text-button
+     (substitute-command-keys
+      (format "Type \\<%s>\\[%s] to show more%s"
+              mode-map double-fn
+              (if total
+                  (format " (%d of %d shown)" shown total)
+                (format " (%d shown)" shown))))
+     'action (lambda (_button)
+               (call-interactively double-fn))
+     'follow-link t
+     'mouse-face 'magit-section-highlight)
+    (insert "\n")))
+
+(defun madolt--find-longer-section (&optional root)
+  "Find the first `longer' section in ROOT's subtree.
+ROOT defaults to `magit-root-section'."
+  (let ((root (or root magit-root-section)))
+    (when root
+      (cl-labels ((walk (s)
+                    (if (eq (oref s type) 'longer) s
+                      (cl-some #'walk (oref s children)))))
+        (walk root)))))
+
+(defun madolt-show-more ()
+  "Show more entries in the current section.
+When point is on a \"show more\" button, activate it.
+Otherwise search for a `longer' section in the current buffer
+and activate that."
+  (interactive)
+  (let ((section (magit-current-section)))
+    (if (and section (eq (oref section type) 'longer))
+        ;; On a show-more button — push its text button
+        (push-button)
+      ;; Find the longer section and activate it
+      (if-let ((longer (madolt--find-longer-section)))
+          (progn
+            (goto-char (oref longer start))
+            (push-button))
+        (user-error "Nothing to expand")))))
+
+(defun madolt-maybe-show-more (section)
+  "Auto-expand when cursor lands on a show-more button SECTION.
+Intended for use on `magit-section-movement-hook'."
+  (when (and (eq (oref section type) 'longer)
+             (bound-and-true-p madolt-auto-show-more))
+    (push-button)))
+
+(defcustom madolt-auto-show-more nil
+  "When non-nil, auto-expand when navigating to a show-more button.
+When cursor lands on a \"Type + to show more\" section via
+section movement commands, automatically load more entries
+without requiring the user to press \"+\"."
+  :group 'madolt
+  :type 'boolean)
+
+(add-hook 'magit-section-movement-hook #'madolt-maybe-show-more)
+
 ;;;; Copy section value
 
 (defun madolt-copy-section-value ()
@@ -158,6 +226,8 @@ copies the full commit hash."
   (keymap-set map "z"   #'madolt-stash)
   ;; Copy
   (keymap-set map "w"   #'madolt-copy-section-value)
+  ;; Show more
+  (keymap-set map "+"   #'madolt-show-more)
   ;; Navigation
   (keymap-set map "RET" #'madolt-visit-thing))
 
