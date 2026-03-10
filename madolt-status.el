@@ -125,6 +125,12 @@ The value `unset' means not yet computed.")
   "Non-nil when unpushed or unpulled sections were inserted this refresh.
 Used to suppress the recent commits section when upstream info is shown.")
 
+(defvar-local madolt--log-entries-cache nil
+  "Cached recent log entries for the current refresh cycle.
+Stores the result of `madolt-log-entries' with a generous N so
+that both the header (needs 1) and recent-commits section (needs
+10) can share one subprocess call.")
+
 (defun madolt--cached-status-tables ()
   "Return cached status tables, computing if needed."
   (or madolt--status-tables-cache
@@ -136,6 +142,13 @@ Used to suppress the recent commits section when upstream info is shown.")
     (setq madolt--upstream-ref-cache (madolt-upstream-ref)))
   madolt--upstream-ref-cache)
 
+(defun madolt--cached-log-entries ()
+  "Return cached log entries, fetching 10 if needed.
+The header only needs 1 entry but the recent-commits section
+needs 10, so we always fetch 10 and share the result."
+  (or madolt--log-entries-cache
+      (setq madolt--log-entries-cache (madolt-log-entries 10))))
+
 ;;;; Refresh
 
 (defun madolt-status-refresh-buffer ()
@@ -143,8 +156,9 @@ Used to suppress the recent commits section when upstream info is shown.")
   (setq madolt--status-tables-cache nil)
   (setq madolt--upstream-ref-cache 'unset)
   (setq madolt--upstream-sections-inserted nil)
+  (setq madolt--log-entries-cache nil)
   (magit-insert-section (status)
-    (run-hooks 'madolt-status-sections-hook)))
+    (madolt-run-section-hook 'madolt-status-sections-hook)))
 
 ;;;; Status header
 
@@ -154,7 +168,7 @@ Used to suppress the recent commits section when upstream info is shown.")
          (db-name (file-name-nondirectory
                    (directory-file-name db-dir)))
          (branch (madolt-current-branch))
-         (head-entry (car (madolt-log-entries 1)))
+         (head-entry (car (madolt--cached-log-entries)))
          (hash (and head-entry (plist-get head-entry :hash)))
          (message (and head-entry (plist-get head-entry :message)))
          (upstream (madolt--cached-upstream-ref))
@@ -351,7 +365,7 @@ If ENTRIES is nil, nothing is inserted."
 Only shown when no unpushed/unpulled sections were inserted,
 matching magit's or-recent pattern."
   (unless madolt--upstream-sections-inserted
-    (let ((entries (madolt-log-entries 10)))
+    (let ((entries (madolt--cached-log-entries)))
       (when entries
         (magit-insert-section (recent)
           (magit-insert-heading "Recent commits")

@@ -34,6 +34,7 @@
 
 ;;; Code:
 
+(require 'benchmark)
 (require 'magit-section)
 (require 'madolt-dolt)
 (require 'madolt-process)
@@ -66,6 +67,44 @@
 (declare-function madolt-sql-query "madolt-sql" (query))
 (declare-function madolt-dispatch "madolt" ())
 (declare-function madolt-visit-thing "madolt-status" ())
+
+;;;; Refresh verbosity
+
+(defcustom madolt-refresh-verbose nil
+  "Whether to log timing information during buffer refresh.
+When non-nil, each section inserter is benchmarked and the elapsed
+time is logged to *Messages*, along with total refresh time and
+subprocess cache hit/miss statistics.  Toggle interactively with
+`madolt-toggle-verbose-refresh'."
+  :group 'madolt
+  :type 'boolean)
+
+(defun madolt-toggle-verbose-refresh ()
+  "Toggle verbose refresh timing.
+When enabled, each buffer refresh logs per-section timing and
+subprocess cache statistics to *Messages*."
+  (interactive)
+  (setq madolt-refresh-verbose (not madolt-refresh-verbose))
+  (message "%s verbose refreshing"
+           (if madolt-refresh-verbose "Enabled" "Disabled")))
+
+(defun madolt-run-section-hook (hook)
+  "Run HOOK, benchmarking each entry when `madolt-refresh-verbose' is set.
+Each function on HOOK is called in order.  When verbose, elapsed
+time per function is logged to *Messages* with markers for slow
+sections (!! > 0.03s, ! > 0.01s)."
+  (let ((entries (symbol-value hook)))
+    (unless (listp entries)
+      (setq entries (list entries)))
+    (dolist (entry entries)
+      (when (functionp entry)
+        (if madolt-refresh-verbose
+            (let ((time (benchmark-elapse (funcall entry))))
+              (message "  %-50s %f %s" entry time
+                       (cond ((> time 0.03) "!!")
+                             ((> time 0.01) "!")
+                             (t ""))))
+          (funcall entry))))))
 
 ;;;; Major mode
 
@@ -282,14 +321,20 @@ Falls back to `display-buffer' otherwise."
 (defun madolt-refresh (&rest _args)
   "Refresh the current madolt buffer.
 Erase the buffer, re-run the mode-specific refresh function, and
-restore cursor position."
+restore cursor position.  When `madolt-refresh-verbose' is non-nil,
+log per-section timing and cache statistics to *Messages*."
   (interactive)
   (when (derived-mode-p 'madolt-mode)
-    (let* ((refresh-fn (madolt--refresh-function))
+    (let* ((start (current-time))
+           (madolt--refresh-cache (or madolt--refresh-cache
+                                      (list (cons 0 0))))
+           (refresh-fn (madolt--refresh-function))
            (section (magit-current-section))
            (section-ident (and section (magit-section-ident section)))
            (rel-pos (and section
                          (magit-section-get-relative-position section))))
+      (when madolt-refresh-verbose
+        (message "Refreshing buffer `%s'..." (buffer-name)))
       (when refresh-fn
         ;; Reset magit-section highlight state before erasing the
         ;; buffer.  Without this, stale section objects from the
@@ -335,7 +380,17 @@ restore cursor position."
         (when magit-root-section
           (magit-section-update-highlight))
         (set-buffer-modified-p nil)
-        (push (current-buffer) magit-section--refreshed-buffers)))))
+        (push (current-buffer) magit-section--refreshed-buffers)
+        (when madolt-refresh-verbose
+          (let* ((c (caar madolt--refresh-cache))
+                 (a (+ c (cdar madolt--refresh-cache))))
+            (message "Refreshing buffer `%s'...done (%.3fs, cached %s/%s (%.0f%%))"
+                     (buffer-name)
+                     (float-time (time-since start))
+                     c a
+                     (if (> a 0)
+                         (* (/ c (* a 1.0)) 100)
+                       0))))))))
 
 (defun madolt-refresh-buffer (&rest _args)
   "Revert buffer function for madolt buffers.

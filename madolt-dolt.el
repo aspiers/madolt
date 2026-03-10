@@ -52,6 +52,33 @@ the dolt command."
   :group 'madolt
   :type '(repeat string))
 
+;;;; Per-refresh cache
+
+(defvar madolt--refresh-cache nil
+  "Cache of subprocess results for the current refresh cycle.
+Like `magit--refresh-cache': a list whose car is (HITS . MISSES)
+and whose cdr is an alist of (KEY . VALUE) entries.
+Bound dynamically around a full buffer refresh so that identical
+dolt invocations are served from cache.")
+
+(defmacro madolt--with-refresh-cache (key &rest body)
+  "If caching is active, return cached value for KEY or evaluate BODY.
+Cache hits/misses are counted in the car of `madolt--refresh-cache'."
+  (declare (indent 1) (debug (form body)))
+  (let ((k (gensym))
+        (hit (gensym)))
+    `(if madolt--refresh-cache
+         (let ((,k ,key))
+           (if-let ((,hit (assoc ,k (cdr madolt--refresh-cache))))
+               (progn (cl-incf (caar madolt--refresh-cache))
+                      (cdr ,hit))
+             (cl-incf (cdar madolt--refresh-cache))
+             (let ((value ,(macroexp-progn body)))
+               (push (cons ,k value)
+                     (cdr madolt--refresh-cache))
+               value)))
+       ,@body)))
+
 ;;;; Internal helpers
 
 (defun madolt--flatten-args (args)
@@ -89,29 +116,35 @@ Nil arguments are removed and nested lists are flattened."
 (defun madolt-dolt-string (&rest args)
   "Execute dolt with ARGS, returning the first line of output.
 Return nil if exit code is non-zero or if there is no output."
-  (let ((result (apply #'madolt--run args)))
-    (and (zerop (car result))
-         (not (string-empty-p (cdr result)))
-         (car (split-string (cdr result) "\n" t)))))
+  (setq args (madolt--flatten-args args))
+  (madolt--with-refresh-cache (cons default-directory args)
+    (let ((result (apply #'madolt--run args)))
+      (and (zerop (car result))
+           (not (string-empty-p (cdr result)))
+           (car (split-string (cdr result) "\n" t))))))
 
 (defun madolt-dolt-lines (&rest args)
   "Execute dolt with ARGS, returning output as a list of lines.
 Empty lines are omitted."
-  (let ((result (apply #'madolt--run args)))
-    (split-string (cdr result) "\n" t)))
+  (setq args (madolt--flatten-args args))
+  (madolt--with-refresh-cache (cons default-directory args)
+    (let ((result (apply #'madolt--run args)))
+      (split-string (cdr result) "\n" t))))
 
 (defun madolt-dolt-json (&rest args)
   "Execute dolt with ARGS, returning parsed JSON output.
 Return nil if the output cannot be parsed as JSON.
 Uses `json-parse-string' with alist object type and list array type."
-  (let ((result (apply #'madolt--run args)))
-    (and (zerop (car result))
-         (not (string-empty-p (cdr result)))
-         (condition-case nil
-             (json-parse-string (cdr result)
-                                :object-type 'alist
-                                :array-type 'list)
-           (json-parse-error nil)))))
+  (setq args (madolt--flatten-args args))
+  (madolt--with-refresh-cache (cons default-directory args)
+    (let ((result (apply #'madolt--run args)))
+      (and (zerop (car result))
+           (not (string-empty-p (cdr result)))
+           (condition-case nil
+               (json-parse-string (cdr result)
+                                  :object-type 'alist
+                                  :array-type 'list)
+             (json-parse-error nil))))))
 
 (defun madolt-dolt-insert (&rest args)
   "Execute dolt with ARGS, inserting output at point.
@@ -122,11 +155,13 @@ Return the exit code."
 
 (defun madolt-dolt-exit-code (&rest args)
   "Execute dolt with ARGS, returning the exit code as an integer."
-  (car (apply #'madolt--run args)))
+  (setq args (madolt--flatten-args args))
+  (madolt--with-refresh-cache (cons default-directory (cons 'exit-code args))
+    (car (apply #'madolt--run args))))
 
 (defun madolt-dolt-success-p (&rest args)
   "Execute dolt with ARGS, returning non-nil if exit code is 0."
-  (zerop (car (apply #'madolt--run args))))
+  (zerop (apply #'madolt-dolt-exit-code args)))
 
 ;;;; Database context
 
@@ -212,7 +247,7 @@ Return value is:
    (conflicts . ((TABLE . STATUS) ...)))
 where STATUS is a string like \"modified\", \"new table\", \"renamed\",
 \"deleted\", or \"both modified\"."
-  (let ((output (cdr (madolt--run "status")))
+  (let ((output (cdr (madolt--run "status")))  ; madolt--run is not cached (mutations use it)
         (staged nil)
         (unstaged nil)
         (untracked nil)
@@ -241,6 +276,19 @@ where STATUS is a string like \"modified\", \"new table\", \"renamed\",
       (unstaged  . ,(nreverse unstaged))
       (untracked . ,(nreverse untracked))
       (conflicts . ,(nreverse conflicts)))))
+
+;;;; Schema queries
+
+(defun madolt-primary-key-columns (table)
+  "Return the list of primary key column names for TABLE.
+The result is cached per refresh cycle via `madolt--refresh-cache'."
+  (let* ((json (madolt-dolt-json
+                "sql" "-q"
+                (format "SELECT COLUMN_NAME FROM information_schema.key_column_usage WHERE table_name='%s' AND CONSTRAINT_NAME='PRIMARY' ORDER BY ORDINAL_POSITION"
+                        table)
+                "-r" "json"))
+         (rows (and json (alist-get 'rows json))))
+    (mapcar (lambda (row) (alist-get 'COLUMN_NAME row)) rows)))
 
 ;;;; Diff queries
 

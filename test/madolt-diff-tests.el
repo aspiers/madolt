@@ -50,16 +50,19 @@ Then modifies id=1 email, adds id=3, deletes id=2.  Nothing is staged."
 (ert-deftest test-madolt-diff-faces-defined ()
   "All documented diff faces should be defined."
    (dolist (face '(madolt-diff-added
-                  madolt-diff-removed
-                  madolt-diff-old
-                  madolt-diff-new
-                  madolt-diff-changed-cell
-                  madolt-diff-column-name
-                  madolt-diff-column-value
-                  madolt-diff-context
-                  madolt-diff-schema
-                  madolt-diff-table-heading
-                  madolt-diff-column-header))
+                   madolt-diff-added-highlight
+                   madolt-diff-removed
+                   madolt-diff-removed-highlight
+                   madolt-diff-old
+                   madolt-diff-new
+                   madolt-diff-changed-cell
+                   madolt-diff-column-name
+                   madolt-diff-column-value
+                   madolt-diff-context
+                   madolt-diff-context-highlight
+                   madolt-diff-schema
+                   madolt-diff-table-heading
+                   madolt-diff-column-header))
     (should (facep face))))
 
 ;;;; Transient
@@ -120,12 +123,13 @@ Then modifies id=1 email, adds id=3, deletes id=2.  Nothing is staged."
       (should (string-match-p "id=2" summary)))))
 
 (ert-deftest test-madolt-diff-row-summary-modified ()
-  "Modified row summary should start with ~ and show changed cell count."
+  "Modified row summary should start with ~ and show changed fields."
   (let ((row '((from_row (id . 1) (name . "Alice") (email . "old@ex.com"))
                (to_row (id . 1) (name . "Alice") (email . "new@ex.com")))))
     (let ((summary (madolt-diff--row-summary row 'modified)))
       (should (string-prefix-p "~" summary))
-      (should (string-match-p "1 cell changed" summary)))))
+      ;; Changed field should show old→new
+      (should (string-match-p "old@ex\\.com→new@ex\\.com" summary)))))
 
 ;;;; Value truncation
 
@@ -171,10 +175,10 @@ Then modifies id=1 email, adds id=3, deletes id=2.  Nothing is staged."
 
 (ert-deftest test-madolt-diff-format-row-fields-with-width ()
   "With max-width, long values should be truncated to fit."
-  (let ((madolt-diff-min-value-width 5)
-        (result (madolt-diff--format-row-fields
-                 '((id . 1) (desc . "A very long description string"))
-                 20)))
+  (let* ((madolt-diff-min-value-width 5)
+         (result (madolt-diff--format-row-fields
+                  '((id . 1) (desc . "A very long description string"))
+                  20)))
     (should (string-match-p "id=1" (substring-no-properties result)))
     (should (string-match-p "…" (substring-no-properties result)))
     ;; Result must actually fit within max-width
@@ -182,10 +186,10 @@ Then modifies id=1 email, adds id=3, deletes id=2.  Nothing is staged."
 
 (ert-deftest test-madolt-diff-format-row-fields-preserves-faces ()
   "Truncated values should still have proper faces."
-  (let ((madolt-diff-min-value-width 5)
-        (result (madolt-diff--format-row-fields
-                 '((id . 1) (desc . "A very long description"))
-                 20)))
+  (let* ((madolt-diff-min-value-width 5)
+         (result (madolt-diff--format-row-fields
+                  '((id . 1) (desc . "A very long description"))
+                  20)))
     ;; Column name should have madolt-diff-column-name face
     (should (eq (get-text-property 0 'font-lock-face result)
                 'madolt-diff-column-name))))

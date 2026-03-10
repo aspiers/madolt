@@ -74,6 +74,26 @@
   "Face for the specific cells that changed within a modified row."
   :group 'madolt-faces)
 
+(defface madolt-diff-added-highlight
+  '((t :inherit magit-diff-added-highlight))
+  "Face for added row values when highlighted."
+  :group 'madolt-faces)
+
+(defface madolt-diff-removed-highlight
+  '((t :inherit magit-diff-removed-highlight))
+  "Face for deleted row values when highlighted."
+  :group 'madolt-faces)
+
+(defface madolt-diff-context
+  '((t :inherit magit-diff-context))
+  "Face for unchanged values in row diff summaries."
+  :group 'madolt-faces)
+
+(defface madolt-diff-context-highlight
+  '((t :inherit magit-diff-context-highlight))
+  "Face for unchanged values when highlighted."
+  :group 'madolt-faces)
+
 (defface madolt-diff-column-name
   '((t :weight bold))
   "Face for column names in row diff summaries."
@@ -149,10 +169,17 @@ When nil, use the defcustom value.")
 
 ;;;; Truncation
 
-(defcustom madolt-diff-min-value-width 15
+(defcustom madolt-diff-min-value-width 10
   "Minimum display width for truncated field values in row-diff summaries.
 Values shorter than this will not be truncated further when fitting
 row-diff summary lines to the window width."
+  :group 'madolt-faces
+  :type 'integer)
+
+(defcustom madolt-diff-max-value-width 40
+  "Maximum display width for any single field value in row-diff summaries.
+Changed fields showing old→new values are capped at this width so
+they leave room for primary key and other unchanged fields."
   :group 'madolt-faces
   :type 'integer)
 
@@ -172,6 +199,11 @@ row-diff summary lines to the window width."
 
 (defvar-local madolt-diff--staged nil
   "Non-nil when showing staged changes.")
+
+(defvar madolt-diff--current-table nil
+  "Name of the table currently being rendered.
+Dynamically bound during row-diff insertion so that row-summary
+functions can look up primary key columns.")
 
 ;;;; Transient menu
 
@@ -233,6 +265,8 @@ ARGS are additional arguments from the transient."
   "Double the number of diff rows shown per table and refresh."
   (interactive)
   (let ((current (or madolt-diff--row-limit
+                     (and (derived-mode-p 'madolt-status-mode)
+                          madolt-diff-section-max-rows)
                      madolt-diff-max-rows
                      100)))
     (setq madolt-diff--row-limit (* current 2)))
@@ -332,7 +366,8 @@ When omitted, uses `madolt-diff--row-limit' or `madolt-diff-max-rows'."
       ;; Data changes (with row limit)
       (when data-diff
         (let ((total (length data-diff))
-              (shown 0))
+              (shown 0)
+              (madolt-diff--current-table name))
           (dolist (row-change data-diff)
             (when (or (null limit) (< shown limit))
               (madolt-diff--insert-row-diff row-change)
@@ -396,21 +431,188 @@ Long values are truncated with \"…\" to fit within the window width."
          (fields-width (- win-width prefix-width)))
     (pcase change-type
       ('added
-       (let ((fields (madolt-diff--format-row-fields to-row fields-width)))
+       (let ((fields (madolt-diff--format-row-fields
+                      to-row fields-width 'madolt-diff-added)))
          (concat (propertize "+" 'font-lock-face 'madolt-diff-added)
                  " " fields)))
       ('deleted
-       (let ((fields (madolt-diff--format-row-fields from-row fields-width)))
+       (let ((fields (madolt-diff--format-row-fields
+                      from-row fields-width 'madolt-diff-removed)))
          (concat (propertize "-" 'font-lock-face 'madolt-diff-removed)
                  " " fields)))
       ('modified
-       (let* ((changed (madolt-diff--changed-cell-count from-row to-row))
-              (suffix (format " (%d cell%s changed)"
-                              changed (if (= changed 1) "" "s")))
-              (pk-width (- fields-width (length suffix)))
-              (pk-fields (madolt-diff--pk-summary from-row to-row pk-width)))
-         (concat (propertize "~" 'font-lock-face 'madolt-diff-old)
-                 " " pk-fields suffix))))))
+       (concat (propertize "~" 'font-lock-face 'madolt-diff-old)
+               " "
+               (madolt-diff--modified-summary
+                from-row to-row fields-width))))))
+
+(defun madolt-diff--modified-summary (from-row to-row max-width)
+  "Return a one-line summary for a modified row.
+Shows fields in priority order: primary key, changed, then
+other unchanged.  Changed fields display old→new values.
+FROM-ROW and TO-ROW are alists.  MAX-WIDTH is the character
+budget for the fields portion.
+Uses `madolt-diff--current-table' to look up primary key columns."
+  (let* ((pk-cols (when madolt-diff--current-table
+                    (madolt-primary-key-columns
+                     madolt-diff--current-table)))
+         (pk-set (mapcar #'intern pk-cols))
+         (pk-fields nil)
+         (changed-fields nil)
+         (other-fields nil))
+    ;; Partition fields into three groups
+    (dolist (pair from-row)
+      (let ((key (car pair))
+            (old-val (cdr pair)))
+        (let ((new-val (alist-get key to-row)))
+          (cond
+           ((memq key pk-set)
+            (push (cons key old-val) pk-fields))
+           ((not (equal old-val new-val))
+            (push (list key old-val new-val) changed-fields))
+           (t
+            (push (cons key old-val) other-fields))))))
+    ;; Pick up any new columns in to-row not in from-row
+    (dolist (pair to-row)
+      (unless (assq (car pair) from-row)
+        (push (list (car pair) nil (cdr pair)) changed-fields)))
+    (setq pk-fields (nreverse pk-fields))
+    (setq changed-fields (nreverse changed-fields))
+    (setq other-fields (nreverse other-fields))
+    ;; Determine how many "other" fields fit.  PK and changed
+    ;; fields are always shown; other fields are added only when
+    ;; there is enough room to give each at least min-value-width.
+    (let* ((n-pk (length pk-fields))
+           (n-changed (length changed-fields))
+           ;; Compute changed value natural widths (capped)
+           (changed-natural
+            (mapcar (lambda (triple)
+                      (let* ((old-val (nth 1 triple))
+                             (new-val (nth 2 triple))
+                             (display (concat
+                                       (format "%s" (or old-val "∅"))
+                                       "→"
+                                       (format "%s" (or new-val "∅")))))
+                        (min madolt-diff-max-value-width
+                             (length display))))
+                    changed-fields))
+           (changed-total (apply #'+ (or changed-natural '(0))))
+           ;; Core overhead: PK keys + changed keys + "=" each +
+           ;; changed values + PK min values.  We compute this once
+           ;; and incrementally add each "other" field's cost.
+           (core-key-cost
+            (+ (apply #'+ (or (mapcar (lambda (p)
+                                        (length (format "%s" (car p))))
+                                      pk-fields)
+                              '(0)))
+               (apply #'+ (or (mapcar (lambda (tr)
+                                        (length (format "%s" (car tr))))
+                                      changed-fields)
+                              '(0)))))
+           (n-core (+ n-pk n-changed))
+           (core-fixed (+ core-key-cost n-core))
+           (core-values (+ changed-total
+                           (* n-pk madolt-diff-min-value-width)))
+           ;; Remaining budget after core fields (with separators
+           ;; between core fields only)
+           (core-seps (* 2 (max 0 (1- n-core))))
+           (budget (- max-width core-fixed core-values core-seps))
+           ;; Append "other" fields one at a time until there is no
+           ;; room to give the next one at least min-value-width.
+           (included-others
+            (let ((result nil))
+              (catch 'done
+                (dolist (pair other-fields)
+                  ;; Cost of this field: "  " separator + key + "="
+                  ;; + min-value-width
+                  (let ((cost (+ 2
+                                (length (format "%s" (car pair)))
+                                1
+                                madolt-diff-min-value-width)))
+                    (if (>= budget cost)
+                        (progn
+                          (push pair result)
+                          (setq budget (- budget cost)))
+                      (throw 'done nil)))))
+              (nreverse result))))
+      ;; Build final ordered list: PK, changed (with old→new), other
+      (let ((ordered nil))
+        (dolist (pair pk-fields)
+          (push pair ordered))
+        (dolist (triple changed-fields)
+          (let* ((key (nth 0 triple))
+                 (old-val (nth 1 triple))
+                 (new-val (nth 2 triple))
+                 (display (concat
+                           (propertize (format "%s" (or old-val "∅"))
+                                      'font-lock-face 'madolt-diff-removed)
+                           (propertize "→" 'font-lock-face 'madolt-diff-context)
+                           (propertize (format "%s" (or new-val "∅"))
+                                      'font-lock-face 'madolt-diff-added))))
+            (push (cons key display) ordered)))
+        (dolist (pair included-others)
+          (push pair ordered))
+        (setq ordered (nreverse ordered))
+        ;; Width allocation
+        (let* ((n-other (length included-others))
+               (all-key-lens (mapcar (lambda (p)
+                                       (length (format "%s" (car p))))
+                                     ordered))
+               (fixed-overhead (+ (apply #'+ all-key-lens)
+                                  (length ordered)
+                                  (* 2 (max 0 (1- (length ordered))))))
+               (available (max 1 (- max-width fixed-overhead)))
+               (changed-val-lens changed-natural)
+               ;; Ensure non-changed fields get at least min-value-width
+               (n-nonchanged (+ n-pk n-other))
+               (non-changed-min (* n-nonchanged
+                                   madolt-diff-min-value-width))
+               (changed-budget (max 0 (- available non-changed-min)))
+               (changed-total-capped
+                (apply #'+ (or changed-val-lens '(0))))
+               ;; Shrink changed fields if they exceed budget
+               (changed-val-lens
+                (if (or (<= changed-total-capped changed-budget)
+                        (zerop n-changed))
+                    changed-val-lens
+                  (let ((scale (/ (float changed-budget)
+                                  changed-total-capped)))
+                     (mapcar (lambda (w)
+                              (max madolt-diff-min-value-width
+                                   (floor (* w scale))))
+                            changed-val-lens))))
+               (changed-total-final
+                (apply #'+ (or changed-val-lens '(0))))
+               ;; Remaining space for PK + other unchanged fields
+               (remaining (max 0 (- available changed-total-final)))
+               (non-changed-row (append pk-fields included-others))
+               (non-changed-widths
+                (when non-changed-row
+                  (madolt-diff--compute-value-widths
+                   non-changed-row remaining)))
+               (pk-widths (seq-take non-changed-widths n-pk))
+               (other-widths (seq-drop non-changed-widths n-pk))
+               (widths (append pk-widths changed-val-lens other-widths))
+               (parts nil)
+               (i 0))
+          (dolist (pair ordered)
+            (let* ((key (format "%s" (car pair)))
+                   (val (if (and (>= i n-pk) (< i (+ n-pk n-changed)))
+                            (cdr pair)  ; already propertized
+                          (format "%s" (cdr pair))))
+                   (w (or (nth i widths) (length val)))
+                   (tval (madolt-diff--truncate-value val w))
+                   (changed-p (and (>= i n-pk)
+                                   (< i (+ n-pk n-changed)))))
+              (push (concat
+                     (propertize key 'font-lock-face 'madolt-diff-column-name)
+                     (propertize "=" 'font-lock-face 'madolt-diff-context)
+                     (if changed-p
+                         tval
+                       (propertize tval 'font-lock-face 'madolt-diff-context)))
+                    parts))
+            (cl-incf i))
+          (mapconcat #'identity (nreverse parts) "  "))))))
 
 (defun madolt-diff--truncate-value (value max-len)
   "Truncate VALUE string to MAX-LEN characters, appending \"…\" if needed."
@@ -457,83 +659,70 @@ to fit all fields."
       ;; Iteratively shrink the longest value(s) to fit.
       ;; Each iteration reduces all max-valued entries to the next
       ;; lower value (or to whatever is needed to hit the budget).
-      (while (> (madolt-diff--vec-sum widths) available)
-        (let* ((max-val (madolt-diff--vec-max widths))
-               (max-count 0)
-               (second-val 0)
-               (sum (madolt-diff--vec-sum widths))
-               (excess (- sum available)))
-          ;; Count entries at max-val and find second-largest
-          (dotimes (i (length widths))
-            (let ((w (aref widths i)))
-              (cond ((= w max-val) (cl-incf max-count))
-                    ((> w second-val) (setq second-val w)))))
-          ;; Compute target: lower max-val entries just enough to
-          ;; remove the excess, but no lower than second-val (to keep
-          ;; values balanced) — unless that's still too much.
-          (let* ((per-item-reduction (ceiling excess max-count))
-                 (target (max second-val (- max-val per-item-reduction)))
-                 ;; Ensure we make at least 1 char of progress
-                 (target (min target (1- max-val)))
-                 (target (max 1 target)))
+      (let ((floor-width (max 1 madolt-diff-min-value-width)))
+        (while (and (> (madolt-diff--vec-sum widths) available)
+                    (> (madolt-diff--vec-max widths) floor-width))
+          (let* ((max-val (madolt-diff--vec-max widths))
+                 (max-count 0)
+                 (second-val 0)
+                 (sum (madolt-diff--vec-sum widths))
+                 (excess (- sum available)))
+            ;; Count entries at max-val and find second-largest
+            (dotimes (i (length widths))
+              (let ((w (aref widths i)))
+                (cond ((= w max-val) (cl-incf max-count))
+                      ((> w second-val) (setq second-val w)))))
+            ;; Compute target: lower max-val entries just enough to
+            ;; remove the excess, but no lower than second-val (to keep
+            ;; values balanced) — unless that's still too much.
+            (let* ((per-item-reduction (ceiling excess max-count))
+                   (target (max second-val (- max-val per-item-reduction)))
+                   ;; Ensure we make at least 1 char of progress
+                   (target (min target (1- max-val)))
+                   (target (max floor-width target)))
             (dotimes (i (length widths))
               (when (= (aref widths i) max-val)
-                (aset widths i target))))))
+                (aset widths i target)))))))
       (append widths nil))))
 
-(defun madolt-diff--format-row-fields (row &optional max-width)
+(defun madolt-diff--format-row-fields (row &optional max-width val-face)
   "Format ROW alist as key=value pairs with per-component faces.
-Column names are bold, values use `madolt-diff-column-value',
-and equals signs match column name style without bold.
+Column names use `madolt-diff-column-name', equals signs use
+`madolt-diff-context', and values use VAL-FACE (defaulting to
+`madolt-diff-context').
 When MAX-WIDTH is non-nil, truncate long values to fit within that
 many characters, using \"…\" for truncation."
-  (if (or (null max-width) (null row))
-      ;; No width constraint or empty row
-      (mapconcat (lambda (pair)
-                   (concat
-                    (propertize (format "%s" (car pair))
-                                'font-lock-face 'madolt-diff-column-name)
-                    (propertize "=" 'font-lock-face 'default)
-                    (propertize (format "%s" (cdr pair))
-                                'font-lock-face 'madolt-diff-column-value)))
-                 row "  ")
-    ;; Width-constrained: compute per-value widths and truncate
-    (let* ((widths (madolt-diff--compute-value-widths row max-width))
-           (pairs row)
-           (parts nil)
-           (i 0))
-      (while pairs
-        (let* ((pair (car pairs))
-               (key (format "%s" (car pair)))
-               (val (format "%s" (cdr pair)))
-               (w (nth i widths))
-               (tval (madolt-diff--truncate-value val w)))
-          (push (concat
-                 (propertize key 'font-lock-face 'madolt-diff-column-name)
-                 (propertize "=" 'font-lock-face 'default)
-                 (propertize tval 'font-lock-face 'madolt-diff-column-value))
-                parts))
-        (setq pairs (cdr pairs)
-              i (1+ i)))
-      (mapconcat #'identity (nreverse parts) "  "))))
+  (let ((vf (or val-face 'madolt-diff-context)))
+    (if (or (null max-width) (null row))
+        ;; No width constraint or empty row
+        (mapconcat (lambda (pair)
+                     (concat
+                      (propertize (format "%s" (car pair))
+                                  'font-lock-face 'madolt-diff-column-name)
+                      (propertize "=" 'font-lock-face 'madolt-diff-context)
+                      (propertize (format "%s" (cdr pair))
+                                  'font-lock-face vf)))
+                   row "  ")
+      ;; Width-constrained: compute per-value widths and truncate
+      (let* ((widths (madolt-diff--compute-value-widths row max-width))
+             (pairs row)
+             (parts nil)
+             (i 0))
+        (while pairs
+          (let* ((pair (car pairs))
+                 (key (format "%s" (car pair)))
+                 (val (format "%s" (cdr pair)))
+                 (w (nth i widths))
+                 (tval (madolt-diff--truncate-value val w)))
+            (push (concat
+                   (propertize key 'font-lock-face 'madolt-diff-column-name)
+                   (propertize "=" 'font-lock-face 'madolt-diff-context)
+                   (propertize tval 'font-lock-face vf))
+                  parts))
+          (setq pairs (cdr pairs)
+                i (1+ i)))
+        (mapconcat #'identity (nreverse parts) "  ")))))
 
-(defun madolt-diff--pk-summary (from-row to-row &optional max-width)
-  "Return a summary of primary key fields from FROM-ROW and TO-ROW.
-Uses fields that are the same in both rows (assumed to be PK).
-Column names are bold, values use `madolt-diff-column-value'.
-When MAX-WIDTH is non-nil, truncate long values to fit."
-  (let ((pk-row nil))
-    (dolist (pair from-row)
-      (let ((key (car pair))
-            (val (cdr pair)))
-        (when (equal val (alist-get key to-row))
-          (push pair pk-row))))
-    (if pk-row
-        (madolt-diff--format-row-fields (nreverse pk-row) max-width)
-      ;; Fallback: show first field from from-row
-      (if from-row
-          (madolt-diff--format-row-fields (list (car from-row)) max-width)
-        "?"))))
 
 (defun madolt-diff--changed-cell-count (from-row to-row)
   "Count cells that differ between FROM-ROW and TO-ROW."
@@ -719,7 +908,8 @@ content appears under a table heading in the status buffer."
                  (madolt-diff-json table)))
          (tables (and json (alist-get 'tables json)))
          (madolt-diff--indent "      ")
-         (limit madolt-diff-section-max-rows))
+         (limit (or madolt-diff--row-limit
+                    madolt-diff-section-max-rows)))
     (if (null tables)
         (insert (concat madolt-diff--indent "(no changes)\n"))
       (let ((tbl (car tables)))
@@ -740,7 +930,8 @@ content appears under a table heading in the status buffer."
               (unless (and schema-diff (not (seq-empty-p schema-diff)))
                 (insert (concat madolt-diff--indent "(schema change only)\n")))
             (let ((total (length data-diff))
-                  (shown 0))
+                  (shown 0)
+                  (madolt-diff--current-table table))
               (dolist (row-change data-diff)
                 (when (or (null limit) (< shown limit))
                   (madolt-diff--insert-row-diff row-change)

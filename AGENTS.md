@@ -16,6 +16,10 @@ make test-dolt               # Run a single module's tests
 make lint                    # checkdoc
 ```
 
+**`make test` is slow** (~2 minutes).  Run it in the background via
+`make test 2>&1 | tee tmp/tests.log` so you can continue other work
+in parallel, then check the log afterwards.
+
 The Makefile assumes `straight.el` packages under `~/.emacs.d/straight/build/`.
 Override with `STRAIGHT_DIR=/path/to/packages`.
 
