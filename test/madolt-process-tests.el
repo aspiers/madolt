@@ -193,6 +193,59 @@
                 (should (string-match-p "dolt branch" content)))))
         (kill-buffer buf)))))
 
+;;;; Point positioning
+
+(ert-deftest test-madolt-process-goto-last-empty ()
+  "Goto-last does nothing in an empty process buffer."
+  (madolt-with-test-database
+    (let ((buf (madolt-process-buffer t)))
+      (unwind-protect
+          (with-current-buffer buf
+            (goto-char (point-min))
+            (madolt--process-goto-last)
+            ;; No process sections, point should stay where it is
+            (should (= (point) (point-min))))
+        (kill-buffer buf)))))
+
+(ert-deftest test-madolt-process-goto-last-single ()
+  "Goto-last moves point to the only process section."
+  (madolt-with-test-database
+    (let ((buf (madolt-process-buffer t)))
+      (unwind-protect
+          (progn
+            (madolt-call-dolt "status")
+            (with-current-buffer buf
+              (goto-char (point-min))
+              (madolt--process-goto-last)
+              ;; Point should be at the start of the process section
+              (let ((section (magit-current-section)))
+                (should section)
+                (should (eq (oref section type) 'process)))))
+        (kill-buffer buf)))))
+
+(ert-deftest test-madolt-process-goto-last-multiple ()
+  "Goto-last moves point to the last of multiple process sections."
+  (madolt-with-test-database
+    (let ((buf (madolt-process-buffer t)))
+      (unwind-protect
+          (progn
+            (madolt-call-dolt "status")
+            (madolt-call-dolt "branch" "--show-current")
+            (with-current-buffer buf
+              (goto-char (point-min))
+              (madolt--process-goto-last)
+              ;; Should be on the last section (branch command)
+              (let ((section (magit-current-section)))
+                (should section)
+                (should (eq (oref section type) 'process))
+                ;; The heading should contain the branch command
+                (let ((heading (buffer-substring-no-properties
+                                (oref section start)
+                                (min (+ (oref section start) 80)
+                                     (point-max)))))
+                  (should (string-match-p "dolt branch" heading))))))
+        (kill-buffer buf)))))
+
 ;;;; Faces
 
 (ert-deftest test-madolt-process-faces-defined ()

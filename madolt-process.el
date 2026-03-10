@@ -41,6 +41,7 @@
 ;; Forward declarations for functions defined in madolt-mode.el.
 ;; Avoids circular require since madolt-mode depends on madolt-process.
 (declare-function madolt-refresh "madolt-mode" ())
+(declare-function madolt-display-buffer "madolt-mode" (buffer))
 
 ;;;; Faces
 
@@ -81,7 +82,8 @@
 (defun madolt-process-buffer (&optional nodisplay)
   "Return the process buffer for the current dolt database.
 Create it if it doesn't exist.  Unless NODISPLAY is non-nil,
-also display the buffer."
+also display the buffer, select its window, and move point to
+the last process section heading."
   (interactive)
   (let* ((db-dir (or (madolt-database-dir)
                      default-directory))
@@ -98,8 +100,20 @@ also display the buffer."
                                  magit-root-section)))
                        buf))))
     (unless nodisplay
-      (display-buffer buffer))
+      (madolt-display-buffer buffer)
+      (madolt--process-goto-last))
     buffer))
+
+(defun madolt--process-goto-last ()
+  "Move point to the heading of the last process section.
+Does nothing if no process sections exist."
+  (when-let ((root (or madolt-process--root-section magit-root-section)))
+    (let ((last-section nil))
+      (dolist (child (oref root children))
+        (when (eq (oref child type) 'process)
+          (setq last-section child)))
+      (when last-section
+        (goto-char (oref last-section start))))))
 
 ;;;; Section insertion
 
