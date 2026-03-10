@@ -68,7 +68,9 @@
 (define-derived-mode madolt-process-mode magit-section-mode "Madolt Process"
   "Mode for madolt process log buffers."
   :group 'madolt
-  (setq-local revert-buffer-function #'ignore))
+  (setq-local revert-buffer-function #'ignore)
+  (setq-local magit-section-initial-visibility-alist
+              '((process . hide))))
 
 (defun madolt--process-buffer-name (&optional directory)
   "Return the process buffer name for DIRECTORY's dolt database."
@@ -100,7 +102,7 @@ the last process section heading."
                                  magit-root-section)))
                        buf))))
     (unless nodisplay
-      (madolt-display-buffer buffer)
+      (pop-to-buffer buffer)
       (madolt--process-goto-last))
     buffer))
 
@@ -131,23 +133,34 @@ space, then the command string."
               (magit-insert-section--parent
                (or madolt-process--root-section magit-root-section)))
           (goto-char (1- (point-max)))
-          (magit-insert-section (process)
-            (insert (propertize (format "%3s " exit-code)
-                                'font-lock-face
-                                (if (zerop exit-code)
-                                    'madolt-process-ok
-                                  'madolt-process-ng)))
-            (magit-insert-heading
-              (propertize
-               (concat (file-name-nondirectory madolt-dolt-executable)
-                       " "
-                       (mapconcat #'shell-quote-argument args " "))
-               'font-lock-face 'madolt-process-heading))
-            (unless (string-empty-p output)
-              (insert output)
-              (unless (string-suffix-p "\n" output)
-                (insert "\n")))
-            (insert "\n")))))))
+          (let ((section
+                 (magit-insert-section (process)
+                   (insert (propertize (format "%3s " exit-code)
+                                       'font-lock-face
+                                       (if (zerop exit-code)
+                                           'madolt-process-ok
+                                         'madolt-process-ng)))
+                   (magit-insert-heading
+                     (propertize
+                      (concat (file-name-nondirectory madolt-dolt-executable)
+                              " "
+                              (mapconcat #'shell-quote-argument args " "))
+                      'font-lock-face 'madolt-process-heading))
+                   (magit-insert-section-body
+                     (unless (string-empty-p output)
+                       (insert output)
+                       (unless (string-suffix-p "\n" output)
+                         (insert "\n")))
+                     (insert "\n")))))
+            ;; Collapse all previously visible sections so only
+            ;; the newest command is expanded.
+            (when-let ((root (or madolt-process--root-section
+                                 magit-root-section)))
+              (dolist (child (oref root children))
+                (when (and (eq (oref child type) 'process)
+                           (not (eq child section)))
+                  (magit-section-hide child))))
+            (magit-section-show section)))))))
 
 ;;;; Core execution functions
 
