@@ -150,12 +150,13 @@ Must be called while `madolt--refresh-cache' is bound."
         (unless (assoc cache-key (cdr madolt--refresh-cache))
           (let* ((buf (generate-new-buffer " *madolt-prefetch*"))
                  (process-environment env)
-                 (proc (make-process
-                        :name "madolt-prefetch"
-                        :buffer buf
-                        :command (cons madolt-dolt-executable args)
-                        :connection-type 'pipe
-                        :noquery t)))
+            (proc (make-process
+                         :name "madolt-prefetch"
+                         :buffer buf
+                         :command (cons madolt-dolt-executable args)
+                         :connection-type 'pipe
+                         :noquery t
+                         :sentinel #'ignore)))
             (process-put proc 'madolt-cache-key cache-key)
             (push proc all-procs)))))
     ;; Wait for all to complete (10s timeout)

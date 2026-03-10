@@ -154,24 +154,73 @@ needs 10, so we always fetch 10 and share the result."
 (defun madolt-status-refresh-buffer ()
   "Refresh the status buffer by running `madolt-status-sections-hook'.
 Prefetches independent dolt CLI commands in parallel before
-running the section hooks, so most queries hit cache."
+running the section hooks, so most queries hit cache.
+
+Uses a two-phase prefetch strategy:
+  Phase 1: 6 independent commands (branch, log, remote, status, stash)
+  Phase 2: dependent commands derived from phase 1 results
+           (upstream log ranges, per-table diffs, PK lookups)"
   (setq madolt--status-tables-cache nil)
   (setq madolt--upstream-ref-cache 'unset)
   (setq madolt--upstream-sections-inserted nil)
   (setq madolt--log-entries-cache nil)
-  ;; Prefetch independent CLI commands in parallel.
-  ;; These 6 commands are the ones that don't depend on each other.
-  ;; The unpushed/unpulled log-range commands depend on knowing the
-  ;; upstream ref, so they cannot be prefetched here.
+  ;; Phase 1: prefetch independent CLI commands in parallel.
   (madolt--prefetch
    '(("branch" "--show-current")
-     ("log" "-n" "10")
+     ("log" "--parents" "-n" "10")
      ("remote" "-v")
      ("branch" "-a")
      ("status")
      ("stash" "list")))
+  ;; Phase 2: now that status, branch, and remote data are cached,
+  ;; compute dependent values and prefetch the commands they need.
+  (madolt--status-prefetch-phase2)
   (magit-insert-section (status)
     (madolt-run-section-hook 'madolt-status-sections-hook)))
+
+(defun madolt--status-prefetch-phase2 ()
+  "Prefetch commands that depend on phase 1 results.
+Computes upstream ref and status tables from the cache, then
+launches parallel prefetch for:
+  - unpushed/unpulled commit log ranges
+  - per-table diff queries for staged/unstaged modified tables
+  - primary key lookups for those tables"
+  (let ((phase2-cmds nil))
+    ;; Upstream log ranges
+    (let ((upstream (madolt-upstream-ref)))
+      (when upstream
+        (push (list "log" "--parents" "-n" "100"
+                    (format "%s..HEAD" upstream))
+              phase2-cmds)
+        (push (list "log" "--parents" "-n" "100"
+                    (format "HEAD..%s" upstream))
+              phase2-cmds)))
+    ;; Per-table diff and PK queries
+    (let* ((tables (madolt-status-tables))
+           (pk-tables nil))
+      ;; Staged tables
+      (dolist (entry (alist-get 'staged tables))
+        (let ((table (car entry))
+              (status (cdr entry)))
+          (push (list "diff" "-r" "json" "--staged" table) phase2-cmds)
+          (when (member status '("modified" "renamed"))
+            (cl-pushnew table pk-tables :test #'equal))))
+      ;; Unstaged tables
+      (dolist (entry (alist-get 'unstaged tables))
+        (let ((table (car entry))
+              (status (cdr entry)))
+          (push (list "diff" "-r" "json" table) phase2-cmds)
+          (when (member status '("modified" "renamed"))
+            (cl-pushnew table pk-tables :test #'equal))))
+      ;; PK queries for modified/renamed tables
+      (dolist (table pk-tables)
+        (push (list "sql" "-q"
+                    (format "SELECT COLUMN_NAME FROM information_schema.key_column_usage WHERE table_name='%s' AND CONSTRAINT_NAME='PRIMARY' ORDER BY ORDINAL_POSITION"
+                            table)
+                    "-r" "json")
+              phase2-cmds)))
+    (when phase2-cmds
+      (madolt--prefetch (nreverse phase2-cmds)))))
 
 ;;;; Status header
 
