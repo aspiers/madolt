@@ -406,6 +406,167 @@
   "madolt-auto-show-more defaults to nil."
   (should-not madolt-auto-show-more))
 
+;;;; Point preservation across refresh
+
+(ert-deftest test-madolt-refresh-preserves-point-on-same-section ()
+  "After refresh, point stays on the same section if it still exists."
+  (madolt-with-test-database
+    (let ((render-variant 'both))
+      (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+                 (lambda ()
+                   (magit-insert-section (status)
+                     (magit-insert-section (unstaged)
+                       (magit-insert-heading "Unstaged changes")
+                       (magit-insert-section (table "users")
+                         (insert "  modified    users\n"))
+                       (when (eq render-variant 'both)
+                         (magit-insert-section (table "orders")
+                           (insert "  modified    orders\n"))))
+                     (magit-insert-section (staged)
+                       (magit-insert-heading "Staged changes")
+                       (magit-insert-section (table "products")
+                         (insert "  modified    products\n")))))))
+        (let ((buf (madolt-setup-buffer 'madolt-status-mode)))
+          (unwind-protect
+              (with-current-buffer buf
+                ;; Navigate to "orders" table entry
+                (goto-char (point-min))
+                (let ((found nil))
+                  (magit-section-show magit-root-section)
+                  (while (not (eobp))
+                    (when (and (magit-current-section)
+                               (eq (oref (magit-current-section) type) 'table)
+                               (equal (oref (magit-current-section) value) "orders"))
+                      (setq found (point))
+                      (goto-char (point-max)))
+                    (unless found (forward-line 1)))
+                  (should found)
+                  (goto-char found))
+                ;; Refresh — "orders" still exists
+                (madolt-refresh)
+                ;; Point should be on a table section with value "orders"
+                (should (magit-current-section))
+                (should (eq (oref (magit-current-section) type) 'table))
+                (should (equal (oref (magit-current-section) value) "orders")))
+            (kill-buffer buf)))))))
+
+(ert-deftest test-madolt-refresh-falls-back-to-sibling ()
+  "When section disappears, point moves to a sibling section."
+  (madolt-with-test-database
+    (let ((render-variant 'both))
+      (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+                 (lambda ()
+                   (magit-insert-section (status)
+                     (magit-insert-section (unstaged)
+                       (magit-insert-heading "Unstaged changes")
+                       (magit-insert-section (table "users")
+                         (insert "  modified    users\n"))
+                       (when (eq render-variant 'both)
+                         (magit-insert-section (table "orders")
+                           (insert "  modified    orders\n"))))))))
+        (let ((buf (madolt-setup-buffer 'madolt-status-mode)))
+          (unwind-protect
+              (with-current-buffer buf
+                ;; Navigate to "orders" table entry
+                (goto-char (point-min))
+                (let ((found nil))
+                  (magit-section-show magit-root-section)
+                  (while (not (eobp))
+                    (when (and (magit-current-section)
+                               (eq (oref (magit-current-section) type) 'table)
+                               (equal (oref (magit-current-section) value) "orders"))
+                      (setq found (point))
+                      (goto-char (point-max)))
+                    (unless found (forward-line 1)))
+                  (should found)
+                  (goto-char found))
+                ;; Remove "orders" from next render
+                (setq render-variant 'users-only)
+                (madolt-refresh)
+                ;; Point should NOT be at buffer start — should be on
+                ;; a remaining section (sibling "users" or parent "unstaged")
+                (should (> (point) (point-min)))
+                (should (magit-current-section))
+                ;; Should land on either the sibling table or the parent heading
+                (let ((type (oref (magit-current-section) type)))
+                  (should (memq type '(table unstaged)))))
+            (kill-buffer buf)))))))
+
+(ert-deftest test-madolt-refresh-falls-back-to-opposite-section ()
+  "When unstaged section disappears, point moves to staged (opposite)."
+  (madolt-with-test-database
+    (let ((render-variant 'unstaged))
+      (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+                 (lambda ()
+                   (magit-insert-section (status)
+                     (when (eq render-variant 'unstaged)
+                       (magit-insert-section (unstaged)
+                         (magit-insert-heading "Unstaged changes")
+                         (magit-insert-section (table "users")
+                           (insert "  modified    users\n"))))
+                     (magit-insert-section (staged)
+                       (magit-insert-heading "Staged changes")
+                       (magit-insert-section (table "products")
+                         (insert "  modified    products\n")))))))
+        (let ((buf (madolt-setup-buffer 'madolt-status-mode)))
+          (unwind-protect
+              (with-current-buffer buf
+                ;; Navigate to the unstaged section heading
+                (goto-char (point-min))
+                (let ((found nil))
+                  (magit-section-show magit-root-section)
+                  (while (not (eobp))
+                    (when (and (magit-current-section)
+                               (eq (oref (magit-current-section) type) 'unstaged))
+                      (setq found (point))
+                      (goto-char (point-max)))
+                    (unless found (forward-line 1)))
+                  (should found)
+                  (goto-char found))
+                ;; Remove the unstaged section
+                (setq render-variant 'staged-only)
+                (madolt-refresh)
+                ;; Point should land on the opposite section: staged
+                (should (magit-current-section))
+                (should (eq (oref (magit-current-section) type) 'staged)))
+            (kill-buffer buf)))))))
+
+(ert-deftest test-madolt-refresh-falls-back-to-point-min ()
+  "When no sections exist after refresh, point goes to point-min."
+  (madolt-with-test-database
+    (let ((render-variant 'full))
+      (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+                 (lambda ()
+                   (magit-insert-section (status)
+                     (if (eq render-variant 'full)
+                         (magit-insert-section (unstaged)
+                           (magit-insert-heading "Unstaged changes")
+                           (magit-insert-section (table "users")
+                             (insert "  modified    users\n")))
+                       (insert "Nothing to show\n"))))))
+        (let ((buf (madolt-setup-buffer 'madolt-status-mode)))
+          (unwind-protect
+              (with-current-buffer buf
+                ;; Navigate to "users" table
+                (goto-char (point-min))
+                (let ((found nil))
+                  (magit-section-show magit-root-section)
+                  (while (not (eobp))
+                    (when (and (magit-current-section)
+                               (eq (oref (magit-current-section) type) 'table)
+                               (equal (oref (magit-current-section) value) "users"))
+                      (setq found (point))
+                      (goto-char (point-max)))
+                    (unless found (forward-line 1)))
+                  (should found)
+                  (goto-char found))
+                ;; Refresh with empty content (no matching sections)
+                (setq render-variant 'empty)
+                (madolt-refresh)
+                ;; Point should be at the start
+                (should (= (point) (point-min))))
+            (kill-buffer buf)))))))
+
 ;;;; Display
 
 (ert-deftest test-madolt--buffer-name ()

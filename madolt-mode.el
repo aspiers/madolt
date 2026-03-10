@@ -336,7 +336,6 @@ log per-section timing and cache statistics to *Messages*."
                                       (list (cons 0 0))))
            (refresh-fn (madolt--refresh-function))
            (section (magit-current-section))
-           (section-ident (and section (magit-section-ident section)))
            (rel-pos (and section
                          (magit-section-get-relative-position section))))
       (when madolt-refresh-verbose
@@ -357,16 +356,13 @@ log per-section timing and cache statistics to *Messages*."
           (erase-buffer)
           (save-excursion
             (funcall refresh-fn)))
-        ;; Restore position
-        (when section-ident
-          (if-let ((target (magit-get-section section-ident)))
-              (progn
-                (goto-char (oref target start))
-                (when rel-pos
-                  (apply #'magit-section-goto-successor
-                         section rel-pos)))
-            ;; Section not found; go to beginning
-            (goto-char (point-min))))
+        ;; Restore position: delegate to magit-section-goto-successor
+        ;; which tries --same (find identical section) then --related
+        ;; (opposite section, sibling, or parent).
+        (unless (and section rel-pos
+                     (apply #'magit-section-goto-successor
+                            section rel-pos))
+          (goto-char (point-min)))
         ;; Apply section visibility: show/hide overlays based on
         ;; the `hidden' slot (which was set from the visibility
         ;; cache during section creation).  Bind
