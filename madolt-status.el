@@ -152,11 +152,24 @@ needs 10, so we always fetch 10 and share the result."
 ;;;; Refresh
 
 (defun madolt-status-refresh-buffer ()
-  "Refresh the status buffer by running `madolt-status-sections-hook'."
+  "Refresh the status buffer by running `madolt-status-sections-hook'.
+Prefetches independent dolt CLI commands in parallel before
+running the section hooks, so most queries hit cache."
   (setq madolt--status-tables-cache nil)
   (setq madolt--upstream-ref-cache 'unset)
   (setq madolt--upstream-sections-inserted nil)
   (setq madolt--log-entries-cache nil)
+  ;; Prefetch independent CLI commands in parallel.
+  ;; These 6 commands are the ones that don't depend on each other.
+  ;; The unpushed/unpulled log-range commands depend on knowing the
+  ;; upstream ref, so they cannot be prefetched here.
+  (madolt--prefetch
+   '(("branch" "--show-current")
+     ("log" "-n" "10")
+     ("remote" "-v")
+     ("branch" "-a")
+     ("status")
+     ("stash" "list")))
   (magit-insert-section (status)
     (madolt-run-section-hook 'madolt-status-sections-hook)))
 

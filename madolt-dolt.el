@@ -104,14 +104,82 @@ Cache hits/misses are counted in the car of `madolt--refresh-cache'."
   "Execute dolt with ARGS synchronously.
 Return a cons cell (EXIT-CODE . OUTPUT-STRING).
 Global arguments from `madolt-dolt-global-arguments' are prepended.
-Nil arguments are removed and nested lists are flattened."
+Nil arguments are removed and nested lists are flattened.
+When `madolt--refresh-cache' is active, the raw result is cached
+under a `raw'-prefixed key so that repeated calls with the same
+arguments avoid process startup (~170ms per call)."
   (let* ((args (madolt--flatten-args
                 (append madolt-dolt-global-arguments args)))
-         (process-environment (cons "NO_COLOR=1" process-environment)))
-    (with-temp-buffer
-      (let ((exit (apply #'call-process
-                         madolt-dolt-executable nil t nil args)))
-        (cons exit (buffer-string))))))
+         (cache-key (and madolt--refresh-cache
+                         (cons 'raw (cons default-directory args)))))
+    (if-let ((hit (and cache-key
+                       (assoc cache-key (cdr madolt--refresh-cache)))))
+        (progn
+          (cl-incf (caar madolt--refresh-cache))
+          (cdr hit))
+      (when cache-key
+        (cl-incf (cdar madolt--refresh-cache)))
+      (let* ((process-environment (cons "NO_COLOR=1" process-environment))
+             (result (with-temp-buffer
+                       (let ((exit (apply #'call-process
+                                          madolt-dolt-executable nil t nil
+                                          args)))
+                         (cons exit (buffer-string))))))
+        (when cache-key
+          (push (cons cache-key result) (cdr madolt--refresh-cache)))
+        result))))
+
+;;;; Parallel prefetch
+
+(defun madolt--prefetch (commands)
+  "Launch all COMMANDS as async dolt processes, wait, populate cache.
+COMMANDS is a list of argument lists (each is what you would pass
+to `madolt--run').  All processes run in parallel; results are
+stored in `madolt--refresh-cache' under `raw'-prefixed keys so
+that subsequent `madolt--run' calls find them already cached.
+Must be called while `madolt--refresh-cache' is bound."
+  (let* ((dir default-directory)
+         (global-args madolt-dolt-global-arguments)
+         (env (cons "NO_COLOR=1" process-environment))
+         (all-procs nil))
+    ;; Launch all processes in parallel
+    (dolist (cmd-args commands)
+      (let* ((args (madolt--flatten-args (append global-args cmd-args)))
+             (cache-key (cons 'raw (cons dir args))))
+        ;; Skip if already cached
+        (unless (assoc cache-key (cdr madolt--refresh-cache))
+          (let* ((buf (generate-new-buffer " *madolt-prefetch*"))
+                 (process-environment env)
+                 (proc (make-process
+                        :name "madolt-prefetch"
+                        :buffer buf
+                        :command (cons madolt-dolt-executable args)
+                        :connection-type 'pipe
+                        :noquery t)))
+            (process-put proc 'madolt-cache-key cache-key)
+            (push proc all-procs)))))
+    ;; Wait for all to complete (10s timeout)
+    (let ((deadline (+ (float-time) 10.0))
+          (live all-procs))
+      (while (and live (< (float-time) deadline))
+        (setq live (cl-remove-if-not #'process-live-p live))
+        (when live
+          (accept-process-output nil 0.01)))
+      ;; Kill any stragglers
+      (dolist (proc live)
+        (when (process-live-p proc)
+          (kill-process proc))))
+    ;; Collect results into cache
+    (dolist (proc all-procs)
+      (let ((cache-key (process-get proc 'madolt-cache-key))
+            (buf (process-buffer proc)))
+        (when (buffer-live-p buf)
+          (let ((exit (process-exit-status proc))
+                (output (with-current-buffer buf (buffer-string))))
+            (cl-incf (cdar madolt--refresh-cache))
+            (push (cons cache-key (cons exit output))
+                  (cdr madolt--refresh-cache)))
+          (kill-buffer buf))))))
 
 (defun madolt-dolt-string (&rest args)
   "Execute dolt with ARGS, returning the first line of output.

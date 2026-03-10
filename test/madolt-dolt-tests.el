@@ -606,5 +606,48 @@ remote commits reliably."
   (madolt-with-test-database
     (should (null (madolt-unpulled-commits)))))
 
+;;;; Prefetch
+
+(ert-deftest test-madolt-prefetch-populates-cache ()
+  "madolt--prefetch runs commands in parallel and caches results."
+  (madolt-with-test-database
+    (let ((madolt--refresh-cache (list (cons 0 0))))
+      (madolt--prefetch '(("branch" "--show-current")
+                          ("status")))
+      ;; Both results should now be in the cache
+      (let ((branch (madolt--run "branch" "--show-current"))
+            (status (madolt--run "status")))
+        ;; Results should come from cache (hits > 0)
+        (should (> (caar madolt--refresh-cache) 0))
+        (should (zerop (car branch)))
+        (should (string-match-p "main" (cdr branch)))
+        (should (zerop (car status)))
+        (should (string-match-p "On branch" (cdr status)))))))
+
+(ert-deftest test-madolt-prefetch-skips-cached ()
+  "madolt--prefetch skips commands already in the cache."
+  (madolt-with-test-database
+    (let ((madolt--refresh-cache (list (cons 0 0))))
+      ;; Pre-populate cache with a branch result
+      (madolt--run "branch" "--show-current")
+      (let ((misses-before (cdar madolt--refresh-cache)))
+        ;; Prefetch should skip branch (already cached) but run status
+        (madolt--prefetch '(("branch" "--show-current")
+                            ("status")))
+        ;; Only 1 new miss (status), not 2
+        (should (= (- (cdar madolt--refresh-cache) misses-before) 1))))))
+
+(ert-deftest test-madolt-run-caches-within-refresh ()
+  "madolt--run caches raw results when refresh-cache is active."
+  (madolt-with-test-database
+    (let ((madolt--refresh-cache (list (cons 0 0))))
+      ;; First call: miss
+      (madolt--run "branch" "--show-current")
+      (should (= (cdar madolt--refresh-cache) 1))
+      (should (= (caar madolt--refresh-cache) 0))
+      ;; Second call: hit
+      (madolt--run "branch" "--show-current")
+      (should (= (caar madolt--refresh-cache) 1)))))
+
 (provide 'madolt-dolt-tests)
 ;;; madolt-dolt-tests.el ends here
