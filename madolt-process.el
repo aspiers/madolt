@@ -133,25 +133,26 @@ space, then the command string."
               (magit-insert-section--parent
                (or madolt-process--root-section magit-root-section)))
           (goto-char (1- (point-max)))
-          (let ((section
-                 (magit-insert-section (process)
-                   (insert (propertize (format "%3s " exit-code)
-                                       'font-lock-face
-                                       (if (zerop exit-code)
-                                           'madolt-process-ok
-                                         'madolt-process-ng)))
-                   (magit-insert-heading
-                     (propertize
-                      (concat (file-name-nondirectory madolt-dolt-executable)
-                              " "
-                              (mapconcat #'shell-quote-argument args " "))
-                      'font-lock-face 'madolt-process-heading))
-                   (magit-insert-section-body
-                     (unless (string-empty-p output)
-                       (insert output)
-                       (unless (string-suffix-p "\n" output)
-                         (insert "\n")))
-                     (insert "\n")))))
+          (let* ((has-output (not (string-empty-p output)))
+                 (section
+                  (magit-insert-section (process)
+                    (insert (propertize (format "%3s " exit-code)
+                                        'font-lock-face
+                                        (if (zerop exit-code)
+                                            'madolt-process-ok
+                                          'madolt-process-ng)))
+                    (magit-insert-heading
+                      (propertize
+                       (concat (file-name-nondirectory madolt-dolt-executable)
+                               " "
+                               (mapconcat #'shell-quote-argument args " "))
+                       'font-lock-face 'madolt-process-heading))
+                    (when has-output
+                      (magit-insert-section-body
+                        (insert output)
+                        (unless (string-suffix-p "\n" output)
+                          (insert "\n"))
+                        (insert "\n"))))))
             ;; Collapse all previously visible sections so only
             ;; the newest command is expanded.
             (when-let ((root (or madolt-process--root-section
@@ -160,7 +161,8 @@ space, then the command string."
                 (when (and (eq (oref child type) 'process)
                            (not (eq child section)))
                   (magit-section-hide child))))
-            (magit-section-show section)))))))
+            (when has-output
+              (magit-section-show section))))))))
 
 ;;;; Core execution functions
 
