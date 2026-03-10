@@ -70,6 +70,9 @@ dolt sql -q "INSERT INTO projects VALUES
   (2, 'New Website', 2, 'planning'),
   (3, 'API Redesign', 5, 'active')"
 
+# 4. Configure a remote
+dolt remote add origin aspiers/madolt-demo-db
+
 echo "Demo repo ready at $DEMO_DIR"
 echo ""
 dolt status

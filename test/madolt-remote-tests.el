@@ -312,5 +312,71 @@
         (should fetch-called)
         (should (equal (cadr fetch-called) "second"))))))
 
+;;;; Remote configure URL
+
+(ert-deftest test-madolt-remote-manage-has-configure-suffix ()
+  "madolt-remote-manage should have a \\='C\\=' suffix for configuring URL."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-remote-manage)))
+    (should (assoc "C" suffixes))
+    (should (eq (cdr (assoc "C" suffixes))
+                'madolt-remote-configure-url-command))))
+
+(ert-deftest test-madolt-remote-configure-url-changes-url ()
+  "madolt-remote-configure-url-command should change a remote's URL."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-remote-add "origin" "file:///tmp/old-url")
+    (should (string= (cdr (assoc "origin" (madolt-remotes) #'string=))
+                      "file:///tmp/old-url"))
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-remote-configure-url-command "origin" "file:///tmp/new-url"))
+    (should (string= (cdr (assoc "origin" (madolt-remotes) #'string=))
+                      "file:///tmp/new-url"))))
+
+(ert-deftest test-madolt-remote-configure-url-empty-errors ()
+  "madolt-remote-configure-url-command should error on empty URL."
+  (should-error (madolt-remote-configure-url-command "origin" "")
+                :type 'user-error))
+
+(ert-deftest test-madolt-remote-configure-url-unchanged-is-noop ()
+  "madolt-remote-configure-url-command should do nothing when URL unchanged."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-remote-add "origin" "file:///tmp/same-url")
+    (let (remove-called)
+      (cl-letf (((symbol-function 'madolt-remote-remove)
+                 (lambda (name)
+                   (setq remove-called name)
+                   '(0 . ""))))
+        (madolt-remote-configure-url-command "origin" "file:///tmp/same-url")
+        ;; Should not have called remove since URL is the same
+        (should-not remove-called)))))
+
+(ert-deftest test-madolt-remote-configure-url-restores-on-failure ()
+  "On add failure after remove, the old remote should be restored."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-remote-add "origin" "file:///tmp/original")
+    (let (restore-called)
+      (cl-letf (((symbol-function 'madolt-remote-remove)
+                 (lambda (_name) '(0 . "")))
+                ((symbol-function 'madolt-remote-add)
+                 (lambda (name url)
+                   (if (string= url "file:///tmp/bad-url")
+                       '(1 . "error adding")
+                     (setq restore-called (cons name url))
+                     '(0 . ""))))
+                ((symbol-function 'madolt-refresh) #'ignore))
+        (should-error
+         (madolt-remote-configure-url-command "origin" "file:///tmp/bad-url")
+         :type 'user-error)
+        ;; Should have tried to restore the old URL
+        (should restore-called)
+        (should (string= (car restore-called) "origin"))
+        (should (string= (cdr restore-called) "file:///tmp/original"))))))
+
 (provide 'madolt-remote-tests)
 ;;; madolt-remote-tests.el ends here

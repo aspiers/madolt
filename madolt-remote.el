@@ -160,8 +160,9 @@ ARGS are additional arguments from the transient."
   ["Arguments for add"
    ("-f" "Fetch after add" "-f")]
   ["Actions"
-   ("a" "Add"    madolt-remote-add-command)
-   ("k" "Remove" madolt-remote-remove-command)])
+   ("a" "Add"           madolt-remote-add-command)
+   ("C" "Configure URL" madolt-remote-configure-url-command)
+   ("k" "Remove"        madolt-remote-remove-command)])
 
 (defun madolt-remote-add-command (name url &optional args)
   "Add a remote named NAME pointing to URL.
@@ -196,6 +197,37 @@ ARGS are additional arguments from the transient."
             (message "Removed remote %s" name))
         (user-error "Failed to remove remote %s: %s"
                     name (string-trim (cdr result)))))))
+
+(defun madolt-remote-configure-url-command (name new-url)
+  "Change the URL of remote NAME to NEW-URL.
+Dolt has no `set-url' subcommand, so this removes and re-adds
+the remote."
+  (interactive
+   (let* ((name (madolt-remote--read-remote "Configure remote: "))
+          (remotes (madolt-remotes))
+          (old-url (cdr (assoc name remotes #'string=)))
+          (new-url (read-string (format "URL for %s: " name) old-url)))
+     (list name new-url)))
+  (when (string-empty-p new-url)
+    (user-error "Remote URL cannot be empty"))
+  (let* ((remotes (madolt-remotes))
+         (old-url (cdr (assoc name remotes #'string=))))
+    (if (string= new-url old-url)
+        (message "URL for %s unchanged" name)
+      (let ((rm-result (madolt-remote-remove name)))
+        (unless (zerop (car rm-result))
+          (user-error "Failed to remove remote %s: %s"
+                      name (string-trim (cdr rm-result)))))
+      (let ((add-result (madolt-remote-add name new-url)))
+        (if (zerop (car add-result))
+            (progn
+              (madolt-refresh)
+              (message "Remote %s URL changed: %s -> %s"
+                       name old-url new-url))
+          ;; Re-add failed; try to restore the old remote
+          (madolt-remote-add name old-url)
+          (user-error "Failed to set URL for %s: %s"
+                      name (string-trim (cdr add-result))))))))
 
 (provide 'madolt-remote)
 ;;; madolt-remote.el ends here
