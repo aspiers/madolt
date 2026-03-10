@@ -57,7 +57,7 @@
 ;;;; Keybinding
 
 (ert-deftest test-madolt-mode-map-has-reset ()
-  "The mode map should bind 'X' to madolt-reset."
+  "The mode map should bind \\='X\\=' to madolt-reset."
   (should (eq (keymap-lookup madolt-mode-map "X") #'madolt-reset)))
 
 ;;;; Soft reset — calls dolt with correct args

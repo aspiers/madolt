@@ -66,6 +66,7 @@
 (declare-function madolt-conflicts "madolt-conflicts" ())
 (declare-function madolt-sql-query "madolt-sql" (query))
 (declare-function madolt-dispatch "madolt" ())
+(declare-function madolt-status-jump "madolt-status" ())
 (declare-function madolt-visit-thing "madolt-status" ())
 
 ;;;; Refresh verbosity
@@ -223,6 +224,7 @@ copies the full commit hash."
 (let ((map madolt-mode-map))
   ;; Buffer
   (keymap-set map "g"   #'madolt-refresh)
+  (keymap-set map "j"   #'madolt-status-jump)
   (keymap-set map "q"   #'quit-window)
   (keymap-set map "$"   #'madolt-process-buffer)
   ;; Help

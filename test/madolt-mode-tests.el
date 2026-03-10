@@ -171,6 +171,7 @@
   "All documented keybindings exist in madolt-mode-map."
   (let ((expected-bindings
          '(("g"   . madolt-refresh)
+           ("j"   . madolt-status-jump)
            ("q"   . quit-window)
            ("$"   . madolt-process-buffer)
            ("?"   . madolt-dispatch)

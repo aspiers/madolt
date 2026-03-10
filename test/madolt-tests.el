@@ -74,11 +74,11 @@
   "madolt-dispatch is a transient prefix command."
   (should (get 'madolt-dispatch 'transient--prefix)))
 
-(ert-deftest test-madolt-dispatch-has-status ()
-  "The dispatch menu has a \"j\" binding for status."
+(ert-deftest test-madolt-dispatch-has-jump ()
+  "The dispatch menu has a \"j\" binding for jump."
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
     (should (assoc "j" suffixes))
-    (should (eq (cdr (assoc "j" suffixes)) 'madolt-status))))
+    (should (eq (cdr (assoc "j" suffixes)) 'madolt-status-jump))))
 
 (ert-deftest test-madolt-dispatch-has-diff ()
   "The dispatch menu has a \"d\" binding for diff."

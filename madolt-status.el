@@ -399,6 +399,36 @@ a sibling or parent."
       ;; Fallback before madolt-diff.el is implemented
       (insert "      (diff not yet available)\n"))))
 
+;;;; Jump to section
+
+(defun madolt-status-jump ()
+  "Jump to a section in the status buffer.
+Offers a completing-read of visible top-level section headings."
+  (interactive)
+  (unless (derived-mode-p 'madolt-mode)
+    (user-error "Not in a madolt buffer"))
+  (let ((candidates nil)
+        (root (magit-current-section)))
+    ;; Walk up to the root section
+    (while (oref root parent)
+      (setq root (oref root parent)))
+    ;; Collect top-level children with headings
+    (dolist (child (oref root children))
+      (let* ((start (oref child start))
+             (content (oref child content))
+             (heading (when (and start content (< start content))
+                        (string-trim
+                         (buffer-substring-no-properties start content)))))
+        (when (and heading (not (string-empty-p heading)))
+          (push (cons heading start) candidates))))
+    (setq candidates (nreverse candidates))
+    (if (null candidates)
+        (user-error "No sections to jump to")
+      (let* ((choice (completing-read "Jump to: " candidates nil t))
+             (pos (cdr (assoc choice candidates))))
+        (when pos
+          (goto-char pos))))))
+
 ;;;; Visit-thing
 
 (defun madolt-visit-thing ()

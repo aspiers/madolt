@@ -354,7 +354,7 @@ The buffer is current during BODY and killed afterward."
     (should (eq (cdr (assoc "x" suffixes)) 'madolt-clean))))
 
 (ert-deftest test-madolt-mode-map-has-clean ()
-  "The mode map should bind 'x' to madolt-clean."
+  "The mode map should bind \\='x\\=' to madolt-clean."
   (should (eq (keymap-lookup madolt-mode-map "x") #'madolt-clean)))
 
 (provide 'madolt-apply-tests)

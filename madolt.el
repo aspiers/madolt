@@ -124,7 +124,7 @@ Interactively with a prefix argument, prompt for the directory."
   ["Essential commands"
    :if-derived madolt-mode
    [("g"   "Refresh buffer"          madolt-refresh)
-    ("j"   "Status"                  madolt-status)
+    ("j"   "Jump to section"         madolt-status-jump)
     ("q"   "Bury buffer"             quit-window)]
    [("<tab>"    "Toggle section"     magit-section-toggle)
     ("<return>" "Visit thing"        madolt-visit-thing)
