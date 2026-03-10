@@ -409,5 +409,23 @@ Convention: for `madolt-foo-mode', the refresh function is
          (fn (intern fn-name)))
     (and (functionp fn) fn)))
 
+;;;; Section toggle caching
+
+(defun madolt--section-toggle-with-cache (orig-fn &rest args)
+  "Activate `madolt--refresh-cache' around ORIG-FN for madolt buffers.
+When expanding a section (e.g. Tab on a commit or table diff),
+the washer may make multiple dolt CLI calls for the same data.
+Without a cache each call costs ~170ms of process startup.  This
+advice ensures duplicate queries within a single toggle are
+served from cache."
+  (if (and (derived-mode-p 'madolt-mode)
+           (not madolt--refresh-cache))
+      (let ((madolt--refresh-cache (list (cons 0 0))))
+        (apply orig-fn args))
+    (apply orig-fn args)))
+
+(advice-add 'magit-section-toggle :around
+            #'madolt--section-toggle-with-cache)
+
 (provide 'madolt-mode)
 ;;; madolt-mode.el ends here
