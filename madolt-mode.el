@@ -131,16 +131,20 @@ navigation, expand/collapse, visibility levels, and highlighting."
 
 ;;;; Show more (row-limit expansion)
 
-(defun madolt-insert-show-more-button (shown total mode-map double-fn)
+(defun madolt-insert-show-more-button (shown total mode-map double-fn
+                                            &optional indent)
   "Insert a \"show more\" button section when results are truncated.
 SHOWN is the number of items currently displayed.
 TOTAL is the total number available, or nil if unknown.
 MODE-MAP is the keymap symbol (e.g. \\='madolt-mode-map) used to
 resolve the keybinding in the button label.
 DOUBLE-FN is the symbol of the function that doubles the limit
-and refreshes."
+and refreshes.
+INDENT is an optional string prefix to align the button with the
+items above it."
   (let ((next (min (* shown 2) (or total (* shown 2)))))
     (magit-insert-section (longer)
+      (when indent (insert indent))
       (insert-text-button
        (substitute-command-keys
         (format "Type \\<%s>\\[%s] to show more%s"

@@ -72,20 +72,26 @@
 ;;;; Buffer display
 
 (defun madolt-blame--show (table rev)
-  "Show blame for TABLE at optional REV."
+  "Show blame for TABLE at optional REV.
+If a buffer already exists for this table and revision, switch to
+it without refreshing.  Use \\`g' to refresh manually."
   (let* ((db-dir (or (madolt-database-dir)
                      (user-error "Not in a Dolt database")))
-         (buf-name (madolt--buffer-name 'madolt-blame-mode db-dir))
-         (buffer (or (get-buffer buf-name)
-                     (generate-new-buffer buf-name))))
-    (with-current-buffer buffer
-      (unless (derived-mode-p 'madolt-blame-mode)
-        (madolt-blame-mode))
-      (setq default-directory db-dir)
-      (setq madolt-buffer-database-dir db-dir)
-      (setq madolt-blame--table table)
-      (setq madolt-blame--rev rev)
-      (madolt-refresh))
+         (db-name (file-name-nondirectory
+                   (directory-file-name db-dir)))
+         (buf-name (format "*madolt-blame: %s %s%s*"
+                           db-name table
+                           (if rev (format " %s" rev) "")))
+         (existing (get-buffer buf-name))
+         (buffer (or existing (generate-new-buffer buf-name))))
+    (unless existing
+      (with-current-buffer buffer
+        (madolt-blame-mode)
+        (setq default-directory db-dir)
+        (setq madolt-buffer-database-dir db-dir)
+        (setq madolt-blame--table table)
+        (setq madolt-blame--rev rev)
+        (madolt-refresh)))
     (madolt-display-buffer buffer)
     buffer))
 

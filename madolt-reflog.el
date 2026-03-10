@@ -85,20 +85,28 @@
 
 (defun madolt-reflog--show (ref all)
   "Show reflog for REF in a reflog buffer.
-When ALL is non-nil, show all refs including hidden ones."
+When ALL is non-nil, show all refs including hidden ones.
+If a buffer already exists for this ref, switch to it without
+refreshing.  Use \\`g' to refresh manually."
   (let* ((db-dir (or (madolt-database-dir)
                      (user-error "Not in a Dolt database")))
-         (buf-name (madolt--buffer-name 'madolt-reflog-mode db-dir))
-         (buffer (or (get-buffer buf-name)
-                     (generate-new-buffer buf-name))))
-    (with-current-buffer buffer
-      (unless (derived-mode-p 'madolt-reflog-mode)
-        (madolt-reflog-mode))
-      (setq default-directory db-dir)
-      (setq madolt-buffer-database-dir db-dir)
-      (setq madolt-reflog--ref ref)
-      (setq madolt-reflog--all all)
-      (madolt-refresh))
+         (db-name (file-name-nondirectory
+                   (directory-file-name db-dir)))
+         (buf-name (format "*madolt-reflog: %s %s*"
+                           db-name
+                           (cond (all "all")
+                                 (ref ref)
+                                 (t "HEAD"))))
+         (existing (get-buffer buf-name))
+         (buffer (or existing (generate-new-buffer buf-name))))
+    (unless existing
+      (with-current-buffer buffer
+        (madolt-reflog-mode)
+        (setq default-directory db-dir)
+        (setq madolt-buffer-database-dir db-dir)
+        (setq madolt-reflog--ref ref)
+        (setq madolt-reflog--all all)
+        (madolt-refresh)))
     (madolt-display-buffer buffer)
     buffer))
 

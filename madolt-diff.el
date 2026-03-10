@@ -280,23 +280,44 @@ ARGS is the list of transient arguments.
 REVISIONS is a cons (REV-A . REV-B) or nil.
 TABLE is a single table name or nil.
 RAW-MODE is non-nil for raw tabular display.
-STAGED is non-nil for showing staged changes."
+STAGED is non-nil for showing staged changes.
+If a buffer already exists with the same parameters, switch to it
+without refreshing.  Use \\`g' to refresh manually."
   (let* ((db-dir (or (madolt-database-dir)
                      (user-error "Not in a Dolt database")))
-         (buf-name (madolt--buffer-name 'madolt-diff-mode db-dir))
-         (buffer (or (get-buffer buf-name)
-                     (generate-new-buffer buf-name))))
-    (with-current-buffer buffer
-      (unless (derived-mode-p 'madolt-diff-mode)
-        (madolt-diff-mode))
-      (setq default-directory db-dir)
-      (setq madolt-buffer-database-dir db-dir)
-      (setq madolt-diff-args args)
-      (setq madolt-diff-raw-mode raw-mode)
-      (setq madolt-diff--revisions revisions)
-      (setq madolt-diff--table table)
-      (setq madolt-diff--staged staged)
-      (madolt-refresh))
+         (db-name (file-name-nondirectory
+                   (directory-file-name db-dir)))
+         (buf-name (if revisions
+                       (format "*madolt-diff: %s %s..%s%s*"
+                               db-name
+                               (car revisions) (cdr revisions)
+                               (if table (format " %s" table) ""))
+                     (madolt--buffer-name 'madolt-diff-mode db-dir)))
+         (existing (get-buffer buf-name))
+         (buffer (or existing (generate-new-buffer buf-name)))
+         ;; Reuse without refresh only for between-commits diffs
+         ;; (immutable); working tree diffs always need refreshing.
+         (same-params (and existing
+                           revisions  ; only immutable diffs
+                           (with-current-buffer existing
+                             (and (derived-mode-p 'madolt-diff-mode)
+                                  (equal madolt-diff-args args)
+                                  (equal madolt-diff-raw-mode raw-mode)
+                                  (equal madolt-diff--revisions revisions)
+                                  (equal madolt-diff--table table)
+                                  (equal madolt-diff--staged staged))))))
+    (unless same-params
+      (with-current-buffer buffer
+        (unless (derived-mode-p 'madolt-diff-mode)
+          (madolt-diff-mode))
+        (setq default-directory db-dir)
+        (setq madolt-buffer-database-dir db-dir)
+        (setq madolt-diff-args args)
+        (setq madolt-diff-raw-mode raw-mode)
+        (setq madolt-diff--revisions revisions)
+        (setq madolt-diff--table table)
+        (setq madolt-diff--staged staged)
+        (madolt-refresh)))
     (madolt-display-buffer buffer)
     buffer))
 
@@ -375,7 +396,8 @@ When omitted, uses `madolt-diff--row-limit' or `madolt-diff-max-rows'."
           (when (and limit (> total limit))
             (madolt-insert-show-more-button
              shown total
-             'madolt-mode-map 'madolt-diff-double-limit))))
+             'madolt-mode-map 'madolt-diff-double-limit
+             madolt-diff--indent))))
       (insert "\n"))))
 
 ;;;; Diff statistics
@@ -939,7 +961,8 @@ content appears under a table heading in the status buffer."
               (when (and limit (> total limit))
                 (madolt-insert-show-more-button
                  shown total
-                 'madolt-mode-map 'madolt-diff-double-limit)))))))))
+                 'madolt-mode-map 'madolt-diff-double-limit
+                 madolt-diff--indent)))))))))
 
 ;;;; Table name completion
 

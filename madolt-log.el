@@ -156,22 +156,33 @@ ARGS are additional arguments from the transient."
 ;;;; Log display
 
 (defun madolt-log--show (rev args)
-  "Show log for REV with ARGS in a log buffer."
+  "Show log for REV with ARGS in a log buffer.
+If a buffer already exists with the same parameters, switch to it
+without refreshing.  Use \\`g' to refresh manually."
   (let* ((db-dir (or (madolt-database-dir)
                      (user-error "Not in a Dolt database")))
-         (limit (madolt-log--extract-limit args))
-         (buf-name (madolt--buffer-name 'madolt-log-mode db-dir))
-         (buffer (or (get-buffer buf-name)
-                     (generate-new-buffer buf-name))))
-    (with-current-buffer buffer
-      (unless (derived-mode-p 'madolt-log-mode)
-        (madolt-log-mode))
-      (setq default-directory db-dir)
-      (setq madolt-buffer-database-dir db-dir)
-      (setq madolt-log--rev rev)
-      (setq madolt-log--args args)
-      (setq madolt-log--limit (or limit 25))
-      (madolt-refresh))
+         (limit (or (madolt-log--extract-limit args) 25))
+         (db-name (file-name-nondirectory
+                   (directory-file-name db-dir)))
+         (buf-name (format "*madolt-log: %s %s*" db-name (or rev "HEAD")))
+         (existing (get-buffer buf-name))
+         (buffer (or existing (generate-new-buffer buf-name)))
+         (same-params (and existing
+                           (with-current-buffer existing
+                             (and (derived-mode-p 'madolt-log-mode)
+                                  (equal madolt-log--rev rev)
+                                  (equal madolt-log--args args)
+                                  (equal madolt-log--limit limit))))))
+    (unless same-params
+      (with-current-buffer buffer
+        (unless (derived-mode-p 'madolt-log-mode)
+          (madolt-log-mode))
+        (setq default-directory db-dir)
+        (setq madolt-buffer-database-dir db-dir)
+        (setq madolt-log--rev rev)
+        (setq madolt-log--args args)
+        (setq madolt-log--limit limit)
+        (madolt-refresh)))
     (madolt-display-buffer buffer)
     buffer))
 
@@ -373,7 +384,9 @@ Shows per-table row-level diffs, matching the status buffer style."
 ;;;; Show commit (RET handler)
 
 (defun madolt-show-commit (hash)
-  "Show commit HASH in a revision buffer."
+  "Show commit HASH in a revision buffer.
+If a buffer already exists for this commit, switch to it without
+refreshing.  Use \\`g' to refresh manually."
   (interactive
    (list (oref (magit-current-section) value)))
   (let* ((db-dir (or (madolt-database-dir)
@@ -382,15 +395,15 @@ Shows per-table row-level diffs, matching the status buffer style."
                            (file-name-nondirectory
                             (directory-file-name db-dir))
                            (substring hash 0 (min 8 (length hash)))))
-         (buffer (or (get-buffer buf-name)
-                     (generate-new-buffer buf-name))))
-    (with-current-buffer buffer
-      (unless (derived-mode-p 'madolt-revision-mode)
-        (madolt-revision-mode))
-      (setq default-directory db-dir)
-      (setq madolt-buffer-database-dir db-dir)
-      (setq madolt-revision--hash hash)
-      (madolt-refresh))
+         (existing (get-buffer buf-name))
+         (buffer (or existing (generate-new-buffer buf-name))))
+    (unless existing
+      (with-current-buffer buffer
+        (madolt-revision-mode)
+        (setq default-directory db-dir)
+        (setq madolt-buffer-database-dir db-dir)
+        (setq madolt-revision--hash hash)
+        (madolt-refresh)))
     (madolt-display-buffer buffer)
     buffer))
 
