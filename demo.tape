@@ -35,21 +35,21 @@ Show
 
 # === Scene 1: Status buffer overview ===
 # Full status: Head, Untracked, Unstaged, Staged, Recent commits
-Sleep 3s
+Sleep 2s
 
 # === Scene 2: Navigate to unstaged table and view inline diff ===
 # Cursor starts on L1 (Head:). Navigate to departments entry (L7).
 Down 6
-Sleep 800ms
+Sleep 500ms
 
 # Expand inline diff for departments (Tab on a table entry shows row changes)
 Tab
-Sleep 3s
+Sleep 2s
 
 # === Scene 3: Stage the unstaged table ===
 # Cursor is on L7 (departments entry). Press 's' to stage it.
 Type "s"
-Sleep 3s
+Sleep 2s
 
 # Buffer refreshed: departments moved to Staged changes.
 # Cursor returned to L1. Navigate to projects entry (L4).
@@ -59,37 +59,37 @@ Sleep 500ms
 
 # === Scene 4: Stage the untracked table ===
 Type "s"
-Sleep 3s
+Sleep 2s
 
 # === Scene 5: Commit all staged changes ===
 # Press 'c' for commit transient menu
 Type "c"
-Sleep 1.5s
+Sleep 1s
 
 # Press 'c' to open the commit message buffer
 Type "c"
-Sleep 1.5s
+Sleep 1s
 
 # Type commit message (summary + body) in the dedicated buffer
 Type "Add projects table, update department budgets"
 Enter
 Enter
 Type "Stage the new projects table and department budget changes."
-Sleep 1s
+Sleep 700ms
 
 # Finalize the commit with C-c C-c
 Ctrl+C
 Ctrl+C
-Sleep 3s
+Sleep 2s
 
 # === Scene 6: View the commit log ===
 # Press 'l' for log transient
 Type "l"
-Sleep 1.5s
+Sleep 1s
 
 # Press 'l' for current branch log
 Type "l"
-Sleep 2.5s
+Sleep 1.7s
 
 # Log opens in bottom window with margin annotations (author, date).
 # Cursor is on L1 (root section). Move to first commit.
@@ -98,26 +98,26 @@ Sleep 500ms
 
 # Expand commit to see list of changed tables
 Tab
-Sleep 1.5s
+Sleep 1s
 
 # Move down to first table entry (departments) and expand its diff
 Down
 Sleep 500ms
 Tab
-Sleep 3s
+Sleep 2s
 
 # Scroll down to see more diff content
 Down 3
-Sleep 800ms
+Sleep 500ms
 Down 3
-Sleep 2s
+Sleep 1.3s
 
 # === Scene 7: Return to status buffer ===
 Type "q"
-Sleep 2s
+Sleep 1.3s
 
 # Show the clean status (all changes committed)
-Sleep 3s
+Sleep 2s
 
 # Exit Emacs
 Ctrl+X

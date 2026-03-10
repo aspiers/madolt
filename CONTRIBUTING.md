@@ -21,6 +21,21 @@ with:
 make test STRAIGHT_DIR=/path/to/your/packages
 ```
 
+## Regenerating the demo GIF
+
+The animated demo GIF is built with [VHS](https://github.com/charmbracelet/vhs):
+
+```sh
+vhs demo.tape
+```
+
+This runs `demo/setup.sh` to create a temporary Dolt repo at
+`/tmp/madolt-demo-db`, launches Emacs via `demo/launch.sh` with
+`demo/init.el`, and records the scripted interaction into `demo.gif`.
+
+To modify the demo content, edit `demo/setup.sh` (repo data) or
+`demo.tape` (recorded keystrokes and timing).
+
 ## Known limitations
 
 - Dolt (as of v1.82.x) does not support `$EDITOR`-based commit
