@@ -85,6 +85,34 @@ Returns in a state with 3 user commits plus the init commit."
     (dolist (arg '("--stat" "--merges" "--graph"))
       (should (member arg all-args)))))
 
+(ert-deftest test-madolt-log-has-all-suffix ()
+  "madolt-log should have an \\='a\\=' suffix for all branches."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-log)))
+    (should (assoc "a" suffixes))
+    (should (eq (cdr (assoc "a" suffixes)) 'madolt-log-all))))
+
+(ert-deftest test-madolt-log-all-shows-commits ()
+  "madolt-log-all should show commits from all branches."
+  (madolt-with-test-database
+    (madolt-log-test-setup-multi-commit)
+    (let (called-rev called-args)
+      (cl-letf (((symbol-function 'madolt-log--show)
+                 (lambda (rev args)
+                   (setq called-rev rev)
+                   (setq called-args args))))
+        (madolt-log-all nil)
+        (should (string= called-rev "--all"))
+        (should (member "--all" called-args))))))
+
+(ert-deftest test-madolt-log-all-no-duplicate-flag ()
+  "madolt-log-all should not duplicate --all if already in args."
+  (let (called-args)
+    (cl-letf (((symbol-function 'madolt-log--show)
+               (lambda (_rev args)
+                 (setq called-args args))))
+      (madolt-log-all '("--all" "--stat"))
+      (should (equal (cl-count "--all" called-args :test #'string=) 1)))))
+
 ;;;; Faces
 
 (ert-deftest test-madolt-log-faces-defined ()

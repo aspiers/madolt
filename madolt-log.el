@@ -118,7 +118,8 @@ Names longer than this are truncated with an ellipsis."
   ["Log"
    ("l" "Current branch" madolt-log-current)
    ("o" "Other branch"   madolt-log-other)
-   ("h" "HEAD"           madolt-log-head)]
+   ("h" "HEAD"           madolt-log-head)
+   ("a" "All branches"   madolt-log-all)]
   ["Reflog"
    ("O" "Current branch" madolt-reflog-current)
    ("p" "Other ref"      madolt-reflog-other)])
@@ -152,6 +153,14 @@ ARGS are additional arguments from the transient."
 ARGS are additional arguments from the transient."
   (interactive (list (transient-args 'madolt-log)))
   (madolt-log--show "HEAD" args))
+
+(defun madolt-log-all (&optional args)
+  "Show log for all branches.
+ARGS are additional arguments from the transient."
+  (interactive (list (transient-args 'madolt-log)))
+  (unless (member "--all" args)
+    (push "--all" args))
+  (madolt-log--show "--all" args))
 
 ;;;; Log display
 
@@ -214,13 +223,17 @@ The limit is handled separately via `madolt-log--limit'."
 
 (defun madolt-log-refresh-buffer ()
   "Refresh the log buffer by inserting commit sections."
-  (let ((entries (madolt-log-entries
-                  madolt-log--limit
-                  madolt-log--rev
-                  (madolt-log--filter-log-args madolt-log--args))))
+  (let* ((rev (unless (string= madolt-log--rev "--all")
+                madolt-log--rev))
+         (entries (madolt-log-entries
+                   madolt-log--limit
+                   rev
+                   (madolt-log--filter-log-args madolt-log--args))))
     (magit-insert-section (log)
       (magit-insert-heading
-        (format "Commits on %s:" (or madolt-log--rev "HEAD")))
+        (if (string= madolt-log--rev "--all")
+            "Commits on all branches:"
+          (format "Commits on %s:" (or madolt-log--rev "HEAD"))))
       (if (null entries)
           (insert (propertize "  (no commits)\n" 'font-lock-face 'shadow))
         (dolist (entry entries)
