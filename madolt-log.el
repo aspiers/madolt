@@ -382,17 +382,11 @@ Shows per-table row-level diffs, matching the status buffer style."
       (insert "    (no changes)\n"))))
 
 (defun madolt-log--parent-hash (hash)
-  "Return the parent commit hash of HASH, or nil if none."
-  (let* ((result (madolt--run "log" "--oneline" "--parents" "-n" "1" hash))
-         (output (and (zerop (car result))
-                      (madolt--strip-ansi (cdr result))))
-         (line (and output (car (split-string output "\n" t)))))
-    ;; Format: "HASH PARENT_HASH (refs) message" or "HASH (refs) message"
-    ;; The hash is 32 chars; parent (if present) is next 32 chars
-    (when (and line (> (length line) 33))
-      (let ((rest (substring line 33)))
-        (when (string-match "^\\([a-z0-9]\\{32\\}\\)" rest)
-          (match-string 1 rest))))))
+  "Return the first parent commit hash of HASH, or nil if none.
+Uses `madolt-log--find-entry' which calls `madolt-log-entries'
+with --parents, so the parent hashes are parsed from the commit
+line rather than requiring a separate CLI call."
+  (car (plist-get (madolt-log--find-entry hash) :parents)))
 
 ;;;; Show commit (RET handler)
 
@@ -445,21 +439,25 @@ refreshing.  Use \\`g' to refresh manually."
         (insert " " (propertize (format "(%s)" refs)
                                 'font-lock-face 'madolt-log-refs)))
       (insert "\n")
-      ;; Parent/Merge line
-      (cond
-       (parents
-        (insert (propertize "Merge:  " 'font-lock-face 'bold)
-                (mapconcat
-                 (lambda (p)
-                   (propertize (substring p 0 (min 8 (length p)))
-                               'font-lock-face 'madolt-hash))
-                 parents " ")
-                "\n"))
-       (parent
-        (insert (propertize "Parent: " 'font-lock-face 'bold)
-                (propertize (substring parent 0 (min 8 (length parent)))
-                            'font-lock-face 'madolt-hash)
-                "\n")))
+      ;; Parent/Merge line — use the first available parent source
+      (let ((all-parents (or parents (and parent (list parent)))))
+        (cond
+         ((cdr all-parents)
+          ;; Multi-parent: merge commit
+          (insert (propertize "Merge:  " 'font-lock-face 'bold)
+                  (mapconcat
+                   (lambda (p)
+                     (propertize (substring p 0 (min 8 (length p)))
+                                 'font-lock-face 'madolt-hash))
+                   all-parents " ")
+                  "\n"))
+         ((car all-parents)
+          ;; Single parent: normal commit
+          (insert (propertize "Parent: " 'font-lock-face 'bold)
+                  (propertize (substring (car all-parents) 0
+                                         (min 8 (length (car all-parents))))
+                              'font-lock-face 'madolt-hash)
+                  "\n"))))
       (when entry
         (insert (propertize "Author: " 'font-lock-face 'bold)
                 (propertize (or (plist-get entry :author) "unknown")

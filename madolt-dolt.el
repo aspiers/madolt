@@ -384,9 +384,11 @@ N defaults to 10.  REV is the revision to show (branch name,
 tag, or commit hash); when nil, dolt shows the current branch.
 EXTRA-ARGS is a list of additional dolt log arguments
 such as \"--merges\".
-The :parents key holds a list of parent hash strings (from the
-Merge: line); it is nil for non-merge commits."
-  (let* ((args (append (list "log" "-n" (number-to-string (or n 10)))
+The :parents key holds a list of parent hash strings, parsed from
+the commit line (dolt log is called with --parents).  It is nil
+only for initial commits that have no parent."
+  (let* ((args (append (list "log" "--parents"
+                             "-n" (number-to-string (or n 10)))
                        (madolt--flatten-args extra-args)
                        (when rev (list rev))))
          (output (cdr (apply #'madolt--run args)))
@@ -405,9 +407,12 @@ Merge: line); it is nil for non-merge commits."
       (let ((line (replace-regexp-in-string
                    "^[|*/ \\\\]+ ?" "" raw-line)))
       (cond
-       ;; Commit line: "commit HASH", "commit HASH (refs)", or
-       ;; "commit HASH(refs)" (--graph omits the space before parens)
-       ((string-match "^commit \\([a-z0-9]+\\)\\(?: ?(\\(.*\\))\\)?\\s-*$" line)
+       ;; Commit line with --parents:
+       ;;   "commit HASH"
+       ;;   "commit HASH PARENT1"
+       ;;   "commit HASH PARENT1 PARENT2 (refs)"
+       ;;   "commit HASH(refs)" (--graph omits space before parens)
+       ((string-match "^commit \\([a-z0-9]+\\)\\(.*\\)$" line)
         ;; Save previous entry if any
         (when current-hash
           (push (list :hash current-hash
@@ -421,16 +426,29 @@ Merge: line); it is nil for non-merge commits."
                                            "\n")))
                 entries))
         (setq current-hash (match-string 1 line))
-        (setq current-refs (match-string 2 line))
+        ;; Parse remainder: optional parent hashes and optional (refs)
+        (let ((rest (string-trim (match-string 2 line))))
+          ;; Extract refs from trailing (...) if present
+          (setq current-refs
+                (when (string-match "(\\(.*\\))\\s-*$" rest)
+                  (prog1 (match-string 1 rest)
+                    (setq rest (string-trim
+                                (substring rest 0 (match-beginning 0)))))))
+          ;; Remaining words are parent hashes
+          (setq current-parents
+                (and (not (string-empty-p rest))
+                     (split-string rest))))
         (setq current-author nil)
         (setq current-date nil)
-        (setq current-parents nil)
         (setq current-message-lines nil)
         (setq in-message nil))
        ;; Merge line: "Merge: HASH1 HASH2"
+       ;; Only use as fallback — --parents already provides parents
+       ;; on the commit line itself.
        ((string-match "^Merge:\\s-+\\(.*\\)$" line)
-        (setq current-parents
-              (split-string (string-trim (match-string 1 line)))))
+        (unless current-parents
+          (setq current-parents
+                (split-string (string-trim (match-string 1 line))))))
        ;; Author line
        ((string-match "^Author:\\s-+\\(.*\\)$" line)
         (setq current-author (string-trim (match-string 1 line))))

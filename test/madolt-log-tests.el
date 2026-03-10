@@ -415,14 +415,26 @@ All margin strings should have the same total width."
 
 ;;;; Merge commit parsing
 
-(ert-deftest test-madolt-log-entries-parents-nil-for-normal ()
-  "Normal commits should have nil :parents."
+(ert-deftest test-madolt-log-entries-parents-for-normal ()
+  "Normal commits should have a single parent hash in :parents.
+The initial commit (from dolt init) should have nil :parents."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-insert-row "t1" "(1)")
-    (madolt-test-commit "Normal commit")
-    (let* ((entry (car (madolt-log-entries 1))))
-      (should-not (plist-get entry :parents)))))
+    (madolt-test-commit "First")
+    (madolt-test-insert-row "t1" "(2)")
+    (madolt-test-commit "Second")
+    ;; Get enough entries to include the dolt init commit
+    (let* ((entries (madolt-log-entries 10))
+           (newest (car entries))
+           (second (cadr entries))
+           (initial (car (last entries))))
+      ;; Normal commit has exactly one parent
+      (should (= 1 (length (plist-get newest :parents))))
+      (should (equal (car (plist-get newest :parents))
+                     (plist-get second :hash)))
+      ;; Initial commit (dolt init) has no parents
+      (should-not (plist-get initial :parents)))))
 
 (ert-deftest test-madolt-log-entries-parents-for-merge ()
   "Merge commits should have :parents with two hashes."
