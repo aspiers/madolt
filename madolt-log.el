@@ -69,6 +69,13 @@
   "Face for ref annotations in the log buffer."
   :group 'madolt-faces)
 
+(defface madolt-log-graph
+  '((((class color) (background light)) :foreground "grey30")
+    (((class color) (background dark))  :foreground "grey80"))
+  "Face for the graph part of the log output.
+Inherits styling from `magit-log-graph'."
+  :group 'madolt-faces)
+
 ;;;; Margin configuration
 
 (defcustom madolt-log-margin-width 36
@@ -248,16 +255,29 @@ The limit is handled separately via `madolt-log--limit'."
 
 (defun madolt-log--insert-commit-section (entry)
   "Insert a commit section for ENTRY.
-ENTRY is a plist with keys :hash :refs :date :author :message."
+ENTRY is a plist with keys :hash :refs :date :author :message.
+When :graph is non-nil, graph decoration is prepended to the line.
+When :graph-pre is non-nil, junction lines are inserted before
+the commit section."
   (let* ((hash (plist-get entry :hash))
          (refs (plist-get entry :refs))
          (date (plist-get entry :date))
          (author (plist-get entry :author))
          (message (plist-get entry :message))
+         (graph (plist-get entry :graph))
+         (graph-pre (plist-get entry :graph-pre))
          (short-hash (substring hash 0 (min 8 (length hash)))))
+    ;; Insert graph junction lines before the commit (e.g. "|\" or "|/")
+    (when graph-pre
+      (dolist (junction graph-pre)
+        (insert (propertize junction 'font-lock-face 'madolt-log-graph)
+                "\n")))
     (magit-insert-section (commit hash t)
       (magit-insert-heading
         (concat
+         (when graph
+           (propertize (concat graph " ")
+                       'font-lock-face 'madolt-log-graph))
          (propertize short-hash 'font-lock-face 'madolt-hash)
          (if refs
              (concat " " (propertize (format "(%s)" refs)

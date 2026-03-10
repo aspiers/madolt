@@ -399,6 +399,58 @@
         (should (stringp (plist-get entry :hash)))
         (should (equal "graph test" (plist-get entry :message)))))))
 
+(ert-deftest test-madolt-log-entries-graph-prefix ()
+  "madolt-log-entries captures :graph prefix when --graph is used."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "first")
+    (madolt-test-insert-row "t1" "(2)")
+    (madolt-test-commit "second")
+    (let ((entries (madolt-log-entries 5 nil '("--graph"))))
+      ;; Every entry should have a :graph key containing *
+      (dolist (entry entries)
+        (should (plist-get entry :graph))
+        (should (string-match-p "\\*" (plist-get entry :graph)))))))
+
+(ert-deftest test-madolt-log-entries-no-graph-without-flag ()
+  "madolt-log-entries returns nil :graph when --graph not used."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "first")
+    (let ((entries (madolt-log-entries 5)))
+      (dolist (entry entries)
+        (should-not (plist-get entry :graph))))))
+
+(ert-deftest test-madolt-log-entries-graph-merge-junction ()
+  "Graph junction lines are captured in :graph-pre for merges."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "init")
+    ;; Create divergent branch for merge
+    (call-process madolt-dolt-executable nil nil nil
+                  "checkout" "-b" "feat")
+    (madolt-test-insert-row "t1" "(2)")
+    (madolt-test-commit "feat commit")
+    (call-process madolt-dolt-executable nil nil nil
+                  "checkout" "main")
+    (madolt-test-insert-row "t1" "(3)")
+    (madolt-test-commit "main commit")
+    (call-process madolt-dolt-executable nil nil nil
+                  "merge" "feat" "--no-ff" "-m" "Merge feat")
+    (let ((entries (madolt-log-entries 10 nil '("--graph"))))
+      ;; Merge commit should be first
+      (should (equal "Merge feat" (plist-get (car entries) :message)))
+      ;; After the merge, there should be junction lines somewhere
+      ;; (|\ after merge commit, |/ before the common ancestor)
+      (let ((has-junction nil))
+        (dolist (entry entries)
+          (when (plist-get entry :graph-pre)
+            (setq has-junction t)))
+        (should has-junction)))))
+
 ;;;; Mutation operations
 
 (ert-deftest test-madolt-add-tables-stages ()

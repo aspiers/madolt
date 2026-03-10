@@ -381,6 +381,11 @@ ARGS are additional arguments passed to `dolt diff'."
 (defun madolt-log-entries (&optional n rev extra-args)
   "Return the last N commits as a list of plists.
 Each plist has keys :hash :refs :date :author :message :parents.
+When --graph is in EXTRA-ARGS, each plist also has :graph (the
+graph prefix string from the commit line, e.g. \"* \") and
+:graph-pre (a list of graph-only junction lines that appear
+between the previous commit and this one, e.g. (\"|\\\\\") for a
+merge fork or (\"|/\") for a merge join).
 N defaults to 10.  REV is the revision to show (branch name,
 tag, or commit hash); when nil, dolt shows the current branch.
 EXTRA-ARGS is a list of additional dolt log arguments
@@ -392,6 +397,7 @@ only for initial commits that have no parent."
                              "-n" (number-to-string (or n 10)))
                        (madolt--flatten-args extra-args)
                        (when rev (list rev))))
+         (graph-mode (member "--graph" args))
          (output (cdr (apply #'madolt--run args)))
          (clean-output (madolt--strip-ansi output))
          (entries nil)
@@ -400,13 +406,20 @@ only for initial commits that have no parent."
          (current-author nil)
          (current-date nil)
          (current-parents nil)
+         (current-graph nil)
          (current-message-lines nil)
          (in-message nil))
     (dolist (raw-line (split-string clean-output "\n"))
-      ;; Strip --graph decoration (e.g. "* ", "| ", "|\ ") from
-      ;; the start of each line so the parser sees clean output.
-      (let ((line (replace-regexp-in-string
-                   "^[|*/ \\\\]+ ?" "" raw-line)))
+      ;; Extract graph prefix before stripping it for the parser.
+      ;; Graph prefix: characters from the set [|*/\ ] at start of line.
+      (let* ((graph-prefix
+              (when (and graph-mode
+                        (string-match "^\\([|*/ \\\\]+\\) ?" raw-line))
+                (match-string 1 raw-line)))
+             (line (if graph-prefix
+                       (replace-regexp-in-string
+                        "^[|*/ \\\\]+ ?" "" raw-line)
+                     raw-line)))
       (cond
        ;; Commit line with --parents:
        ;;   "commit HASH"
@@ -421,12 +434,16 @@ only for initial commits that have no parent."
                       :date current-date
                       :author current-author
                       :parents current-parents
+                      :graph current-graph
+                      :graph-pre nil
                       :message (string-trim
                                 (mapconcat #'identity
                                            (nreverse current-message-lines)
                                            "\n")))
                 entries))
         (setq current-hash (match-string 1 line))
+        ;; Store graph prefix for the commit line (contains *)
+        (setq current-graph graph-prefix)
         ;; Parse remainder: optional parent hashes and optional (refs)
         (let ((rest (string-trim (match-string 2 line))))
           ;; Extract refs from trailing (...) if present
@@ -478,14 +495,69 @@ only for initial commits that have no parent."
                   :date current-date
                   :author current-author
                   :parents current-parents
+                  :graph current-graph
+                  :graph-pre nil
                   :message (string-trim
                             (mapconcat #'identity
                                        (nreverse current-message-lines)
                                        "\n")))
             entries))
+    ;; Post-process: attach graph junction lines between entries.
+    ;; In graph mode, dolt outputs junction lines like "|\" and "|/"
+    ;; between commits.  We do a second pass over the raw output to
+    ;; extract these and attach them to each entry's :graph-pre.
+    (when graph-mode
+      (madolt-log--attach-graph-continuations entries clean-output))
     (nreverse entries)))
 
 ;;;; Reflog queries
+
+(defun madolt-log--attach-graph-continuations (entries clean-output)
+  "Attach graph junction lines to ENTRIES from CLEAN-OUTPUT.
+ENTRIES is a reversed list of plists (newest first, as built by
+`madolt-log-entries').  CLEAN-OUTPUT is the ANSI-stripped dolt log
+output.  Junction lines are graph-only lines containing fork/join
+characters (backslash or forward slash) that appear between
+commits.  Each entry's :graph-pre is set to a list of junction
+line strings that should be rendered before that entry."
+  ;; Build a hash→entry lookup for quick access.
+  (let ((hash-map (make-hash-table :test 'equal))
+        (state 'between)  ; 'in-commit or 'between
+        (current-entry nil)
+        (junction-lines nil))
+    (dolist (entry entries)
+      (puthash (plist-get entry :hash) entry hash-map))
+    (dolist (raw-line (split-string clean-output "\n"))
+      ;; Check if this line contains a commit header
+      (cond
+       ;; Commit line — find which entry it belongs to
+       ((string-match "^[|*/ \\\\]* *commit \\([a-z0-9]+\\)" raw-line)
+        (let ((hash (match-string 1 raw-line)))
+          ;; Attach collected junction lines to this entry
+          (when (and junction-lines (gethash hash hash-map))
+            (plist-put (gethash hash hash-map)
+                       :graph-pre (nreverse junction-lines)))
+          (setq junction-lines nil)
+          (setq current-entry (gethash hash hash-map))
+          (setq state 'in-commit)))
+       ;; Graph-only line with junction chars (\ or /) between commits
+       ;; These are lines where stripping graph chars leaves nothing.
+       ((and (eq state 'between)
+             (string-match "^\\([|*/ \\\\]+\\)\\s-*$" raw-line)
+             ;; Must contain a junction character (\ or /)
+             (string-match-p "[/\\\\]" raw-line))
+        (push (match-string 1 raw-line) junction-lines))
+       ;; Blank line after message — transition to 'between state
+       ;; A line that is just graph continuation (| or | |) with no
+       ;; content after stripping indicates we're between commits.
+       ((and current-entry
+             (string-match "^\\([|*/ \\\\]*\\)\\s-*$" raw-line)
+             (not (string-match-p "[/\\\\]" raw-line)))
+        ;; Pure continuation line (just | chars) — marks end of
+        ;; commit content, transition to between-commits state.
+        ;; Only set state after message has been seen.
+        (when (eq state 'in-commit)
+          (setq state 'between)))))))
 
 (defun madolt-reflog-entries (&optional ref all)
   "Return reflog entries as a list of plists.

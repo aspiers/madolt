@@ -119,7 +119,8 @@ Returns in a state with 3 user commits plus the init commit."
   "All log faces should be defined."
   (dolist (face '(madolt-log-date
                   madolt-log-author
-                  madolt-log-refs))
+                  madolt-log-refs
+                  madolt-log-graph))
     (should (facep face))))
 
 ;;;; Log refresh
@@ -282,6 +283,64 @@ Returns in a state with 3 user commits plus the init commit."
     (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
       (madolt-log-double-limit))
     (should (= madolt-log--limit 50))))
+
+;;;; Graph rendering
+
+(ert-deftest test-madolt-log-graph-shows-asterisks ()
+  "Log with --graph should show * graph markers in the buffer."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "first")
+    (madolt-test-insert-row "t1" "(2)")
+    (madolt-test-commit "second")
+    (with-temp-buffer
+      (madolt-log-mode)
+      (setq madolt-log--rev "main")
+      (setq madolt-log--args '("--graph"))
+      (setq madolt-log--limit 25)
+      (let ((inhibit-read-only t))
+        (madolt-log-refresh-buffer))
+      ;; Each commit line should start with graph decoration containing *
+      (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+        (should (string-match-p "^\\* " text))))))
+
+(ert-deftest test-madolt-log-graph-absent-without-flag ()
+  "Log without --graph should not show * graph markers."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "first")
+    (with-temp-buffer
+      (madolt-log-mode)
+      (setq madolt-log--rev "main")
+      (setq madolt-log--args nil)
+      (setq madolt-log--limit 25)
+      (let ((inhibit-read-only t))
+        (madolt-log-refresh-buffer))
+      ;; No line should start with "* "
+      (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+        (should-not (string-match-p "^\\* " text))))))
+
+(ert-deftest test-madolt-log-graph-face ()
+  "Graph decoration should use madolt-log-graph face."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "first")
+    (with-temp-buffer
+      (madolt-log-mode)
+      (setq madolt-log--rev "main")
+      (setq madolt-log--args '("--graph"))
+      (setq madolt-log--limit 25)
+      (let ((inhibit-read-only t))
+        (madolt-log-refresh-buffer))
+      ;; Find the * character and check its face
+      (goto-char (point-min))
+      ;; Skip the heading line
+      (forward-line 1)
+      (let ((face (get-text-property (point) 'font-lock-face)))
+        (should (eq face 'madolt-log-graph))))))
 
 ;;;; Margin alignment
 
