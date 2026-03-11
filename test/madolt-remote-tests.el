@@ -35,12 +35,12 @@
 
 ;;;; Fetch suffixes
 
-(ert-deftest test-madolt-fetch-has-origin-suffix ()
-  "madolt-fetch should have a 'p' suffix for fetching from origin."
+(ert-deftest test-madolt-fetch-has-default-suffix ()
+  "madolt-fetch should have a 'p' suffix for fetching from default remote."
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-fetch)))
     (should (assoc "p" suffixes))
     (should (eq (cdr (assoc "p" suffixes))
-                'madolt-fetch-from-origin))))
+                'madolt-fetch-from-default))))
 
 (ert-deftest test-madolt-fetch-has-elsewhere-suffix ()
   "madolt-fetch should have an 'e' suffix for fetching from elsewhere."
@@ -51,12 +51,12 @@
 
 ;;;; Pull suffixes
 
-(ert-deftest test-madolt-pull-has-origin-suffix ()
-  "madolt-pull should have a 'p' suffix for pulling from origin."
+(ert-deftest test-madolt-pull-has-default-suffix ()
+  "madolt-pull should have a 'p' suffix for pulling from default remote."
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-pull)))
     (should (assoc "p" suffixes))
     (should (eq (cdr (assoc "p" suffixes))
-                'madolt-pull-from-origin))))
+                'madolt-pull-from-default))))
 
 (ert-deftest test-madolt-pull-has-elsewhere-suffix ()
   "madolt-pull should have an 'e' suffix for pulling from elsewhere."
@@ -67,12 +67,12 @@
 
 ;;;; Push suffixes
 
-(ert-deftest test-madolt-push-has-origin-suffix ()
-  "madolt-push should have a 'p' suffix for pushing to origin."
+(ert-deftest test-madolt-push-has-default-suffix ()
+  "madolt-push should have a 'p' suffix for pushing to default remote."
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-push)))
     (should (assoc "p" suffixes))
     (should (eq (cdr (assoc "p" suffixes))
-                'madolt-push-to-origin))))
+                'madolt-push-to-default))))
 
 (ert-deftest test-madolt-push-has-elsewhere-suffix ()
   "madolt-push should have an 'e' suffix for pushing to elsewhere."
@@ -114,6 +114,56 @@
 (ert-deftest test-madolt-mode-map-has-push ()
   "The mode map should bind 'P' to madolt-push."
   (should (eq (keymap-lookup madolt-mode-map "P") #'madolt-push)))
+
+;;;; Default remote helper
+
+(ert-deftest test-madolt-remote-default-prefers-origin ()
+  "Default remote should prefer origin when it exists."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt--run "remote" "add" "upstream" "file:///tmp/fake-up")
+    (madolt--run "remote" "add" "origin" "file:///tmp/fake-origin")
+    (should (equal "origin" (madolt-remote--default)))))
+
+(ert-deftest test-madolt-remote-default-falls-back-to-first ()
+  "Default remote should use first remote when no origin."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt--run "remote" "add" "railway" "file:///tmp/fake-railway")
+    (should (equal "railway" (madolt-remote--default)))))
+
+(ert-deftest test-madolt-remote-default-nil-when-no-remotes ()
+  "Default remote should be nil when no remotes configured."
+  (madolt-with-test-database
+    (should-not (madolt-remote--default))))
+
+(ert-deftest test-madolt-fetch-default-uses-actual-remote ()
+  "madolt-fetch-from-default should use the actual remote name."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt--run "remote" "add" "railway" "file:///tmp/fake-railway")
+    (let (called-args)
+      (cl-letf (((symbol-function 'madolt-call-dolt)
+                 (lambda (&rest args) (setq called-args args) '(0 . "")))
+                ((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-fetch-from-default nil)
+        (should (equal called-args '("fetch" "railway")))))))
+
+(ert-deftest test-madolt-push-default-uses-actual-remote ()
+  "madolt-push-to-default should use the actual remote name."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt--run "remote" "add" "railway" "file:///tmp/fake-railway")
+    (let (called-args)
+      (cl-letf (((symbol-function 'madolt-call-dolt)
+                 (lambda (&rest args) (setq called-args args) '(0 . "")))
+                ((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-push-to-default nil)
+        (should (equal called-args '("push" "railway" "main")))))))
 
 ;;;; Helper: madolt-remote-names
 
@@ -175,7 +225,7 @@
         (should (zerop (car result)))))))
 
 (ert-deftest test-madolt-push-command-calls-dolt ()
-  "madolt-push-to-origin should invoke dolt push with correct args."
+  "madolt-push-to-default should invoke dolt push with correct args."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
@@ -184,11 +234,11 @@
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
                 ((symbol-function 'madolt-refresh) #'ignore))
-        (madolt-push-to-origin nil)
+        (madolt-push-to-default nil)
         (should (equal called-args '("push" "origin" "main")))))))
 
 (ert-deftest test-madolt-pull-command-calls-dolt ()
-  "madolt-pull-from-origin should invoke dolt pull with correct args."
+  "madolt-pull-from-default should invoke dolt pull with correct args."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
@@ -197,7 +247,7 @@
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
                 ((symbol-function 'madolt-refresh) #'ignore))
-        (madolt-pull-from-origin nil)
+        (madolt-pull-from-default nil)
         (should (equal called-args '("pull" "origin")))))))
 
 ;;;; Remote management transient

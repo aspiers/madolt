@@ -41,15 +41,24 @@
 
 ;;;; Helpers
 
+(defun madolt-remote--default ()
+  "Return the best default remote name, or nil.
+Prefers \"origin\" if it exists, otherwise uses the first
+configured remote."
+  (let ((remotes (madolt-remote-names)))
+    (cond
+     ((member "origin" remotes) "origin")
+     (remotes (car remotes)))))
+
 (defun madolt-remote--read-remote (prompt)
-  "Read a remote name with PROMPT, defaulting to \"origin\"."
+  "Read a remote name with PROMPT, defaulting to the default remote."
   (let ((remotes (madolt-remote-names)))
     (if (null remotes)
         (user-error "No remotes configured")
       (if (= (length remotes) 1)
           (car remotes)
         (completing-read prompt remotes nil t nil nil
-                         (and (member "origin" remotes) "origin"))))))
+                         (madolt-remote--default))))))
 
 (defun madolt-remote--report (operation remote result)
   "Report the outcome of OPERATION on REMOTE given RESULT cons.
@@ -68,16 +77,19 @@ RESULT is (EXIT-CODE . OUTPUT-STRING)."
   ["Arguments"
    ("-p" "Prune deleted branches" "--prune")]
   ["Fetch from"
-   ("p" "origin"      madolt-fetch-from-origin)
+   ("p" madolt-fetch-from-default)
    ("e" "elsewhere"   madolt-fetch-from-remote)])
 
-(defun madolt-fetch-from-origin (&optional args)
-  "Fetch from origin remote.
-ARGS are additional arguments from the transient."
+(transient-define-suffix madolt-fetch-from-default (&optional args)
+  "Fetch from the default remote."
+  :if (lambda () (madolt-remote--default))
+  :description (lambda () (or (madolt-remote--default) "no remote"))
   (interactive (list (transient-args 'madolt-fetch)))
-  (let ((result (apply #'madolt-call-dolt "fetch" "origin" args)))
+  (let* ((remote (or (madolt-remote--default)
+                     (user-error "No remotes configured")))
+         (result (apply #'madolt-call-dolt "fetch" remote args)))
     (madolt-refresh)
-    (madolt-remote--report "Fetch" "origin" result)))
+    (madolt-remote--report "Fetch" remote result)))
 
 (defun madolt-fetch-from-remote (remote &optional args)
   "Fetch from REMOTE.
@@ -99,16 +111,19 @@ ARGS are additional arguments from the transient."
    ("-n" "No fast-forward"   "--no-ff")
    ("-s" "Squash"            "--squash")]
   ["Pull from"
-   ("p" "origin"      madolt-pull-from-origin)
+   ("p" madolt-pull-from-default)
    ("e" "elsewhere"   madolt-pull-from-remote)])
 
-(defun madolt-pull-from-origin (&optional args)
-  "Pull from origin remote.
-ARGS are additional arguments from the transient."
+(transient-define-suffix madolt-pull-from-default (&optional args)
+  "Pull from the default remote."
+  :if (lambda () (madolt-remote--default))
+  :description (lambda () (or (madolt-remote--default) "no remote"))
   (interactive (list (transient-args 'madolt-pull)))
-  (let ((result (apply #'madolt-call-dolt "pull" "origin" args)))
+  (let* ((remote (or (madolt-remote--default)
+                     (user-error "No remotes configured")))
+         (result (apply #'madolt-call-dolt "pull" remote args)))
     (madolt-refresh)
-    (madolt-remote--report "Pull" "origin" result)))
+    (madolt-remote--report "Pull" remote result)))
 
 (defun madolt-pull-from-remote (remote &optional args)
   "Pull from REMOTE.
@@ -129,17 +144,20 @@ ARGS are additional arguments from the transient."
    ("-f" "Force"          "--force")
    ("-u" "Set upstream"   "--set-upstream")]
   ["Push to"
-   ("p" "origin"      madolt-push-to-origin)
+   ("p" madolt-push-to-default)
    ("e" "elsewhere"   madolt-push-to-remote)])
 
-(defun madolt-push-to-origin (&optional args)
-  "Push current branch to origin remote.
-ARGS are additional arguments from the transient."
+(transient-define-suffix madolt-push-to-default (&optional args)
+  "Push current branch to the default remote."
+  :if (lambda () (madolt-remote--default))
+  :description (lambda () (or (madolt-remote--default) "no remote"))
   (interactive (list (transient-args 'madolt-push)))
-  (let* ((branch (madolt-current-branch))
-         (result (apply #'madolt-call-dolt "push" "origin" branch args)))
+  (let* ((remote (or (madolt-remote--default)
+                     (user-error "No remotes configured")))
+         (branch (madolt-current-branch))
+         (result (apply #'madolt-call-dolt "push" remote branch args)))
     (madolt-refresh)
-    (madolt-remote--report "Push" "origin" result)))
+    (madolt-remote--report "Push" remote result)))
 
 (defun madolt-push-to-remote (remote &optional args)
   "Push current branch to REMOTE.
