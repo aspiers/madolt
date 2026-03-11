@@ -113,6 +113,27 @@ Returns in a state with 3 user commits plus the init commit."
       (madolt-log-all '("--all" "--stat"))
       (should (equal (cl-count "--all" called-args :test #'string=) 1)))))
 
+;;;; Log auto-refresh
+
+(ert-deftest test-madolt-log-show-always-refreshes ()
+  "madolt-log--show should refresh even when buffer already exists."
+  (madolt-with-test-database
+    (madolt-log-test-setup-multi-commit)
+    (let ((refresh-count 0))
+      (cl-letf (((symbol-function 'madolt-display-buffer) #'ignore))
+        ;; Open log first time — should refresh
+        (advice-add 'madolt-log-refresh-buffer :before
+                    (lambda () (cl-incf refresh-count))
+                    '((name . test-counter)))
+        (unwind-protect
+            (progn
+              (madolt-log--show "main" nil)
+              (should (= refresh-count 1))
+              ;; Open again with same params — should still refresh
+              (madolt-log--show "main" nil)
+              (should (= refresh-count 2)))
+          (advice-remove 'madolt-log-refresh-buffer 'test-counter))))))
+
 ;;;; Faces
 
 (ert-deftest test-madolt-log-faces-defined ()

@@ -173,32 +173,24 @@ ARGS are additional arguments from the transient."
 
 (defun madolt-log--show (rev args)
   "Show log for REV with ARGS in a log buffer.
-If a buffer already exists with the same parameters, switch to it
-without refreshing.  Use \\`g' to refresh manually."
+Always refreshes the buffer to show current data."
   (let* ((db-dir (or (madolt-database-dir)
                      (user-error "Not in a Dolt database")))
          (limit (or (madolt-log--extract-limit args) 25))
          (db-name (file-name-nondirectory
                    (directory-file-name db-dir)))
          (buf-name (format "*madolt-log: %s %s*" db-name (or rev "HEAD")))
-         (existing (get-buffer buf-name))
-         (buffer (or existing (generate-new-buffer buf-name)))
-         (same-params (and existing
-                           (with-current-buffer existing
-                             (and (derived-mode-p 'madolt-log-mode)
-                                  (equal madolt-log--rev rev)
-                                  (equal madolt-log--args args)
-                                  (equal madolt-log--limit limit))))))
-    (unless same-params
-      (with-current-buffer buffer
-        (unless (derived-mode-p 'madolt-log-mode)
-          (madolt-log-mode))
-        (setq default-directory db-dir)
-        (setq madolt-buffer-database-dir db-dir)
-        (setq madolt-log--rev rev)
-        (setq madolt-log--args args)
-        (setq madolt-log--limit limit)
-        (madolt-refresh)))
+         (buffer (or (get-buffer buf-name)
+                     (generate-new-buffer buf-name))))
+    (with-current-buffer buffer
+      (unless (derived-mode-p 'madolt-log-mode)
+        (madolt-log-mode))
+      (setq default-directory db-dir)
+      (setq madolt-buffer-database-dir db-dir)
+      (setq madolt-log--rev rev)
+      (setq madolt-log--args args)
+      (setq madolt-log--limit limit)
+      (madolt-refresh))
     (madolt-display-buffer buffer)
     buffer))
 
