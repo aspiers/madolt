@@ -148,18 +148,14 @@ in a refs buffer), show the transient menu to choose options."
       (magit-insert-heading "Branches:")
       (dolist (branch branches)
         (let* ((name (plist-get branch :name))
-               (hash (plist-get branch :hash))
                (message (plist-get branch :message))
                (current (plist-get branch :current))
-               (face (if current 'madolt-branch-current 'madolt-branch-local))
-               (short-hash (substring hash 0 (min 8 (length hash)))))
+               (face (if current 'madolt-branch-current 'madolt-branch-local)))
           (magit-insert-section (branch name)
             (magit-insert-heading
               (concat
                (if current "* " "  ")
                (propertize name 'font-lock-face face)
-               " "
-               (propertize short-hash 'font-lock-face 'madolt-hash)
                " " (or message "")
                "\n")))))
       (insert "\n"))))
@@ -177,20 +173,16 @@ in a refs buffer), show the transient menu to choose options."
          (magit-insert-section (remote remote t)
            (magit-insert-heading (format "Remote %s:" remote))
            (dolist (branch (nreverse remote-branches))
-             (let* ((name (plist-get branch :name))
-                    (hash (plist-get branch :hash))
-                    (message (plist-get branch :message))
-                    (short-hash (substring hash 0 (min 8 (length hash)))))
-               (magit-insert-section (branch (format "%s/%s" remote name))
-                 (magit-insert-heading
-                   (concat
-                    "  "
-                    (propertize (format "%s/%s" remote name)
-                                'font-lock-face 'madolt-branch-remote)
-                    " "
-                    (propertize short-hash 'font-lock-face 'madolt-hash)
-                    " " (or message "")
-                    "\n")))))
+              (let* ((name (plist-get branch :name))
+                     (message (plist-get branch :message)))
+                (magit-insert-section (branch (format "%s/%s" remote name))
+                  (magit-insert-heading
+                    (concat
+                     "  "
+                     (propertize (format "%s/%s" remote name)
+                                 'font-lock-face 'madolt-branch-remote)
+                     " " (or message "")
+                     "\n")))))
            (insert "\n")))
        by-remote))))
 
@@ -200,16 +192,12 @@ in a refs buffer), show the transient menu to choose options."
     (magit-insert-section (tags nil t)
       (magit-insert-heading "Tags:")
       (dolist (tag tags)
-        (let* ((name (plist-get tag :name))
-               (hash (plist-get tag :hash))
-               (short-hash (substring hash 0 (min 8 (length hash)))))
+        (let ((name (plist-get tag :name)))
           (magit-insert-section (tag name)
             (magit-insert-heading
               (concat
                "  "
                (propertize name 'font-lock-face 'madolt-tag)
-               " "
-               (propertize short-hash 'font-lock-face 'madolt-hash)
                "\n")))))
       (insert "\n"))))
 
