@@ -67,12 +67,20 @@
 ;;;; Transient menu
 
 ;;;###autoload (autoload 'madolt-show-refs "madolt-refs" nil t)
-(transient-define-prefix madolt-show-refs ()
-  "List references."
+(transient-define-prefix madolt-show-refs (&optional transient)
+  "List references.
+Without a prefix argument, directly show the refs buffer
+comparing against HEAD.  With a prefix argument (or when already
+in a refs buffer), show the transient menu to choose options."
   ["Actions"
-   ("y" "Show refs for HEAD"          madolt-show-refs-head)
+   ("y" "Show refs for HEAD"           madolt-show-refs-head)
    ("c" "Show refs for current branch" madolt-show-refs-current)
-   ("o" "Show refs for other branch"  madolt-show-refs-other)])
+   ("o" "Show refs for other branch"   madolt-show-refs-other)]
+  (interactive (list (or (derived-mode-p 'madolt-refs-mode)
+                         current-prefix-arg)))
+  (if transient
+      (transient-setup 'madolt-show-refs)
+    (madolt-refs--show "HEAD")))
 
 ;;;; Commands
 
