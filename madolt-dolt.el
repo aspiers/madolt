@@ -732,15 +732,31 @@ or nil if there is no upstream or no unpulled commits."
 
 (defun madolt-tag-list-verbose ()
   "Return a list of tag plists from `dolt tag -v'.
-Each plist has keys :name and :hash."
+Each plist has keys :name, :hash, and :message.
+The :message is the tag annotation (nil for lightweight tags)."
   (let ((output (madolt-dolt-string "tag" "-v"))
-        result)
+        result current-tag)
     (when output
       (dolist (line (split-string output "\n"))
-        (when (string-match "^\\(\\S-+\\)\t\\(\\S-+\\)" line)
-          (push (list :name (match-string 1 line)
-                      :hash (match-string 2 line))
-                result))))
+        (cond
+         ;; Tag header line: "tagname\thash"
+         ((string-match "^\\(\\S-+\\)\t\\(\\S-+\\)" line)
+          (when current-tag
+            (push current-tag result))
+          (setq current-tag (list :name (match-string 1 line)
+                                  :hash (match-string 2 line)
+                                  :message nil)))
+         ;; Annotation message line (indented with tab)
+         ((and current-tag
+               (string-match "^\t\\(.+\\)" line))
+          (let ((msg (match-string 1 line))
+                (existing (plist-get current-tag :message)))
+            (plist-put current-tag :message
+                       (if existing (concat existing " " msg) msg))))
+         ;; Skip Tagger:/Date: lines
+         ))
+      (when current-tag
+        (push current-tag result)))
     (nreverse result)))
 
 (defun madolt-tag-create (name &optional ref message)
