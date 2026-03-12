@@ -138,15 +138,17 @@ in a refs buffer), show the transient menu to choose options."
 
 (defun madolt-refs-refresh-buffer ()
   "Refresh the refs buffer."
-  (let ((branches (madolt-branch-list-verbose))
-        (tags (madolt-tag-list-verbose)))
+  (let* ((branches (madolt-branch-list-verbose))
+         (local-branches (cl-remove-if
+                          (lambda (b) (plist-get b :remote)) branches))
+         (remote-branches (cl-remove-if-not
+                           (lambda (b) (plist-get b :remote)) branches))
+         (tags (madolt-tag-list-verbose)))
     (magit-insert-section (refs)
       (magit-insert-heading
         (format "References for %s:" (or madolt-refs--upstream "HEAD")))
-      (madolt-refs--insert-local-branches
-       (cl-remove-if (lambda (b) (plist-get b :remote)) branches))
-      (madolt-refs--insert-remote-branches
-       (cl-remove-if-not (lambda (b) (plist-get b :remote)) branches))
+      (madolt-refs--insert-local-branches local-branches remote-branches)
+      (madolt-refs--insert-remote-branches remote-branches)
       (madolt-refs--insert-tags tags))))
 
 ;;;; Section inserters
@@ -163,8 +165,50 @@ NAMES is a list of strings whose lengths determine auto-sizing."
              (cdr madolt-refs-primary-column-width))
       madolt-refs-primary-column-width)))
 
-(defun madolt-refs--insert-local-branches (branches)
-  "Insert a section listing local BRANCHES."
+(defun madolt-refs--find-upstream (branch-name remote-branches)
+  "Find the upstream ref for BRANCH-NAME among REMOTE-BRANCHES.
+Uses the convention that origin/BRANCH-NAME is the upstream.
+If no \"origin\" remote exists, tries the first remote found.
+Returns the upstream display string (e.g. \"origin/main\") or nil."
+  (let (first-remote match)
+    (dolist (rb remote-branches)
+      (when (string= (plist-get rb :name) branch-name)
+        (let ((remote (plist-get rb :remote)))
+          (unless first-remote
+            (setq first-remote (format "%s/%s" remote branch-name)))
+          (when (string= remote "origin")
+            (setq match (format "%s/%s" remote branch-name))))))
+    (or match first-remote)))
+
+(defun madolt-refs--ahead-behind (branch-name upstream)
+  "Return (AHEAD . BEHIND) counts for BRANCH-NAME vs UPSTREAM.
+AHEAD is commits in BRANCH-NAME not in UPSTREAM.
+BEHIND is commits in UPSTREAM not in BRANCH-NAME."
+  (let ((ahead (length (madolt-log-entries
+                        100 (format "%s..%s" upstream branch-name))))
+        (behind (length (madolt-log-entries
+                         100 (format "%s..%s" branch-name upstream)))))
+    (cons ahead behind)))
+
+(defun madolt-refs--format-upstream-info (upstream ahead behind)
+  "Format UPSTREAM tracking info with AHEAD and BEHIND counts.
+Returns a propertized string like \"origin/main\" with optional
+ahead/behind indicators."
+  (let ((parts (list (propertize upstream
+                                 'font-lock-face 'shadow))))
+    (when (and ahead (> ahead 0))
+      (push (propertize (format "%d>" ahead)
+                        'font-lock-face 'shadow)
+            parts))
+    (when (and behind (> behind 0))
+      (push (propertize (format "<%d" behind)
+                        'font-lock-face 'shadow)
+            parts))
+    (string-join (nreverse parts) " ")))
+
+(defun madolt-refs--insert-local-branches (branches remote-branches)
+  "Insert a section listing local BRANCHES.
+REMOTE-BRANCHES is used to determine upstream tracking info."
   (when branches
     (let ((col-width (madolt-refs--column-width
                       (mapcar (lambda (b) (plist-get b :name)) branches))))
@@ -175,12 +219,22 @@ NAMES is a list of strings whose lengths determine auto-sizing."
                  (message (plist-get branch :message))
                  (current (plist-get branch :current))
                  (face (if current 'madolt-branch-current 'madolt-branch-local))
-                 (padded (truncate-string-to-width name col-width nil ?\s)))
+                 (padded (truncate-string-to-width name col-width nil ?\s))
+                 (upstream (madolt-refs--find-upstream
+                            name remote-branches))
+                 (ab (when upstream
+                       (madolt-refs--ahead-behind name upstream)))
+                 (upstream-info
+                  (when upstream
+                    (madolt-refs--format-upstream-info
+                     upstream (car ab) (cdr ab)))))
             (magit-insert-section (branch name)
               (magit-insert-heading
                 (concat
                  (if current "* " "  ")
                  (propertize padded 'font-lock-face face)
+                 (when upstream-info
+                   (concat " " upstream-info))
                  " " (or message "")
                  "\n")))))
         (insert "\n")))))
