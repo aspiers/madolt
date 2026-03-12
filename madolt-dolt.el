@@ -346,6 +346,14 @@ where STATUS is a string like \"modified\", \"new table\", \"renamed\",
       (untracked . ,(nreverse untracked))
       (conflicts . ,(nreverse conflicts)))))
 
+;;;; Rebase state
+
+(defun madolt-rebase-in-progress-p ()
+  "Return non-nil if a dolt rebase is currently in progress.
+Checks the raw `dolt status' output for rebase indicators."
+  (let ((output (madolt-dolt-string "status")))
+    (and output (string-match-p "rebase in progress" output))))
+
 ;;;; Schema queries
 
 (defun madolt-primary-key-columns (table)

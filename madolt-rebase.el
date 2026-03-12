@@ -43,10 +43,14 @@
 (transient-define-prefix madolt-rebase ()
   "Rebase the current branch."
   ["Arguments"
+   :if-not madolt-rebase-in-progress-p
    ("-i" "Interactive"          "--interactive")
    ("-e" "Empty commits: keep"  "--empty=keep")]
   ["Rebase"
-   ("r" "Rebase onto"  madolt-rebase-command)
+   :if-not madolt-rebase-in-progress-p
+   ("r" "Rebase onto"  madolt-rebase-command)]
+  ["Actions"
+   :if madolt-rebase-in-progress-p
    ("c" "Continue"     madolt-rebase-continue-command)
    ("a" "Abort"        madolt-rebase-abort-command)])
 

@@ -46,6 +46,64 @@
     (should (eq (cdr (assoc "a" suffixes))
                 'madolt-rebase-abort-command))))
 
+;;;; Conditional visibility
+
+(ert-deftest test-madolt-rebase-in-progress-p-false ()
+  "madolt-rebase-in-progress-p should return nil when no rebase active."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (should-not (madolt-rebase-in-progress-p))))
+
+(ert-deftest test-madolt-rebase-start-group-has-if-not ()
+  "The Rebase group (with \\='r\\=') should have :if-not predicate."
+  (let* ((layout (get 'madolt-rebase 'transient--layout))
+         (groups (aref layout 2))
+         (rebase-group (cl-find-if
+                        (lambda (g)
+                          (and (vectorp g)
+                               (cl-some (lambda (s)
+                                          (and (listp s)
+                                               (equal (plist-get (cdr s) :key) "r")))
+                                        (aref g 2))))
+                        groups)))
+    (should rebase-group)
+    (should (eq (plist-get (aref rebase-group 1) :if-not)
+                'madolt-rebase-in-progress-p))))
+
+(ert-deftest test-madolt-rebase-actions-group-has-if ()
+  "The Actions group (with \\='c\\=' and \\='a\\=') should have :if predicate."
+  (let* ((layout (get 'madolt-rebase 'transient--layout))
+         (groups (aref layout 2))
+         (actions-group (cl-find-if
+                         (lambda (g)
+                           (and (vectorp g)
+                                (cl-some (lambda (s)
+                                           (and (listp s)
+                                                (equal (plist-get (cdr s) :key) "c")))
+                                         (aref g 2))))
+                         groups)))
+    (should actions-group)
+    (should (eq (plist-get (aref actions-group 1) :if)
+                'madolt-rebase-in-progress-p))))
+
+(ert-deftest test-madolt-rebase-args-group-has-if-not ()
+  "The Arguments group should have :if-not predicate."
+  (let* ((layout (get 'madolt-rebase 'transient--layout))
+         (groups (aref layout 2))
+         (args-group (cl-find-if
+                      (lambda (g)
+                        (and (vectorp g)
+                             (cl-some (lambda (s)
+                                        (and (listp s)
+                                             (equal (plist-get (cdr s) :argument)
+                                                    "--interactive")))
+                                      (aref g 2))))
+                      groups)))
+    (should args-group)
+    (should (eq (plist-get (aref args-group 1) :if-not)
+                'madolt-rebase-in-progress-p))))
+
 ;;;; Dispatch integration
 
 (ert-deftest test-madolt-dispatch-has-rebase ()
