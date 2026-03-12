@@ -206,7 +206,7 @@ ARGS are additional arguments from the transient."
 (defun madolt-commit--buffer-name ()
   "Return the commit message buffer name for the current database."
   (let ((db-dir (or (madolt-database-dir) default-directory)))
-    (format "*madolt-commit: %s*"
+    (format "madolt-commit: %s"
             (file-name-nondirectory
              (directory-file-name db-dir)))))
 

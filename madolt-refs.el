@@ -111,7 +111,7 @@ in a refs buffer), show the transient menu to choose options."
                      (user-error "Not in a Dolt database")))
          (db-name (file-name-nondirectory
                    (directory-file-name db-dir)))
-         (buf-name (format "*madolt-refs: %s*" db-name))
+         (buf-name (format "madolt-refs: %s" db-name))
          (buffer (or (get-buffer buf-name)
                      (generate-new-buffer buf-name))))
     (with-current-buffer buffer

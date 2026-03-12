@@ -23,7 +23,7 @@
       (unwind-protect
           (progn
             (should (bufferp buf))
-            (should (string-match-p "\\*madolt-process: " (buffer-name buf))))
+            (should (string-match-p "madolt-process: " (buffer-name buf))))
         (kill-buffer buf)))))
 
 (ert-deftest test-madolt-process-buffer-reused ()

@@ -179,7 +179,7 @@ Always refreshes the buffer to show current data."
          (limit (or (madolt-log--extract-limit args) 25))
          (db-name (file-name-nondirectory
                    (directory-file-name db-dir)))
-         (buf-name (format "*madolt-log: %s %s*" db-name (or rev "HEAD")))
+         (buf-name (format "madolt-log: %s %s" db-name (or rev "HEAD")))
          (buffer (or (get-buffer buf-name)
                      (generate-new-buffer buf-name))))
     (with-current-buffer buffer
@@ -413,10 +413,10 @@ without selecting it."
    (list (oref (magit-current-section) value)))
   (let* ((db-dir (or (madolt-database-dir)
                      (user-error "Not in a Dolt database")))
-         (buf-name (format "*madolt-revision: %s %s*"
-                           (file-name-nondirectory
-                            (directory-file-name db-dir))
-                           (substring hash 0 (min 8 (length hash)))))
+(buf-name (format "madolt-revision: %s %s"
+                            (file-name-nondirectory
+                             (directory-file-name db-dir))
+                            (substring hash 0 (min 8 (length hash)))))
          (existing (get-buffer buf-name))
          (buffer (or existing (generate-new-buffer buf-name))))
     (unless existing
@@ -438,10 +438,10 @@ without selecting it."
 Only returns a buffer that is visible in the current frame."
   (let* ((db-dir (madolt-database-dir))
          (buf-name (and db-dir
-                        (format "*madolt-revision: %s %s*"
-                                (file-name-nondirectory
-                                 (directory-file-name db-dir))
-                                (substring hash 0 (min 8 (length hash)))))))
+(format "madolt-revision: %s %s"
+                                 (file-name-nondirectory
+                                  (directory-file-name db-dir))
+                                 (substring hash 0 (min 8 (length hash)))))))
     (when buf-name
       (let ((buf (get-buffer buf-name)))
         (and buf (get-buffer-window buf) buf)))))

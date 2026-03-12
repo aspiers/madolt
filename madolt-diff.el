@@ -288,7 +288,7 @@ without refreshing.  Use \\`g' to refresh manually."
          (db-name (file-name-nondirectory
                    (directory-file-name db-dir)))
          (buf-name (if revisions
-                       (format "*madolt-diff: %s %s..%s%s*"
+                       (format "madolt-diff: %s %s..%s%s"
                                db-name
                                (car revisions) (cdr revisions)
                                (if table (format " %s" table) ""))

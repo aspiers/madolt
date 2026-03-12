@@ -314,7 +314,7 @@ database root, activate MODE, and call `madolt-refresh'."
   "Return the buffer name for MODE and DIRECTORY."
   (let ((db-name (file-name-nondirectory
                   (directory-file-name directory))))
-    (format "*madolt-%s: %s*"
+    (format "madolt-%s: %s"
             (replace-regexp-in-string
              "^madolt-\\|-mode$" ""
              (symbol-name mode))

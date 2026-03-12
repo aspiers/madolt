@@ -258,8 +258,7 @@
   "Buffer name should follow madolt naming convention."
   (madolt-with-test-database
     (let ((name (madolt-commit--buffer-name)))
-      (should (string-prefix-p "*madolt-commit: " name))
-      (should (string-suffix-p "*" name)))))
+      (should (string-prefix-p "madolt-commit: " name)))))
 
 (ert-deftest test-madolt-commit-setup-buffer-creates-buffer ()
   "Setup should create a commit message buffer."

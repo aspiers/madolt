@@ -92,7 +92,7 @@ refreshing.  Use \\`g' to refresh manually."
                      (user-error "Not in a Dolt database")))
          (db-name (file-name-nondirectory
                    (directory-file-name db-dir)))
-         (buf-name (format "*madolt-reflog: %s %s*"
+         (buf-name (format "madolt-reflog: %s %s"
                            db-name
                            (cond (all "all")
                                  (ref ref)

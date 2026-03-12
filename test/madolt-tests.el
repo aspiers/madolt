@@ -39,7 +39,7 @@
         (unwind-protect
             (progn
               (should (bufferp buf))
-              (should (string-match-p "\\*madolt-status:" (buffer-name buf)))
+              (should (string-match-p "madolt-status:" (buffer-name buf)))
               (with-current-buffer buf
                 (should (derived-mode-p 'madolt-status-mode))))
           (kill-buffer buf))))))

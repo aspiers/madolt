@@ -55,7 +55,7 @@
         (unwind-protect
             (progn
               (should (bufferp buf))
-              (should (string-match-p "\\*madolt-status:" (buffer-name buf))))
+              (should (string-match-p "madolt-status:" (buffer-name buf))))
           (kill-buffer buf))))))
 
 (ert-deftest test-madolt-setup-buffer-reuses-existing ()
@@ -572,7 +572,7 @@
 (ert-deftest test-madolt--buffer-name ()
   "Buffer names follow the expected pattern."
   (let ((name (madolt--buffer-name 'madolt-status-mode "/tmp/mydb/")))
-    (should (string-match-p "\\*madolt-status: mydb\\*" name))))
+    (should (string-match-p "madolt-status: mydb" name))))
 
 (provide 'madolt-mode-tests)
 ;;; madolt-mode-tests.el ends here

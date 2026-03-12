@@ -75,7 +75,7 @@
 (defun madolt--process-buffer-name (&optional directory)
   "Return the process buffer name for DIRECTORY's dolt database."
   (let ((db-dir (madolt-database-dir directory)))
-    (format "*madolt-process: %s*"
+    (format "madolt-process: %s"
             (if db-dir
                 (file-name-nondirectory
                  (directory-file-name db-dir))

@@ -79,7 +79,7 @@ it without refreshing.  Use \\`g' to refresh manually."
                      (user-error "Not in a Dolt database")))
          (db-name (file-name-nondirectory
                    (directory-file-name db-dir)))
-         (buf-name (format "*madolt-blame: %s %s%s*"
+         (buf-name (format "madolt-blame: %s %s%s"
                            db-name table
                            (if rev (format " %s" rev) "")))
          (existing (get-buffer buf-name))
