@@ -284,6 +284,11 @@ bd automatically syncs with git:
 - ✅ Always use `--json` flag for programmatic use
 - ✅ Link discovered work with `discovered-from` dependencies
 - ✅ Check `bd ready` before asking "what should I work on?"
+- ✅ **Trust issue priorities as set** — the user may reprioritize
+  issues at any time.  NEVER revert or "correct" priority changes
+  just because the priority differs from what you remember.  If
+  `bd ready` or `bd list` shows a priority you didn't expect, accept
+  it and work accordingly.
 - ❌ Do NOT create markdown TODO lists
 - ❌ Do NOT use external issue trackers
 - ❌ Do NOT duplicate tracking systems
