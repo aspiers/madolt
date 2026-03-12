@@ -40,12 +40,14 @@
 ;;;; Faces
 
 (defface madolt-branch-local
-  '((t :foreground "LightSkyBlue1"))
+  '((((class color) (background light)) :foreground "SkyBlue4")
+    (((class color) (background dark))  :foreground "LightSkyBlue1"))
   "Face for local branch names in refs buffers."
   :group 'madolt-faces)
 
 (defface madolt-branch-remote
-  '((t :foreground "DarkSeaGreen2"))
+  '((((class color) (background light)) :foreground "DarkOliveGreen4")
+    (((class color) (background dark))  :foreground "DarkSeaGreen2"))
   "Face for remote branch names in refs buffers."
   :group 'madolt-faces)
 
@@ -55,7 +57,8 @@
   :group 'madolt-faces)
 
 (defface madolt-tag
-  '((t :foreground "Khaki"))
+  '((((class color) (background light)) :foreground "Goldenrod4")
+    (((class color) (background dark))  :foreground "LightGoldenrod2"))
   "Face for tag names in refs buffers."
   :group 'madolt-faces)
 
@@ -68,6 +71,13 @@ it must be a cons cell (MIN . MAX), in which case the column is
 auto-sized to fit the longest branch name, clamped to that range."
   :group 'madolt
   :type '(choice integer (cons integer integer)))
+
+(defcustom madolt-refs-show-remote-prefix nil
+  "Whether to show the remote prefix in remote branch names.
+When nil (the default), show just the branch name (e.g. \"main\").
+When non-nil, show \"origin/main\"."
+  :group 'madolt
+  :type 'boolean)
 
 ;;;; Refs mode
 
@@ -148,7 +158,8 @@ in a refs buffer), show the transient menu to choose options."
       (magit-insert-heading
         (format "References for %s:" (or madolt-refs--upstream "HEAD")))
       (madolt-refs--insert-local-branches local-branches remote-branches)
-      (madolt-refs--insert-remote-branches remote-branches)
+      (madolt-refs--insert-remote-branches remote-branches
+                                          (madolt-remotes))
       (madolt-refs--insert-tags tags))))
 
 ;;;; Section inserters
@@ -239,8 +250,9 @@ REMOTE-BRANCHES is used to determine upstream tracking info."
                  "\n")))))
         (insert "\n")))))
 
-(defun madolt-refs--insert-remote-branches (branches)
-  "Insert a section listing remote BRANCHES."
+(defun madolt-refs--insert-remote-branches (branches remotes-alist)
+  "Insert a section listing remote BRANCHES.
+REMOTES-ALIST is an alist of (NAME . URL) from `madolt-remotes'."
   (when branches
     ;; Group by remote
     (let ((by-remote (make-hash-table :test 'equal)))
@@ -250,20 +262,29 @@ REMOTE-BRANCHES is used to determine upstream tracking info."
       (maphash
        (lambda (remote remote-branches)
          (let* ((rbranches (nreverse remote-branches))
+                (url (cdr (assoc remote remotes-alist #'string=)))
                 (col-width (madolt-refs--column-width
                             (mapcar (lambda (b)
-                                      (format "%s/%s" remote
-                                              (plist-get b :name)))
+                                      (let ((n (plist-get b :name)))
+                                        (if madolt-refs-show-remote-prefix
+                                            (format "%s/%s" remote n)
+                                          n)))
                                     rbranches))))
            (magit-insert-section (remote remote t)
-             (magit-insert-heading (format "Remote %s:" remote))
+             (magit-insert-heading
+               (if url
+                   (format "Remote %s (%s):" remote url)
+                 (format "Remote %s:" remote)))
              (dolist (branch rbranches)
                (let* ((name (plist-get branch :name))
                       (message (plist-get branch :message))
-                      (display-name (format "%s/%s" remote name))
+                      (full-name (format "%s/%s" remote name))
+                      (display-name (if madolt-refs-show-remote-prefix
+                                        full-name
+                                      name))
                       (padded (truncate-string-to-width
                                display-name col-width nil ?\s)))
-                 (magit-insert-section (branch display-name)
+                 (magit-insert-section (branch full-name)
                    (magit-insert-heading
                      (concat
                       "  "
@@ -283,12 +304,14 @@ REMOTE-BRANCHES is used to determine upstream tracking info."
         (magit-insert-heading "Tags:")
         (dolist (tag tags)
           (let* ((name (plist-get tag :name))
+                 (message (plist-get tag :message))
                  (padded (truncate-string-to-width name col-width nil ?\s)))
             (magit-insert-section (tag name)
               (magit-insert-heading
                 (concat
                  "  "
                  (propertize padded 'font-lock-face 'madolt-tag)
+                 (when message (concat " " message))
                  "\n")))))
         (insert "\n")))))
 
