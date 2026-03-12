@@ -144,6 +144,13 @@ sleep 0.3
 6. Check for correct section rendering, staging/unstaging, diffs
 7. When done: `emacsclient --eval '(kill-emacs)'` (leave the tmux session intact for next time)
 
+## Design Principles
+
+- **Copy magit wherever possible** -- keybindings, faces, buffer names,
+  transient layouts, section types, and UX patterns should match magit's
+  conventions unless Dolt requires a different approach.  When in doubt,
+  check how magit does it and follow that design.
+
 ## Technical Notes
 
 - **Dolt CLI only** -- no `dolt sql-server` dependency. All operations

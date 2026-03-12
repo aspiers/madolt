@@ -402,10 +402,13 @@ line rather than requiring a separate CLI call."
 
 ;;;; Show commit (RET handler)
 
-(defun madolt-show-commit (hash)
+(defun madolt-show-commit (hash &optional noselect)
   "Show commit HASH in a revision buffer.
 If a buffer already exists for this commit, switch to it without
-refreshing.  Use \\`g' to refresh manually."
+refreshing.  Use \\`g' to refresh manually.
+
+When NOSELECT is non-nil, display the buffer in another window
+without selecting it."
   (interactive
    (list (oref (magit-current-section) value)))
   (let* ((db-dir (or (madolt-database-dir)
@@ -423,8 +426,68 @@ refreshing.  Use \\`g' to refresh manually."
         (setq madolt-buffer-database-dir db-dir)
         (setq madolt-revision--hash hash)
         (madolt-refresh)))
-    (madolt-display-buffer buffer)
+    (if noselect
+        (display-buffer buffer '(nil (inhibit-same-window . t)))
+      (madolt-display-buffer buffer))
     buffer))
+
+;;;; Show-or-scroll (SPC / DEL)
+
+(defun madolt--revision-buffer-for-hash (hash)
+  "Return the revision buffer displaying HASH, or nil.
+Only returns a buffer that is visible in the current frame."
+  (let* ((db-dir (madolt-database-dir))
+         (buf-name (and db-dir
+                        (format "*madolt-revision: %s %s*"
+                                (file-name-nondirectory
+                                 (directory-file-name db-dir))
+                                (substring hash 0 (min 8 (length hash)))))))
+    (when buf-name
+      (let ((buf (get-buffer buf-name)))
+        (and buf (get-buffer-window buf) buf)))))
+
+(defun madolt-diff-show-or-scroll-up ()
+  "Show the commit at point, or scroll its revision buffer up.
+On a commit section, if the revision buffer is already visible in
+the frame, scroll it up (forward) by one page.  Otherwise show
+the commit in another window without selecting it.
+
+Mimics `magit-diff-show-or-scroll-up'."
+  (interactive)
+  (madolt-diff-show-or-scroll #'scroll-up))
+
+(defun madolt-diff-show-or-scroll-down ()
+  "Show the commit at point, or scroll its revision buffer down.
+On a commit section, if the revision buffer is already visible in
+the frame, scroll it down (backward) by one page.  Otherwise show
+the commit in another window without selecting it.
+
+Mimics `magit-diff-show-or-scroll-down'."
+  (interactive)
+  (madolt-diff-show-or-scroll #'scroll-down))
+
+(defun madolt-diff-show-or-scroll (fn)
+  "Show or scroll the revision for the commit at point.
+FN is the scroll function (`scroll-up' or `scroll-down').
+If the commit's revision buffer is already visible in the frame,
+scroll it with FN.  At buffer boundaries, wrap around.
+Otherwise, show the commit in another window without selecting."
+  (let ((section (magit-current-section)))
+    (unless (and section (eq (oref section type) 'commit))
+      (user-error "No commit at point"))
+    (let* ((hash (oref section value))
+           (buf (madolt--revision-buffer-for-hash hash)))
+      (if buf
+          ;; Already visible — scroll it
+          (with-selected-window (get-buffer-window buf)
+            (condition-case nil
+                (funcall fn)
+              (error
+               (pcase fn
+                 ('scroll-up   (goto-char (point-min)))
+                 ('scroll-down (goto-char (point-max)))))))
+        ;; Not visible — show without selecting
+        (madolt-show-commit hash t)))))
 
 ;;;; Revision mode
 

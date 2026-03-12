@@ -707,5 +707,97 @@ The initial commit (from dolt init) should have nil :parents."
           (should-not (string-match-p "Parent:" text))
           (should-not (string-match-p "Merge:" text)))))))
 
+;;;; Show-or-scroll (SPC / DEL)
+
+(ert-deftest test-madolt-diff-show-or-scroll-up-defined ()
+  "madolt-diff-show-or-scroll-up should be a command."
+  (should (commandp 'madolt-diff-show-or-scroll-up)))
+
+(ert-deftest test-madolt-diff-show-or-scroll-down-defined ()
+  "madolt-diff-show-or-scroll-down should be a command."
+  (should (commandp 'madolt-diff-show-or-scroll-down)))
+
+(ert-deftest test-madolt-spc-bound-in-mode-map ()
+  "SPC should be bound to madolt-diff-show-or-scroll-up."
+  (should (eq (keymap-lookup madolt-mode-map "SPC")
+              'madolt-diff-show-or-scroll-up)))
+
+(ert-deftest test-madolt-del-bound-in-mode-map ()
+  "DEL should be bound to madolt-diff-show-or-scroll-down."
+  (should (eq (keymap-lookup madolt-mode-map "DEL")
+              'madolt-diff-show-or-scroll-down)))
+
+(ert-deftest test-madolt-show-or-scroll-errors-without-commit ()
+  "show-or-scroll should error when not on a commit section."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (let ((inhibit-read-only t))
+      (magit-insert-section (log)
+        (magit-insert-heading "Log:")
+        (insert "no commits\n")))
+    (goto-char (point-min))
+    (should-error (madolt-diff-show-or-scroll-up)
+                  :type 'user-error)))
+
+(ert-deftest test-madolt-show-or-scroll-shows-commit ()
+  "SPC on a commit should display revision buffer without selecting."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "Test SPC")
+    (let* ((entry (car (madolt-log-entries 1)))
+           (hash (plist-get entry :hash))
+           (displayed-buf nil)
+           (displayed-noselect nil))
+      ;; Mock madolt-show-commit to capture the call
+      (cl-letf (((symbol-function 'madolt-show-commit)
+                 (lambda (h &optional noselect)
+                   (setq displayed-buf h)
+                   (setq displayed-noselect noselect))))
+        (with-temp-buffer
+          (madolt-log-mode)
+          (let ((inhibit-read-only t))
+            (magit-insert-section (log)
+              (magit-insert-heading "Log:")
+              (magit-insert-section (commit hash)
+                (magit-insert-heading hash "\n"))))
+          ;; Position on the commit section
+          (goto-char (point-min))
+          (magit-section-forward)
+          (madolt-diff-show-or-scroll-up)
+          (should (equal displayed-buf hash))
+          (should displayed-noselect))))))
+
+(ert-deftest test-madolt-show-commit-noselect ()
+  "madolt-show-commit with NOSELECT should use display-buffer."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "Test noselect")
+    (let* ((entry (car (madolt-log-entries 1)))
+           (hash (plist-get entry :hash))
+           (display-buffer-called nil))
+      ;; Mock display-buffer to track the call
+      (cl-letf (((symbol-function 'display-buffer)
+                 (lambda (buf &optional _action)
+                   (setq display-buffer-called t)
+                   ;; Return a window to satisfy callers
+                   (selected-window)))
+                ((symbol-function 'madolt-display-buffer)
+                 (lambda (_buf) (error "Should not call madolt-display-buffer"))))
+        (madolt-show-commit hash t)
+        (should display-buffer-called)))))
+
+(ert-deftest test-madolt-revision-buffer-lookup ()
+  "madolt--revision-buffer-for-hash should find visible revision buffers."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-insert-row "t1" "(1)")
+    (madolt-test-commit "Test lookup")
+    (let* ((entry (car (madolt-log-entries 1)))
+           (hash (plist-get entry :hash)))
+      ;; No buffer exists yet
+      (should-not (madolt--revision-buffer-for-hash hash)))))
+
 (provide 'madolt-log-tests)
 ;;; madolt-log-tests.el ends here

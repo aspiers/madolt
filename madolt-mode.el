@@ -65,6 +65,8 @@
 (declare-function madolt-blame "madolt-blame" (table))
 (declare-function madolt-conflicts "madolt-conflicts" ())
 (declare-function madolt-sql-query "madolt-sql" (query))
+(declare-function madolt-diff-show-or-scroll-up "madolt-log" ())
+(declare-function madolt-diff-show-or-scroll-down "madolt-log" ())
 (declare-function madolt-dispatch "madolt" ())
 (declare-function madolt-status-jump "madolt-status" ())
 (declare-function madolt-visit-thing "madolt-status" ())
@@ -275,7 +277,11 @@ copies the full commit hash."
   ;; Show more
   (keymap-set map "+"   #'madolt-show-more)
   ;; Navigation
-  (keymap-set map "RET" #'madolt-visit-thing))
+  (keymap-set map "RET" #'madolt-visit-thing)
+  ;; Show commit / scroll (like magit SPC/DEL)
+  (keymap-set map "SPC"   #'madolt-diff-show-or-scroll-up)
+  (keymap-set map "S-SPC" #'madolt-diff-show-or-scroll-down)
+  (keymap-set map "DEL"   #'madolt-diff-show-or-scroll-down))
 
 ;;;; Buffer lifecycle
 
