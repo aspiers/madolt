@@ -59,6 +59,16 @@
   "Face for tag names in refs buffers."
   :group 'madolt-faces)
 
+;;;; Customization
+
+(defcustom madolt-refs-primary-column-width '(16 . 32)
+  "Width of the primary column in refs buffers.
+If an integer, the column is that many columns wide.  Otherwise
+it must be a cons cell (MIN . MAX), in which case the column is
+auto-sized to fit the longest branch name, clamped to that range."
+  :group 'madolt
+  :type '(choice integer (cons integer integer)))
+
 ;;;; Refs mode
 
 (define-derived-mode madolt-refs-mode madolt-mode "Madolt Refs"
@@ -141,24 +151,39 @@ in a refs buffer), show the transient menu to choose options."
 
 ;;;; Section inserters
 
+(defun madolt-refs--column-width (names)
+  "Return the column width for displaying NAMES.
+Uses `madolt-refs-primary-column-width' to determine the width.
+NAMES is a list of strings whose lengths determine auto-sizing."
+  (let ((width (if names
+                   (apply #'max (mapcar #'length names))
+                 0)))
+    (if (consp madolt-refs-primary-column-width)
+        (min (max width (car madolt-refs-primary-column-width))
+             (cdr madolt-refs-primary-column-width))
+      madolt-refs-primary-column-width)))
+
 (defun madolt-refs--insert-local-branches (branches)
   "Insert a section listing local BRANCHES."
   (when branches
-    (magit-insert-section (local nil t)
-      (magit-insert-heading "Branches:")
-      (dolist (branch branches)
-        (let* ((name (plist-get branch :name))
-               (message (plist-get branch :message))
-               (current (plist-get branch :current))
-               (face (if current 'madolt-branch-current 'madolt-branch-local)))
-          (magit-insert-section (branch name)
-            (magit-insert-heading
-              (concat
-               (if current "* " "  ")
-               (propertize name 'font-lock-face face)
-               " " (or message "")
-               "\n")))))
-      (insert "\n"))))
+    (let ((col-width (madolt-refs--column-width
+                      (mapcar (lambda (b) (plist-get b :name)) branches))))
+      (magit-insert-section (local nil t)
+        (magit-insert-heading "Branches:")
+        (dolist (branch branches)
+          (let* ((name (plist-get branch :name))
+                 (message (plist-get branch :message))
+                 (current (plist-get branch :current))
+                 (face (if current 'madolt-branch-current 'madolt-branch-local))
+                 (padded (truncate-string-to-width name col-width nil ?\s)))
+            (magit-insert-section (branch name)
+              (magit-insert-heading
+                (concat
+                 (if current "* " "  ")
+                 (propertize padded 'font-lock-face face)
+                 " " (or message "")
+                 "\n")))))
+        (insert "\n")))))
 
 (defun madolt-refs--insert-remote-branches (branches)
   "Insert a section listing remote BRANCHES."
@@ -170,36 +195,48 @@ in a refs buffer), show the transient menu to choose options."
           (push branch (gethash remote by-remote))))
       (maphash
        (lambda (remote remote-branches)
-         (magit-insert-section (remote remote t)
-           (magit-insert-heading (format "Remote %s:" remote))
-           (dolist (branch (nreverse remote-branches))
-              (let* ((name (plist-get branch :name))
-                     (message (plist-get branch :message)))
-                (magit-insert-section (branch (format "%s/%s" remote name))
-                  (magit-insert-heading
-                    (concat
-                     "  "
-                     (propertize (format "%s/%s" remote name)
-                                 'font-lock-face 'madolt-branch-remote)
-                     " " (or message "")
-                     "\n")))))
-           (insert "\n")))
+         (let* ((rbranches (nreverse remote-branches))
+                (col-width (madolt-refs--column-width
+                            (mapcar (lambda (b)
+                                      (format "%s/%s" remote
+                                              (plist-get b :name)))
+                                    rbranches))))
+           (magit-insert-section (remote remote t)
+             (magit-insert-heading (format "Remote %s:" remote))
+             (dolist (branch rbranches)
+               (let* ((name (plist-get branch :name))
+                      (message (plist-get branch :message))
+                      (display-name (format "%s/%s" remote name))
+                      (padded (truncate-string-to-width
+                               display-name col-width nil ?\s)))
+                 (magit-insert-section (branch display-name)
+                   (magit-insert-heading
+                     (concat
+                      "  "
+                      (propertize padded
+                                  'font-lock-face 'madolt-branch-remote)
+                      " " (or message "")
+                      "\n")))))
+             (insert "\n"))))
        by-remote))))
 
 (defun madolt-refs--insert-tags (tags)
   "Insert a section listing TAGS."
   (when tags
-    (magit-insert-section (tags nil t)
-      (magit-insert-heading "Tags:")
-      (dolist (tag tags)
-        (let ((name (plist-get tag :name)))
-          (magit-insert-section (tag name)
-            (magit-insert-heading
-              (concat
-               "  "
-               (propertize name 'font-lock-face 'madolt-tag)
-               "\n")))))
-      (insert "\n"))))
+    (let ((col-width (madolt-refs--column-width
+                      (mapcar (lambda (tg) (plist-get tg :name)) tags))))
+      (magit-insert-section (tags nil t)
+        (magit-insert-heading "Tags:")
+        (dolist (tag tags)
+          (let* ((name (plist-get tag :name))
+                 (padded (truncate-string-to-width name col-width nil ?\s)))
+            (magit-insert-section (tag name)
+              (magit-insert-heading
+                (concat
+                 "  "
+                 (propertize padded 'font-lock-face 'madolt-tag)
+                 "\n")))))
+        (insert "\n")))))
 
 (provide 'madolt-refs)
 ;;; madolt-refs.el ends here
