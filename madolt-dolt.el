@@ -625,6 +625,30 @@ TABLES is a list of table name strings."
               (string-trim (replace-regexp-in-string "^\\*\\s-*" "" line)))
             lines)))
 
+(defun madolt-branch-list-verbose ()
+  "Return a list of branch plists from `dolt branch -av'.
+Each plist has keys :name :hash :message :current :remote.
+Local branches have :remote nil; remote tracking branches have
+:remote set to the remote name."
+  (let ((lines (madolt-dolt-lines "branch" "-av"))
+        result)
+    (dolist (line lines)
+      (when (string-match
+             "^\\(\\*?\\)\\s-*\\(\\S-+\\)\\s-+\\(\\S-+\\)\\s-+\\(.*\\)$"
+             line)
+        (let* ((current (not (string-empty-p (match-string 1 line))))
+               (name (match-string 2 line))
+               (hash (match-string 3 line))
+               (message (string-trim (match-string 4 line)))
+               (remote nil))
+          (when (string-match "^remotes/\\([^/]+\\)/\\(.*\\)$" name)
+            (setq remote (match-string 1 name))
+            (setq name (match-string 2 name)))
+          (push (list :name name :hash hash :message message
+                      :current current :remote remote)
+                result))))
+    (nreverse result)))
+
 (defun madolt-branch-create (name &optional start-point)
   "Create a new branch NAME, optionally from START-POINT.
 Does not switch to the new branch."
@@ -705,6 +729,19 @@ or nil if there is no upstream or no unpulled commits."
 (defun madolt-tag-names ()
   "Return a list of tag names in the current database."
   (mapcar #'string-trim (madolt-dolt-lines "tag")))
+
+(defun madolt-tag-list-verbose ()
+  "Return a list of tag plists from `dolt tag -v'.
+Each plist has keys :name and :hash."
+  (let ((output (madolt-dolt-string "tag" "-v"))
+        result)
+    (when output
+      (dolist (line (split-string output "\n"))
+        (when (string-match "^\\(\\S-+\\)\t\\(\\S-+\\)" line)
+          (push (list :name (match-string 1 line)
+                      :hash (match-string 2 line))
+                result))))
+    (nreverse result)))
 
 (defun madolt-tag-create (name &optional ref message)
   "Create a tag NAME, optionally at REF with MESSAGE.

@@ -67,6 +67,7 @@
 (declare-function madolt-sql-query "madolt-sql" (query))
 (declare-function madolt-diff-show-or-scroll-up "madolt-log" ())
 (declare-function madolt-diff-show-or-scroll-down "madolt-log" ())
+(declare-function madolt-show-refs "madolt-refs" ())
 (declare-function madolt-dispatch "madolt" ())
 (declare-function madolt-status-jump "madolt-status" ())
 (declare-function madolt-visit-thing "madolt-status" ())
@@ -272,6 +273,8 @@ copies the full commit hash."
   (keymap-set map "t"   #'madolt-tag)
   ;; Stash (autoloaded from madolt-stash.el)
   (keymap-set map "z"   #'madolt-stash)
+  ;; Refs (autoloaded from madolt-refs.el)
+  (keymap-set map "y"   #'madolt-show-refs)
   ;; Copy
   (keymap-set map "w"   #'madolt-copy-section-value)
   ;; Show more

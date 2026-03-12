@@ -112,7 +112,8 @@ Interactively with a prefix argument, prompt for the directory."
   ["Inspecting"
    [("B" "Blame"          madolt-blame)
     ("C" "Conflicts"      madolt-conflicts)
-    ("e" "SQL query"      madolt-sql-query)]]
+    ("e" "SQL query"      madolt-sql-query)
+    ("y" "Refs"           madolt-show-refs)]]
   ["Applying changes"
    :if-derived madolt-mode
    [("s" "Stage"          madolt-stage)

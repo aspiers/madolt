@@ -1,0 +1,209 @@
+;;; madolt-refs.el --- References buffer for Madolt  -*- lexical-binding:t -*-
+
+;; Copyright (C) 2026  Adam Spiers
+
+;; Author: Adam Spiers <madolt@adamspiers.org>
+;; Maintainer: Adam Spiers <madolt@adamspiers.org>
+
+;; Package-Requires: ((emacs "29.1") (magit-section "4.0") (transient "0.7"))
+
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
+;; This file is not part of GNU Emacs.
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; References buffer for madolt.  Displays local branches, remote
+;; branches, and tags in a navigable section-based buffer.
+;; Bound to `y' in madolt-mode, mirroring magit-show-refs.
+
+;;; Code:
+
+(require 'magit-section)
+(require 'transient)
+(require 'madolt-dolt)
+(require 'madolt-mode)
+
+;;;; Faces
+
+(defface madolt-branch-local
+  '((t :foreground "LightSkyBlue1"))
+  "Face for local branch names in refs buffers."
+  :group 'madolt-faces)
+
+(defface madolt-branch-remote
+  '((t :foreground "DarkSeaGreen2"))
+  "Face for remote branch names in refs buffers."
+  :group 'madolt-faces)
+
+(defface madolt-branch-current
+  '((t :inherit madolt-branch-local :box t))
+  "Face for the current branch in refs buffers."
+  :group 'madolt-faces)
+
+(defface madolt-tag
+  '((t :foreground "Khaki"))
+  "Face for tag names in refs buffers."
+  :group 'madolt-faces)
+
+;;;; Refs mode
+
+(define-derived-mode madolt-refs-mode madolt-mode "Madolt Refs"
+  "Mode for madolt refs buffers.")
+
+;;;; Transient menu
+
+;;;###autoload (autoload 'madolt-show-refs "madolt-refs" nil t)
+(transient-define-prefix madolt-show-refs ()
+  "List references."
+  ["Actions"
+   ("y" "Show refs for HEAD"          madolt-show-refs-head)
+   ("c" "Show refs for current branch" madolt-show-refs-current)
+   ("o" "Show refs for other branch"  madolt-show-refs-other)])
+
+;;;; Commands
+
+(defvar-local madolt-refs--upstream nil
+  "The reference to compare against in this refs buffer.")
+
+(defun madolt-show-refs-head ()
+  "Show refs comparing against HEAD."
+  (interactive)
+  (madolt-refs--show "HEAD"))
+
+(defun madolt-show-refs-current ()
+  "Show refs comparing against the current branch."
+  (interactive)
+  (madolt-refs--show (or (madolt-current-branch) "HEAD")))
+
+(defun madolt-show-refs-other (ref)
+  "Show refs comparing against REF."
+  (interactive
+   (list (completing-read "Show refs for: " (madolt-branch-names))))
+  (madolt-refs--show ref))
+
+;;;; Buffer setup
+
+(defun madolt-refs--show (upstream)
+  "Show refs buffer comparing against UPSTREAM."
+  (let* ((db-dir (or (madolt-database-dir)
+                     (user-error "Not in a Dolt database")))
+         (db-name (file-name-nondirectory
+                   (directory-file-name db-dir)))
+         (buf-name (format "*madolt-refs: %s*" db-name))
+         (buffer (or (get-buffer buf-name)
+                     (generate-new-buffer buf-name))))
+    (with-current-buffer buffer
+      (unless (derived-mode-p 'madolt-refs-mode)
+        (madolt-refs-mode))
+      (setq default-directory db-dir)
+      (setq madolt-buffer-database-dir db-dir)
+      (setq madolt-refs--upstream upstream)
+      (madolt-refresh))
+    (madolt-display-buffer buffer)
+    buffer))
+
+;;;; Refresh
+
+(defun madolt-refs-refresh-buffer ()
+  "Refresh the refs buffer."
+  (let ((branches (madolt-branch-list-verbose))
+        (tags (madolt-tag-list-verbose)))
+    (magit-insert-section (refs)
+      (magit-insert-heading
+        (format "References for %s:" (or madolt-refs--upstream "HEAD")))
+      (madolt-refs--insert-local-branches
+       (cl-remove-if (lambda (b) (plist-get b :remote)) branches))
+      (madolt-refs--insert-remote-branches
+       (cl-remove-if-not (lambda (b) (plist-get b :remote)) branches))
+      (madolt-refs--insert-tags tags))))
+
+;;;; Section inserters
+
+(defun madolt-refs--insert-local-branches (branches)
+  "Insert a section listing local BRANCHES."
+  (when branches
+    (magit-insert-section (local nil t)
+      (magit-insert-heading "Branches:")
+      (dolist (branch branches)
+        (let* ((name (plist-get branch :name))
+               (hash (plist-get branch :hash))
+               (message (plist-get branch :message))
+               (current (plist-get branch :current))
+               (face (if current 'madolt-branch-current 'madolt-branch-local))
+               (short-hash (substring hash 0 (min 8 (length hash)))))
+          (magit-insert-section (branch name)
+            (magit-insert-heading
+              (concat
+               (if current "* " "  ")
+               (propertize name 'font-lock-face face)
+               " "
+               (propertize short-hash 'font-lock-face 'madolt-hash)
+               " " (or message "")
+               "\n")))))
+      (insert "\n"))))
+
+(defun madolt-refs--insert-remote-branches (branches)
+  "Insert a section listing remote BRANCHES."
+  (when branches
+    ;; Group by remote
+    (let ((by-remote (make-hash-table :test 'equal)))
+      (dolist (branch branches)
+        (let ((remote (plist-get branch :remote)))
+          (push branch (gethash remote by-remote))))
+      (maphash
+       (lambda (remote remote-branches)
+         (magit-insert-section (remote remote t)
+           (magit-insert-heading (format "Remote %s:" remote))
+           (dolist (branch (nreverse remote-branches))
+             (let* ((name (plist-get branch :name))
+                    (hash (plist-get branch :hash))
+                    (message (plist-get branch :message))
+                    (short-hash (substring hash 0 (min 8 (length hash)))))
+               (magit-insert-section (branch (format "%s/%s" remote name))
+                 (magit-insert-heading
+                   (concat
+                    "  "
+                    (propertize (format "%s/%s" remote name)
+                                'font-lock-face 'madolt-branch-remote)
+                    " "
+                    (propertize short-hash 'font-lock-face 'madolt-hash)
+                    " " (or message "")
+                    "\n")))))
+           (insert "\n")))
+       by-remote))))
+
+(defun madolt-refs--insert-tags (tags)
+  "Insert a section listing TAGS."
+  (when tags
+    (magit-insert-section (tags nil t)
+      (magit-insert-heading "Tags:")
+      (dolist (tag tags)
+        (let* ((name (plist-get tag :name))
+               (hash (plist-get tag :hash))
+               (short-hash (substring hash 0 (min 8 (length hash)))))
+          (magit-insert-section (tag name)
+            (magit-insert-heading
+              (concat
+               "  "
+               (propertize name 'font-lock-face 'madolt-tag)
+               " "
+               (propertize short-hash 'font-lock-face 'madolt-hash)
+               "\n")))))
+      (insert "\n"))))
+
+(provide 'madolt-refs)
+;;; madolt-refs.el ends here
