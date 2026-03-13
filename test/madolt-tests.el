@@ -68,6 +68,39 @@
   "madolt-status is an interactive command."
   (should (commandp 'madolt-status)))
 
+(ert-deftest test-madolt-status-prompts-outside-dolt ()
+  "madolt-status prompts for a directory when invoked interactively outside a dolt DB."
+  (madolt-with-test-database
+    (let ((db-dir default-directory))
+      (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+                 (lambda ()
+                   (magit-insert-section (root) (insert "status\n"))))
+                ((symbol-function 'read-directory-name)
+                 (lambda (_prompt &rest _) db-dir)))
+        ;; Simulate interactive call from outside a dolt DB
+        (let ((default-directory temporary-file-directory))
+          (let ((buf (call-interactively #'madolt-status)))
+            (unwind-protect
+                (with-current-buffer buf
+                  (should (equal default-directory db-dir)))
+              (kill-buffer buf))))))))
+
+(ert-deftest test-madolt-status-no-prompt-inside-dolt ()
+  "madolt-status does not prompt when invoked interactively inside a dolt DB."
+  (madolt-with-test-database
+    (let ((prompted nil))
+      (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+                 (lambda ()
+                   (magit-insert-section (root) (insert "status\n"))))
+                ((symbol-function 'read-directory-name)
+                 (lambda (_prompt &rest _)
+                   (setq prompted t)
+                   default-directory)))
+        (let ((buf (call-interactively #'madolt-status)))
+          (unwind-protect
+              (should-not prompted)
+            (kill-buffer buf)))))))
+
 ;;;; Dispatch
 
 (ert-deftest test-madolt-dispatch-is-transient ()

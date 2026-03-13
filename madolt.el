@@ -81,9 +81,12 @@
   "Open the madolt status buffer for DIRECTORY.
 If DIRECTORY is nil, search upward from `default-directory' for a
 Dolt database (a directory containing `.dolt/').
-Interactively with a prefix argument, prompt for the directory."
+
+When called interactively outside a Dolt database, prompt for a
+directory (like `magit-status' does for Git repositories).
+With a prefix argument, always prompt for the directory."
   (interactive
-   (list (and current-prefix-arg
+   (list (and (or current-prefix-arg (not (madolt-database-dir)))
               (read-directory-name "Dolt database: "))))
   (let ((default-directory (or directory default-directory)))
     (madolt-setup-buffer 'madolt-status-mode)))
