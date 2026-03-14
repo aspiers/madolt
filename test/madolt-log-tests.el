@@ -140,9 +140,104 @@ Returns in a state with 3 user commits plus the init commit."
   "All log faces should be defined."
   (dolist (face '(madolt-log-date
                   madolt-log-author
-                  madolt-log-refs
                   madolt-log-graph))
     (should (facep face))))
+
+;;;; Ref label formatting
+
+(ert-deftest test-madolt-format-ref-labels-local-branch ()
+  "Local branch names should use madolt-branch-local face."
+  (let ((result (madolt-format-ref-labels "main")))
+    (should (string-match-p "main" result))
+    (should (eq (get-text-property 1 'font-lock-face result)
+                'madolt-branch-local))))
+
+(ert-deftest test-madolt-format-ref-labels-head-current ()
+  "HEAD -> branch should show @ with madolt-head and branch with madolt-branch-current."
+  (let ((result (madolt-format-ref-labels "HEAD -> main")))
+    ;; Should contain @ for HEAD
+    (should (string-match-p "@" result))
+    ;; Find the @ character and check its face
+    (let ((at-pos (string-match "@" result)))
+      (should (eq (get-text-property at-pos 'font-lock-face result)
+                  'madolt-head)))
+    ;; Find "main" and check its face
+    (let ((main-pos (string-match "main" result)))
+      (should (eq (get-text-property main-pos 'font-lock-face result)
+                  'madolt-branch-current)))))
+
+(ert-deftest test-madolt-format-ref-labels-tag ()
+  "Tags should use madolt-tag face."
+  (let ((result (madolt-format-ref-labels "tag: v1.0")))
+    (should (string-match-p "v1.0" result))
+    ;; tag: prefix should be stripped; v1.0 should have tag face
+    (should-not (string-match-p "tag:" result))
+    (let ((pos (string-match "v1.0" result)))
+      (should (eq (get-text-property pos 'font-lock-face result)
+                  'madolt-tag)))))
+
+(ert-deftest test-madolt-format-ref-labels-remote ()
+  "Remote branches should use madolt-branch-remote face."
+  (let ((result (madolt-format-ref-labels "origin/main" '("origin"))))
+    (should (string-match-p "origin/main" result))
+    (let ((pos (string-match "origin/main" result)))
+      (should (eq (get-text-property pos 'font-lock-face result)
+                  'madolt-branch-remote)))))
+
+(ert-deftest test-madolt-format-ref-labels-multiple ()
+  "Multiple refs should each get their own face."
+  (let ((result (madolt-format-ref-labels
+                 "HEAD -> main, tag: v1.0, origin/main"
+                 '("origin"))))
+    ;; Should contain all refs
+    (should (string-match-p "@" result))
+    (should (string-match-p "main" result))
+    (should (string-match-p "v1.0" result))
+    (should (string-match-p "origin/main" result))
+    ;; Should be wrapped in parens
+    (should (string-prefix-p "(" result))
+    (should (string-suffix-p ")" result))))
+
+(ert-deftest test-madolt-format-ref-labels-head-detached ()
+  "Detached HEAD should show @ with madolt-head face."
+  (let ((result (madolt-format-ref-labels "HEAD")))
+    (let ((at-pos (string-match "@" result)))
+      (should at-pos)
+      (should (eq (get-text-property at-pos 'font-lock-face result)
+                  'madolt-head)))))
+
+(ert-deftest test-madolt-format-ref-labels-slash-branch-is-local ()
+  "Branches with slashes like feature/foo should be local, not remote."
+  (let ((result (madolt-format-ref-labels "feature/foo")))
+    (let ((pos (string-match "feature/foo" result)))
+      (should (eq (get-text-property pos 'font-lock-face result)
+                  'madolt-branch-local))))
+  ;; Even with remotes configured, feature/ is not a known remote
+  (let ((result (madolt-format-ref-labels "feature/foo" '("origin"))))
+    (let ((pos (string-match "feature/foo" result)))
+      (should (eq (get-text-property pos 'font-lock-face result)
+                  'madolt-branch-local)))))
+
+(ert-deftest test-madolt-format-ref-labels-wrapped-in-parens ()
+  "Result should be wrapped in parentheses."
+  (let ((result (madolt-format-ref-labels "main")))
+    (should (string-prefix-p "(" result))
+    (should (string-suffix-p ")" result))))
+
+(ert-deftest test-madolt-format-ref-labels-ordering ()
+  "Refs should be ordered: HEAD, tags, local branches, remotes."
+  (let ((result (madolt-format-ref-labels
+                 "origin/main, tag: v1.0, feature, HEAD -> main"
+                 '("origin"))))
+    ;; @ (HEAD) should come before v1.0 (tag)
+    (should (< (string-match "@" result)
+               (string-match "v1.0" result)))
+    ;; v1.0 (tag) should come before feature (local branch)
+    (should (< (string-match "v1.0" result)
+               (string-match "feature" result)))
+    ;; feature (local) should come before origin/main (remote)
+    (should (< (string-match "feature" result)
+               (string-match "origin/main" result)))))
 
 ;;;; Log refresh
 
@@ -798,6 +893,286 @@ The initial commit (from dolt init) should have nil :parents."
            (hash (plist-get entry :hash)))
       ;; No buffer exists yet
       (should-not (madolt--revision-buffer-for-hash hash)))))
+
+;;;; Log refresh transient (L)
+
+(ert-deftest test-madolt-log-refresh-is-transient ()
+  "madolt-log-refresh should be a transient prefix."
+  (should (get 'madolt-log-refresh 'transient--prefix)))
+
+(ert-deftest test-madolt-log-refresh-has-graph-arg ()
+  "madolt-log-refresh should have --graph argument."
+  (let* ((layout (get 'madolt-log-refresh 'transient--layout))
+         (all-args nil))
+    (dolist (group (aref layout 2))
+      (dolist (suffix (aref group 2))
+        (when (listp suffix)
+          (let ((arg (plist-get (cdr suffix) :argument)))
+            (when arg (push arg all-args))))))
+    (should (member "--graph" all-args))))
+
+(ert-deftest test-madolt-log-refresh-has-refresh-suffix ()
+  "madolt-log-refresh should have a `g' suffix for refreshing."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-log-refresh)))
+    (should (assoc "g" suffixes))
+    (should (eq (cdr (assoc "g" suffixes)) 'madolt-log-refresh-apply))))
+
+(ert-deftest test-madolt-log-refresh-has-set-suffix ()
+  "madolt-log-refresh should have an `s' suffix for set-and-exit."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-log-refresh)))
+    (should (assoc "s" suffixes))
+    (should (eq (cdr (assoc "s" suffixes)) 'madolt-log-refresh-set))))
+
+(ert-deftest test-madolt-log-refresh-has-save-suffix ()
+  "madolt-log-refresh should have a `w' suffix for save-and-exit."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-log-refresh)))
+    (should (assoc "w" suffixes))
+    (should (eq (cdr (assoc "w" suffixes)) 'madolt-log-refresh-save))))
+
+(ert-deftest test-madolt-log-refresh-bound-in-mode-map ()
+  "L should be bound to madolt-log-refresh in madolt-mode-map."
+  (should (eq (keymap-lookup madolt-mode-map "L")
+              'madolt-log-refresh)))
+
+(ert-deftest test-madolt-log-refresh-current-args ()
+  "madolt-log-refresh--current-args should return current buffer args."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--args '("--graph" "--stat"))
+    (setq madolt-log--limit 50)
+    (let ((args (madolt-log-refresh--current-args)))
+      (should (member "--graph" args))
+      (should (member "--stat" args))
+      (should (cl-some (lambda (a) (string-prefix-p "-n" a)) args)))))
+
+(ert-deftest test-madolt-log-refresh-current-args-includes-limit ()
+  "madolt-log-refresh--current-args should include -n<limit>."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--args nil)
+    (setq madolt-log--limit 42)
+    (let ((args (madolt-log-refresh--current-args)))
+      (should (member "-n42" args)))))
+
+(ert-deftest test-madolt-log-refresh-current-args-no-duplicate-limit ()
+  "madolt-log-refresh--current-args should not duplicate -n if already in args."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--args '("-n100"))
+    (setq madolt-log--limit 100)
+    (let ((args (madolt-log-refresh--current-args)))
+      (should (= 1 (cl-count-if (lambda (a) (string-prefix-p "-n" a)) args))))))
+
+(ert-deftest test-madolt-log-refresh-apply-updates-args ()
+  "madolt-log-refresh--apply-args should update buffer-local args."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--rev "main")
+    (setq madolt-log--args nil)
+    (setq madolt-log--limit 25)
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-log-refresh--apply-args '("-n50" "--graph" "--stat")))
+    (should (= madolt-log--limit 50))
+    (should (member "--graph" madolt-log--args))
+    (should (member "--stat" madolt-log--args))
+    ;; -n should be stripped from args (handled by limit)
+    (should-not (cl-some (lambda (a) (string-prefix-p "-n" a))
+                         madolt-log--args))))
+
+(ert-deftest test-madolt-log-refresh-apply-errors-outside-log ()
+  "madolt-log-refresh--apply-args should error outside a log buffer."
+  (with-temp-buffer
+    (madolt-mode)
+    (should-error (madolt-log-refresh--apply-args '("--graph"))
+                  :type 'user-error)))
+
+;;;; Margin configuration
+
+(ert-deftest test-madolt-log-margin-defcustom ()
+  "madolt-log-margin should be a 5-element list."
+  (should (listp madolt-log-margin))
+  (should (= 5 (length madolt-log-margin))))
+
+(ert-deftest test-madolt-log-margin-default-values ()
+  "madolt-log-margin should default to (t age 36 t 16)."
+  (should (eq t (nth 0 madolt-log-margin)))
+  (should (eq 'age (nth 1 madolt-log-margin)))
+  (should (= 36 (nth 2 madolt-log-margin)))
+  (should (eq t (nth 3 madolt-log-margin)))
+  (should (= 16 (nth 4 madolt-log-margin))))
+
+(ert-deftest test-madolt-log-ensure-margin-config ()
+  "madolt-log--ensure-margin-config should initialize from defcustom."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (should-not madolt-log--margin-config)
+    (madolt-log--ensure-margin-config)
+    (should madolt-log--margin-config)
+    (should (equal madolt-log--margin-config
+                   (copy-sequence madolt-log-margin)))))
+
+(ert-deftest test-madolt-log-ensure-margin-config-idempotent ()
+  "madolt-log--ensure-margin-config should not overwrite existing config."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--margin-config '(nil age-abbreviated 40 nil 20))
+    (madolt-log--ensure-margin-config)
+    (should (equal madolt-log--margin-config
+                   '(nil age-abbreviated 40 nil 20)))))
+
+;;;; Margin toggle/cycle commands
+
+(ert-deftest test-madolt-toggle-margin-is-command ()
+  "madolt-toggle-margin should be a command."
+  (should (commandp 'madolt-toggle-margin)))
+
+(ert-deftest test-madolt-cycle-margin-style-is-command ()
+  "madolt-cycle-margin-style should be a command."
+  (should (commandp 'madolt-cycle-margin-style)))
+
+(ert-deftest test-madolt-toggle-margin-details-is-command ()
+  "madolt-toggle-margin-details should be a command."
+  (should (commandp 'madolt-toggle-margin-details)))
+
+(ert-deftest test-madolt-toggle-margin-flips-visibility ()
+  "madolt-toggle-margin should toggle the INIT flag."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--margin-config (list t 'age 36 t 16))
+    (cl-letf (((symbol-function 'madolt-log--apply-margin-config) #'ignore))
+      (madolt-toggle-margin))
+    (should-not (car madolt-log--margin-config))
+    (cl-letf (((symbol-function 'madolt-log--apply-margin-config) #'ignore))
+      (madolt-toggle-margin))
+    (should (car madolt-log--margin-config))))
+
+(ert-deftest test-madolt-cycle-margin-style-cycles ()
+  "madolt-cycle-margin-style should cycle age -> abbreviated -> string -> age."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--margin-config (list t 'age 36 t 16))
+    (cl-letf (((symbol-function 'madolt-log--apply-margin-config) #'ignore))
+      ;; age -> age-abbreviated
+      (madolt-cycle-margin-style)
+      (should (eq 'age-abbreviated (cadr madolt-log--margin-config)))
+      ;; age-abbreviated -> format string
+      (madolt-cycle-margin-style)
+      (should (stringp (cadr madolt-log--margin-config)))
+      ;; format string -> age
+      (madolt-cycle-margin-style)
+      (should (eq 'age (cadr madolt-log--margin-config))))))
+
+(ert-deftest test-madolt-toggle-margin-details-flips-author ()
+  "madolt-toggle-margin-details should toggle the AUTHOR flag."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--margin-config (list t 'age 36 t 16))
+    (cl-letf (((symbol-function 'madolt-log--apply-margin-config) #'ignore))
+      (madolt-toggle-margin-details))
+    (should-not (nth 3 madolt-log--margin-config))
+    (cl-letf (((symbol-function 'madolt-log--apply-margin-config) #'ignore))
+      (madolt-toggle-margin-details))
+    (should (nth 3 madolt-log--margin-config))))
+
+(ert-deftest test-madolt-toggle-margin-errors-outside-log ()
+  "Margin commands should error outside a log buffer."
+  (with-temp-buffer
+    (madolt-mode)
+    (should-error (madolt-toggle-margin) :type 'user-error)
+    (should-error (madolt-cycle-margin-style) :type 'user-error)
+    (should-error (madolt-toggle-margin-details) :type 'user-error)))
+
+;;;; Date formatting with styles
+
+(ert-deftest test-madolt-log-format-date-age ()
+  "Format date with age style should produce 'N unit' format."
+  (should (string-match-p "^[0-9]+ [a-z]+$"
+                          (madolt-log--format-date "2026-03-07 12:00:00" 'age))))
+
+(ert-deftest test-madolt-log-format-date-abbreviated ()
+  "Format date with age-abbreviated should produce 'Nc' format."
+  (let ((result (madolt-log--format-date "2026-03-07 12:00:00"
+                                         'age-abbreviated)))
+    (should (string-match-p "^[0-9]+[a-zA-Z]$" result))))
+
+(ert-deftest test-madolt-log-format-date-format-string ()
+  "Format date with a format string should produce absolute date."
+  (let ((result (madolt-log--format-date "2026-03-07 12:00:00"
+                                         "%Y-%m-%d")))
+    (should (string= "2026-03-07" result))))
+
+(ert-deftest test-madolt-log-format-date-nil-style-defaults-to-age ()
+  "Format date with nil style should default to age."
+  (let ((result (madolt-log--format-date "2026-03-07 12:00:00" nil)))
+    (should (string-match-p "^[0-9]+ [a-z]+$" result))))
+
+;;;; Margin rendering with config
+
+(ert-deftest test-madolt-log-margin-hidden-no-overlay ()
+  "When margin is hidden, madolt-log--insert-margin should not create overlays."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--margin-config (list nil 'age 36 t 16))
+    (let ((inhibit-read-only t))
+      (insert "test line\n")
+      (madolt-log--insert-margin "Alice" "2026-03-07 12:00:00"))
+    (should-not (overlays-in (point-min) (point-max)))))
+
+(ert-deftest test-madolt-log-margin-visible-creates-overlay ()
+  "When margin is visible, madolt-log--insert-margin should create overlays."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--margin-config (list t 'age 36 t 16))
+    (let ((inhibit-read-only t))
+      (insert "test line\n")
+      (madolt-log--insert-margin "Alice" "2026-03-07 12:00:00"))
+    (should (overlays-in (point-min) (point-max)))))
+
+(ert-deftest test-madolt-log-margin-no-author ()
+  "When AUTHOR is nil, margin should not include author text."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--margin-config (list t 'age 36 nil 16))
+    (let ((inhibit-read-only t))
+      (insert "test line\n")
+      (madolt-log--insert-margin "Alice" "2026-03-07 12:00:00"))
+    (let* ((ovs (overlays-in (point-min) (point-max)))
+           (before (overlay-get (car ovs) 'before-string))
+           (display (get-text-property 0 'display before))
+           (margin-text (cadr display)))
+      ;; Should NOT contain "Alice"
+      (should-not (string-match-p "Alice" margin-text)))))
+
+(ert-deftest test-madolt-log-margin-effective-width-hidden ()
+  "Effective width should be 0 when margin is hidden."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--margin-config (list nil 'age 36 t 16))
+    (should (= 0 (madolt-log--margin-effective-width)))))
+
+(ert-deftest test-madolt-log-margin-effective-width-visible ()
+  "Effective width should be the configured width when visible."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (setq madolt-log--margin-config (list t 'age 42 t 16))
+    (should (= 42 (madolt-log--margin-effective-width)))))
+
+;;;; Margin suffixes in transient
+
+(ert-deftest test-madolt-log-refresh-has-margin-toggle ()
+  "madolt-log-refresh should have an L suffix for margin toggle."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-log-refresh)))
+    (should (assoc "L" suffixes))))
+
+(ert-deftest test-madolt-log-refresh-has-margin-cycle ()
+  "madolt-log-refresh should have an l suffix for margin cycle."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-log-refresh)))
+    (should (assoc "l" suffixes))))
+
+(ert-deftest test-madolt-log-refresh-has-margin-details ()
+  "madolt-log-refresh should have a d suffix for margin details."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-log-refresh)))
+    (should (assoc "d" suffixes))))
 
 (provide 'madolt-log-tests)
 ;;; madolt-log-tests.el ends here

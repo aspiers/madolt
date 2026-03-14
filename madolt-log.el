@@ -64,11 +64,6 @@
   "Face for author names in the log buffer."
   :group 'madolt-faces)
 
-(defface madolt-log-refs
-  '((t :weight bold :foreground "green3"))
-  "Face for ref annotations in the log buffer."
-  :group 'madolt-faces)
-
 (defface madolt-log-graph
   '((((class color) (background light)) :foreground "grey30")
     (((class color) (background dark))  :foreground "grey80"))
@@ -76,19 +71,103 @@
 Inherits styling from `magit-log-graph'."
   :group 'madolt-faces)
 
+;;;; Ref label formatting
+
+(defun madolt-format-ref-labels (refs-string &optional remote-names)
+  "Format REFS-STRING with per-ref-type faces, like `magit-format-ref-labels'.
+REFS-STRING is the raw decoration from `dolt log', e.g.
+\"HEAD -> main, tag: v1.0, origin/main\".  Returns a propertized
+string with parentheses, where each ref is individually styled
+using the appropriate madolt face.
+
+REMOTE-NAMES is an optional list of configured remote names
+\(e.g. (\"origin\" \"upstream\")).  When provided, a ref containing
+\"/\" is classified as remote only if its first path component
+matches a known remote; otherwise it is treated as a local branch
+\(e.g. \"feature/foo\").  When nil, all refs containing \"/\" are
+assumed to be local branches (safe default for repos without
+remotes)."
+  (let ((head-target nil)
+        (tags nil)
+        (branches nil)
+        (remotes nil)
+        (parts (split-string refs-string ", " t)))
+    (dolist (part parts)
+      (cond
+       ;; "HEAD -> branchname" -- HEAD pointing to current branch
+       ((string-match "\\`HEAD -> \\(.+\\)\\'" part)
+        (let ((branch (match-string 1 part)))
+          (setq head-target
+                (concat (propertize "@" 'font-lock-face 'madolt-head)
+                        (propertize branch 'font-lock-face
+                                    'madolt-branch-current)))))
+       ;; "HEAD" alone (detached)
+       ((string-equal part "HEAD")
+        (setq head-target (propertize "@" 'font-lock-face 'madolt-head)))
+       ;; "tag: tagname"
+       ((string-match "\\`tag: \\(.+\\)\\'" part)
+        (push (propertize (match-string 1 part)
+                          'font-lock-face 'madolt-tag)
+              tags))
+       ;; Remote tracking branch: "remotename/branch" where remotename
+       ;; matches a known remote.  Without remote-names, branches like
+       ;; "feature/foo" are correctly treated as local.
+       ((and remote-names
+             (string-match "\\`\\([^/]+\\)/" part)
+             (member (match-string 1 part) remote-names))
+        (push (propertize part 'font-lock-face 'madolt-branch-remote)
+              remotes))
+       ;; Local branch (including branches with "/" like "feature/foo")
+       (t
+        (push (propertize part 'font-lock-face 'madolt-branch-local)
+              branches))))
+    ;; Assemble in magit's order: head, tags, local branches, remotes
+    (let ((all (append (when head-target (list head-target))
+                       (nreverse tags)
+                       (nreverse branches)
+                       (nreverse remotes))))
+      (concat "(" (mapconcat #'identity all " ") ")"))))
+
 ;;;; Margin configuration
 
+(defcustom madolt-log-margin '(t age 36 t 16)
+  "Format of the margin in log buffers.
+
+The value is a list of the form (INIT STYLE WIDTH AUTHOR AUTHOR-WIDTH):
+
+  INIT         Whether to show the margin initially (boolean).
+  STYLE        How to format the date: `age' (\"3 days\"),
+               `age-abbreviated' (\"3d\"), or a `format-time-string'
+               format string (e.g. \"%Y-%m-%d %H:%M\").
+  WIDTH        Total width of the right margin in columns.
+  AUTHOR       Whether to show the author name (boolean).
+  AUTHOR-WIDTH Maximum width for author names."
+  :group 'madolt
+  :type '(list (boolean :tag "Show margin initially")
+               (choice  :tag "Date style"
+                        (const  :tag "Relative age"              age)
+                        (const  :tag "Relative age (abbreviated)" age-abbreviated)
+                        (string :tag "Date format string"        "%Y-%m-%d %H:%M "))
+               (integer :tag "Margin width")
+               (boolean :tag "Show author name")
+               (integer :tag "Author name width")))
+
+;; Keep old defcustoms as obsolete aliases for backward compatibility.
 (defcustom madolt-log-margin-width 36
   "Width of the right margin in log buffers.
 Includes space for author name and date."
   :group 'madolt
   :type 'integer)
+(make-obsolete-variable 'madolt-log-margin-width
+                        'madolt-log-margin "0.3.0")
 
 (defcustom madolt-log-author-width 16
   "Maximum width for author names in the log margin.
 Names longer than this are truncated with an ellipsis."
   :group 'madolt
   :type 'integer)
+(make-obsolete-variable 'madolt-log-author-width
+                        'madolt-log-margin "0.3.0")
 
 ;; Set up right margin when log mode buffers are displayed.
 (add-hook 'madolt-log-mode-hook
@@ -97,6 +176,12 @@ Names longer than this are truncated with an ellipsis."
                       #'madolt-log--set-window-margins nil t)))
 
 ;;;; Buffer-local variables
+
+(defvar-local madolt-log--margin-config nil
+  "Buffer-local copy of `madolt-log-margin' for this log buffer.
+A list (INIT STYLE WIDTH AUTHOR AUTHOR-WIDTH) that the margin
+toggle/cycle commands mutate.  Initialized from `madolt-log-margin'
+when the buffer is first set up.")
 
 (defvar-local madolt-log--rev nil
   "The revision being shown in this log buffer.")
@@ -110,7 +195,14 @@ Names longer than this are truncated with an ellipsis."
 (defvar-local madolt-revision--hash nil
   "The commit hash being shown in a revision buffer.")
 
-;;;; Transient menu
+(defvar madolt-log--remote-names nil
+  "List of remote names for the current refresh cycle.
+Bound dynamically during log/revision buffer refresh so that
+`madolt-format-ref-labels' can distinguish remote tracking
+branches (e.g. \"origin/main\") from local branches with slashes
+\(e.g. \"feature/foo\").")
+
+;;;; Transient menus
 
 ;;;###autoload (autoload 'madolt-log "madolt-log" nil t)
 (transient-define-prefix madolt-log ()
@@ -130,6 +222,151 @@ Names longer than this are truncated with an ellipsis."
   ["Reflog"
    ("O" "Current branch" madolt-reflog-current)
    ("p" "Other ref"      madolt-reflog-other)])
+
+;;;; Log refresh transient (L)
+
+;; Like magit-log-refresh: change the arguments of the current log
+;; buffer and refresh it in-place, without re-selecting a branch.
+
+;;;###autoload (autoload 'madolt-log-refresh "madolt-log" nil t)
+(transient-define-prefix madolt-log-refresh ()
+  "Change the arguments used for the log(s) in the current buffer."
+  :value #'madolt-log-refresh--current-args
+  ["Arguments"
+   ("-n" "Limit count" "-n"
+    :class transient-option
+    :reader transient-read-number-N+)
+   ("-s" "Show stat"   "--stat")
+   ("-m" "Merges only" "--merges")
+   ("-g" "Graph"       "--graph")]
+  [["Refresh"
+    ("g" "buffer"                   madolt-log-refresh-apply)
+    ("s" "buffer and set defaults"  madolt-log-refresh-set)
+    ("w" "buffer and save defaults" madolt-log-refresh-save)]
+   ["Margin"
+    (madolt-toggle-margin)
+    (madolt-cycle-margin-style)
+    (madolt-toggle-margin-details)]]
+  (interactive)
+  (cond
+   ;; In a log buffer — refresh the current buffer's args.
+   ((derived-mode-p 'madolt-log-mode)
+    (transient-setup 'madolt-log-refresh))
+   ;; Not in a log buffer — try to find one to refresh.
+   (t
+    (if-let ((log-buf (madolt-log-refresh--find-log-buffer)))
+        (with-current-buffer log-buf
+          (transient-setup 'madolt-log-refresh))
+      (user-error "No log buffer to refresh; use `l' to open one")))))
+
+(defun madolt-log-refresh--current-args ()
+  "Return the current log buffer's arguments for the transient."
+  (when (derived-mode-p 'madolt-log-mode)
+    (let ((args (copy-sequence (or madolt-log--args nil))))
+      ;; Include the -n limit in the transient value so the user
+      ;; can see and adjust it.
+      (when (and madolt-log--limit
+                 (not (cl-some (lambda (a) (string-prefix-p "-n" a)) args)))
+        (push (format "-n%d" madolt-log--limit) args))
+      args)))
+
+(defun madolt-log-refresh--find-log-buffer ()
+  "Find a visible madolt-log-mode buffer in the current frame."
+  (cl-some (lambda (w)
+             (with-current-buffer (window-buffer w)
+               (when (derived-mode-p 'madolt-log-mode)
+                 (current-buffer))))
+           (window-list)))
+
+(defun madolt-log-refresh-apply (&optional args)
+  "Apply the transient ARGS to the current log buffer and refresh.
+When called from the transient, uses the transient arguments."
+  (interactive (list (transient-args 'madolt-log-refresh)))
+  (madolt-log-refresh--apply-args args))
+
+(defun madolt-log-refresh-set (&optional args)
+  "Apply ARGS, refresh, and set as the default for this session.
+The defaults persist until Emacs is restarted."
+  (interactive (list (transient-args 'madolt-log-refresh)))
+  (transient-set)
+  (madolt-log-refresh--apply-args args))
+
+(defun madolt-log-refresh-save (&optional args)
+  "Apply ARGS, refresh, and save as the persistent default.
+The defaults persist across Emacs sessions."
+  (interactive (list (transient-args 'madolt-log-refresh)))
+  (transient-save)
+  (madolt-log-refresh--apply-args args))
+
+(defun madolt-log-refresh--apply-args (args)
+  "Apply ARGS to the current log buffer and refresh it.
+Extracts the -n limit from ARGS and sets `madolt-log--limit',
+then stores the remaining args in `madolt-log--args'."
+  (unless (derived-mode-p 'madolt-log-mode)
+    (user-error "Not in a log buffer"))
+  (let ((limit (madolt-log--extract-limit args)))
+    (when limit
+      (setq madolt-log--limit limit)))
+  (setq madolt-log--args (madolt-log--filter-log-args args))
+  (madolt-refresh))
+
+;;;; Margin transient suffixes
+
+(defun madolt-log--ensure-margin-config ()
+  "Ensure `madolt-log--margin-config' is initialized for this buffer.
+Copies from `madolt-log-margin' if not yet set."
+  (unless madolt-log--margin-config
+    (setq madolt-log--margin-config (copy-sequence madolt-log-margin))))
+
+(transient-define-suffix madolt-toggle-margin ()
+  "Show or hide the right margin in the current log buffer."
+  :description "Toggle visibility"
+  :key "L"
+  :transient t
+  (interactive)
+  (unless (derived-mode-p 'madolt-log-mode)
+    (user-error "Not in a log buffer"))
+  (madolt-log--ensure-margin-config)
+  (setcar madolt-log--margin-config
+          (not (car madolt-log--margin-config)))
+  (madolt-log--apply-margin-config))
+
+(transient-define-suffix madolt-cycle-margin-style ()
+  "Cycle the date style used in the right margin.
+Cycles through: age (\"3 days\") -> age-abbreviated (\"3d\")
+-> absolute date -> age."
+  :description "Cycle style"
+  :key "l"
+  :transient t
+  (interactive)
+  (unless (derived-mode-p 'madolt-log-mode)
+    (user-error "Not in a log buffer"))
+  (madolt-log--ensure-margin-config)
+  (setf (cadr madolt-log--margin-config)
+        (pcase (cadr madolt-log--margin-config)
+          ('age 'age-abbreviated)
+          ('age-abbreviated "%Y-%m-%d %H:%M ")
+          (_ 'age)))
+  (madolt-log--apply-margin-config))
+
+(transient-define-suffix madolt-toggle-margin-details ()
+  "Show or hide the author name in the right margin."
+  :description "Toggle details"
+  :key "d"
+  :transient t
+  (interactive)
+  (unless (derived-mode-p 'madolt-log-mode)
+    (user-error "Not in a log buffer"))
+  (madolt-log--ensure-margin-config)
+  (setf (nth 3 madolt-log--margin-config)
+        (not (nth 3 madolt-log--margin-config)))
+  (madolt-log--apply-margin-config))
+
+(defun madolt-log--apply-margin-config ()
+  "Apply the current margin config and refresh the buffer.
+Recalculates the margin width and refreshes the display."
+  (madolt-log--setup-margins)
+  (madolt-refresh))
 
 ;;;; Row limit expansion
 
@@ -167,6 +404,9 @@ ARGS are additional arguments from the transient."
   (interactive (list (transient-args 'madolt-log)))
   (unless (member "--all" args)
     (push "--all" args))
+  ;; Auto-enable --graph for multi-branch views (like magit)
+  (unless (member "--graph" args)
+    (push "--graph" args))
   (madolt-log--show "--all" args))
 
 ;;;; Log display
@@ -224,6 +464,7 @@ The limit is handled separately via `madolt-log--limit'."
   "Refresh the log buffer by inserting commit sections."
   (let* ((rev (unless (string= madolt-log--rev "--all")
                 madolt-log--rev))
+         (madolt-log--remote-names (madolt-remote-names))
          (entries (madolt-log-entries
                    madolt-log--limit
                    rev
@@ -250,7 +491,9 @@ The limit is handled separately via `madolt-log--limit'."
 ENTRY is a plist with keys :hash :refs :date :author :message.
 When :graph is non-nil, graph decoration is prepended to the line.
 When :graph-pre is non-nil, junction lines are inserted before
-the commit section."
+the commit section.
+When :graph-post is non-nil, junction lines are inserted after
+the commit section (e.g. \"|\\\\\" after a merge commit)."
   (let* ((hash (plist-get entry :hash))
          (refs (plist-get entry :refs))
          (date (plist-get entry :date))
@@ -258,6 +501,7 @@ the commit section."
          (message (plist-get entry :message))
          (graph (plist-get entry :graph))
          (graph-pre (plist-get entry :graph-pre))
+         (graph-post (plist-get entry :graph-post))
          (short-hash (substring hash 0 (min 8 (length hash)))))
     ;; Insert graph junction lines before the commit (e.g. "|\" or "|/")
     (when graph-pre
@@ -272,16 +516,21 @@ the commit section."
                        'font-lock-face 'madolt-log-graph))
          (propertize short-hash 'font-lock-face 'madolt-hash)
          (if refs
-             (concat " " (propertize (format "(%s)" refs)
-                                     'font-lock-face 'madolt-log-refs))
-           "")
+              (concat " " (madolt-format-ref-labels
+                           refs madolt-log--remote-names))
+            "")
          " "
          (or message "")
          "\n"))
       (madolt-log--insert-margin author date)
       ;; Washer for TAB expansion: show structured diff
       (magit-insert-section-body
-        (madolt-log--insert-commit-diff hash)))))
+        (madolt-log--insert-commit-diff hash)))
+    ;; Insert graph junction lines after the commit (e.g. "|\" after merge)
+    (when graph-post
+      (dolist (junction graph-post)
+        (insert (propertize junction 'font-lock-face 'madolt-log-graph)
+                "\n")))))
 
 (defconst madolt-log--age-spec
   `((?Y "year"   "years"   ,(round (* 60 60 24 365.2425)))
@@ -309,15 +558,28 @@ dependency chain and breaks batch tests)."
           (list cnt (if (= cnt 1) unit units))
         (calc age rest)))))
 
-(defun madolt-log--format-date (date-string)
-  "Format DATE-STRING as a relative age like magit.
-Returns strings like \"2 hours\", \"3 days\", \"1 year\"."
+(defun madolt-log--format-date (date-string &optional style)
+  "Format DATE-STRING according to STYLE.
+STYLE can be:
+  `age'              -- relative age like \"3 days\" (default)
+  `age-abbreviated'  -- abbreviated like \"3d\"
+  a string           -- passed to `format-time-string'"
   (when date-string
-    (let ((time (ignore-errors (date-to-time date-string))))
+    (let ((time (ignore-errors (date-to-time date-string)))
+          (style (or style 'age)))
       (if time
-          (pcase-let ((`(,cnt ,unit)
-                       (madolt-log--relative-age (float-time time))))
-            (format "%d %s" cnt unit))
+          (cond
+           ((stringp style)
+            (format-time-string style (float-time time)))
+           ((eq style 'age-abbreviated)
+            (pcase-let ((`(,cnt ,unit)
+                         (madolt-log--relative-age (float-time time))))
+              ;; Use first character of unit: "3d", "2h", "1Y"
+              (format "%d%c" cnt (aref unit 0))))
+           (t ; 'age or fallback
+            (pcase-let ((`(,cnt ,unit)
+                         (madolt-log--relative-age (float-time time))))
+              (format "%d %s" cnt unit))))
         date-string))))
 
 (defun madolt-log--short-author (author)
@@ -331,51 +593,73 @@ Strip email address if present."
 
 (defun madolt-log--insert-margin (author date)
   "Insert a right-margin overlay with AUTHOR and DATE on the heading line.
-The author is left-aligned and truncated to `madolt-log-author-width'.
-The date is right-aligned within `madolt-log-margin-width'."
-  (let* ((short-author (or (madolt-log--short-author author) ""))
-         (short-date (or (madolt-log--format-date date) ""))
-         (truncated-author (truncate-string-to-width
-                            short-author madolt-log-author-width nil nil t))
-         ;; Pad author to fixed width for column alignment
-         (padded-author (truncate-string-to-width
-                         truncated-author madolt-log-author-width nil ?\s))
-         ;; Right-align date: pad with spaces between author and date
-         (date-width (length short-date))
-         (gap (max 1 (- madolt-log-margin-width
-                       madolt-log-author-width
-                       date-width)))
-         (margin-text (concat
-                       (propertize padded-author
-                                  'font-lock-face 'madolt-log-author)
-                       (make-string gap ?\s)
-                       (propertize short-date
-                                  'font-lock-face 'madolt-log-date))))
-    (save-excursion
-      (forward-line -1)
-      (let ((o (make-overlay (1+ (point)) (line-end-position) nil t)))
-        (overlay-put o 'evaporate t)
-        (overlay-put
-         o 'before-string
-         (propertize "o" 'display
-                     (list (list 'margin 'right-margin)
-                           margin-text)))))))
+Respects the margin config in `madolt-log--margin-config':
+INIT controls visibility, STYLE controls date format, AUTHOR
+controls whether the author name is shown."
+  (madolt-log--ensure-margin-config)
+  (pcase-let ((`(,init ,style ,width ,show-author ,author-width)
+               madolt-log--margin-config))
+    (when init
+      (let* ((short-author (or (madolt-log--short-author author) ""))
+             (short-date (or (madolt-log--format-date date style) ""))
+             (margin-text
+              (if show-author
+                  (let* ((truncated-author
+                          (truncate-string-to-width
+                           short-author author-width nil nil t))
+                         (padded-author
+                          (truncate-string-to-width
+                           truncated-author author-width nil ?\s))
+                         (date-width (length short-date))
+                         (gap (max 1 (- width author-width date-width))))
+                    (concat
+                     (propertize padded-author
+                                'font-lock-face 'madolt-log-author)
+                     (make-string gap ?\s)
+                     (propertize short-date
+                                'font-lock-face 'madolt-log-date)))
+                ;; No author — just the date, right-aligned
+                (let* ((date-width (length short-date))
+                       (gap (max 0 (- width date-width))))
+                  (concat
+                   (make-string gap ?\s)
+                   (propertize short-date
+                               'font-lock-face 'madolt-log-date))))))
+        (save-excursion
+          (forward-line -1)
+          (let ((o (make-overlay (1+ (point)) (line-end-position) nil t)))
+            (overlay-put o 'evaporate t)
+            (overlay-put
+             o 'before-string
+             (propertize "o" 'display
+                         (list (list 'margin 'right-margin)
+                               margin-text)))))))))
+
+(defun madolt-log--margin-effective-width ()
+  "Return the effective right margin width.
+Returns 0 when the margin is hidden, otherwise the configured width."
+  (madolt-log--ensure-margin-config)
+  (if (car madolt-log--margin-config)
+      (nth 2 madolt-log--margin-config)
+    0))
 
 (defun madolt-log--setup-margins ()
   "Set the right margin width for the current log buffer."
-  (dolist (window (get-buffer-window-list nil nil 0))
-    (set-window-margins window
-                        (car (window-margins window))
-                        madolt-log-margin-width)))
+  (let ((width (madolt-log--margin-effective-width)))
+    (dolist (window (get-buffer-window-list nil nil 0))
+      (set-window-margins window
+                          (car (window-margins window))
+                          width))))
 
 (defun madolt-log--set-window-margins (&optional window)
   "Ensure WINDOW has the right margin set for log display."
   (when (or window (setq window (get-buffer-window)))
     (with-current-buffer (window-buffer window)
       (when (derived-mode-p 'madolt-log-mode)
-        (set-window-margins window
-                            (car (window-margins window))
-                            madolt-log-margin-width)))))
+        (let ((width (madolt-log--margin-effective-width)))
+          (set-window-margins window
+                              (car (window-margins window))
+                              width))))))
 
 ;;;; Commit diff expansion
 
@@ -502,6 +786,7 @@ Otherwise, show the commit in another window without selecting."
 (defun madolt-revision-refresh-buffer ()
   "Refresh the revision buffer."
   (let* ((hash madolt-revision--hash)
+         (madolt-log--remote-names (madolt-remote-names))
          (entry (madolt-log--find-entry hash))
          (parents (plist-get entry :parents))
          (parent (or (car parents)
@@ -511,8 +796,8 @@ Otherwise, show the commit in another window without selecting."
       (insert (propertize "commit " 'font-lock-face 'bold)
               (propertize hash 'font-lock-face 'madolt-hash))
       (when-let ((refs (and entry (plist-get entry :refs))))
-        (insert " " (propertize (format "(%s)" refs)
-                                'font-lock-face 'madolt-log-refs)))
+        (insert " " (madolt-format-ref-labels
+                     refs madolt-log--remote-names)))
       (insert "\n")
       ;; Parent/Merge line — use the first available parent source
       (let ((all-parents (or parents (and parent (list parent)))))

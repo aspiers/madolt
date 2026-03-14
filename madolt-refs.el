@@ -64,41 +64,43 @@ Added to `kill-buffer-hook' so the cache survives buffer kills."
 ;;;; Faces
 
 (defface madolt-branch-local
-  '((((class color) (background light)) :foreground "SkyBlue4")
-    (((class color) (background dark))  :foreground "LightSkyBlue1"))
-  "Face for local branch names in refs buffers."
+  '((t :inherit magit-branch-local))
+  "Face for local branch names."
   :group 'madolt-faces)
 
 (defface madolt-branch-remote
-  '((((class color) (background light)) :foreground "DarkOliveGreen4")
-    (((class color) (background dark))  :foreground "DarkSeaGreen2"))
-  "Face for remote branch names in refs buffers."
+  '((t :inherit magit-branch-remote))
+  "Face for remote branch names."
   :group 'madolt-faces)
 
 (defface madolt-branch-remote-head
-  '((t :inherit madolt-branch-remote :box t))
+  '((t :inherit magit-branch-remote-head))
   "Face for the remote HEAD branch (e.g. origin/HEAD)."
   :group 'madolt-faces)
 
 (defface madolt-branch-current
-  '((t :inherit madolt-branch-local :box t))
-  "Face for the current branch in refs buffers."
+  '((t :inherit magit-branch-current))
+  "Face for the current branch."
   :group 'madolt-faces)
 
 (defface madolt-branch-upstream
-  '((t :inherit madolt-branch-remote :slant italic))
+  '((t :inherit magit-branch-upstream))
   "Face for upstream tracking branches."
   :group 'madolt-faces)
 
 (defface madolt-branch-warning
-  '((t :inherit warning))
+  '((t :inherit magit-branch-warning))
   "Face for warning indicators on branches."
   :group 'madolt-faces)
 
 (defface madolt-tag
-  '((((class color) (background light)) :foreground "Goldenrod4")
-    (((class color) (background dark))  :foreground "LightGoldenrod2"))
-  "Face for tag names in refs buffers."
+  '((t :inherit magit-tag))
+  "Face for tag names."
+  :group 'madolt-faces)
+
+(defface madolt-head
+  '((t :inherit magit-head))
+  "Face for the symbolic ref HEAD."
   :group 'madolt-faces)
 
 ;;;; Customization

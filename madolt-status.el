@@ -53,6 +53,10 @@ No longer used; headings now rely on `magit-insert-heading' auto-face."
   "Face for commit hashes."
   :group 'madolt-faces)
 
+;; These faces are also defined in madolt-refs.el.  Both definitions
+;; inherit from the corresponding magit face; defface is first-wins,
+;; so whichever file loads first determines the spec (they're
+;; identical, so load order doesn't matter).
 (defface madolt-branch-local
   '((t :inherit magit-branch-local))
   "Face for local branch names."
@@ -60,7 +64,7 @@ No longer used; headings now rely on `magit-insert-heading' auto-face."
 
 (defface madolt-branch-remote
   '((t :inherit magit-branch-remote))
-  "Face for remote branch/URL names."
+  "Face for remote branch names."
   :group 'madolt-faces)
 
 (defface madolt-table-modified
@@ -346,14 +350,14 @@ If TABLES is empty, nothing is inserted."
 ;;;; Staged changes
 
 (defun madolt-insert-staged-changes ()
-  "Insert the staged changes section."
+  "Insert the staged change section."
   (let ((tables (alist-get 'staged (madolt--cached-status-tables))))
     (madolt--insert-table-change-section 'staged "Staged changes" tables)))
 
 ;;;; Unstaged changes
 
 (defun madolt-insert-unstaged-changes ()
-  "Insert the unstaged changes section."
+  "Insert the unstaged change section."
   (let ((tables (alist-get 'unstaged (madolt--cached-status-tables))))
     (madolt--insert-table-change-section 'unstaged "Unstaged changes" tables)))
 
@@ -467,7 +471,7 @@ a sibling or parent."
 
 (defun madolt-status-jump ()
   "Jump to a section in the status buffer.
-Offers a completing-read of visible top-level section headings."
+Offers a `completing-read' of visible top-level section headings."
   (interactive)
   (unless (derived-mode-p 'madolt-mode)
     (user-error "Not in a madolt buffer"))

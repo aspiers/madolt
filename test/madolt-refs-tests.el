@@ -97,7 +97,8 @@
                   madolt-branch-current
                   madolt-branch-upstream
                   madolt-branch-warning
-                  madolt-tag))
+                  madolt-tag
+                  madolt-head))
     (should (facep face))))
 
 ;;;; Data functions
@@ -450,9 +451,10 @@
 ;;;; New faces
 
 (ert-deftest test-madolt-refs-remote-head-face ()
-  "Remote HEAD face should inherit from remote with box."
+  "Remote HEAD face should inherit from magit-branch-remote-head."
   (should (facep 'madolt-branch-remote-head))
-  (should (face-attribute 'madolt-branch-remote-head :box)))
+  (should (eq (face-attribute 'madolt-branch-remote-head :inherit)
+              'magit-branch-remote-head)))
 
 (ert-deftest test-madolt-refs-upstream-face ()
   "Upstream face should have italic slant."
