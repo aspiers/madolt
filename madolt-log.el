@@ -49,26 +49,18 @@
 ;;;; Faces
 
 (defface madolt-log-date
-  '((((class color) (background light))
-     :foreground "grey30" :slant normal :weight normal)
-    (((class color) (background dark))
-     :foreground "grey80" :slant normal :weight normal))
+  '((t :inherit magit-log-date))
   "Face for dates in the log buffer."
   :group 'madolt-faces)
 
 (defface madolt-log-author
-  '((((class color) (background light))
-     :foreground "firebrick" :slant normal :weight normal)
-    (((class color) (background dark))
-     :foreground "tomato" :slant normal :weight normal))
+  '((t :inherit magit-log-author))
   "Face for author names in the log buffer."
   :group 'madolt-faces)
 
 (defface madolt-log-graph
-  '((((class color) (background light)) :foreground "grey30")
-    (((class color) (background dark))  :foreground "grey80"))
-  "Face for the graph part of the log output.
-Inherits styling from `magit-log-graph'."
+  '((t :inherit magit-log-graph))
+  "Face for the graph part of the log output."
   :group 'madolt-faces)
 
 ;;;; Ref label formatting
@@ -793,13 +785,12 @@ Otherwise, show the commit in another window without selecting."
          (parent (or (car parents)
                      (madolt-log--parent-hash hash))))
     (magit-insert-section (revision)
-      ;; Commit metadata header
-      (insert (propertize "commit " 'font-lock-face 'bold)
-              (propertize hash 'font-lock-face 'madolt-hash))
+      ;; Commit metadata header — refs before hash, like magit
       (when-let ((refs (and entry (plist-get entry :refs))))
-        (insert " " (madolt-format-ref-labels
-                     refs madolt-log--remote-names)))
-      (insert "\n")
+        (insert (madolt-format-ref-labels
+                 refs madolt-log--remote-names)
+                " "))
+      (insert (propertize hash 'font-lock-face 'madolt-hash) "\n")
       ;; Parent/Merge line — use the first available parent source
       (let ((all-parents (or parents (and parent (list parent)))))
         (cond
