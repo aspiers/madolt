@@ -164,6 +164,8 @@ Uses a two-phase prefetch strategy:
   (setq madolt--upstream-ref-cache 'unset)
   (setq madolt--upstream-sections-inserted nil)
   (setq madolt--log-entries-cache nil)
+  ;; Warn about stale sql-server.info (causes parallel dolt failures)
+  (madolt-check-stale-sql-server)
   ;; Phase 1: prefetch independent CLI commands in parallel.
   (madolt--prefetch
    '(("branch" "--show-current")

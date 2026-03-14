@@ -156,13 +156,27 @@ instead of spawning a CLI process.  Falls back to CLI on failure."
 
 (defun madolt--run-cli (args)
   "Execute dolt CLI with ARGS synchronously.
-Return (EXIT-CODE . OUTPUT-STRING)."
-  (let ((process-environment (cons "NO_COLOR=1" process-environment)))
-    (with-temp-buffer
-      (let ((exit (apply #'call-process
-                         madolt-dolt-executable nil t nil
-                         args)))
-        (cons exit (buffer-string))))))
+Return (EXIT-CODE . OUTPUT-STRING).
+Stderr is captured separately and only included in the output
+when the exit code is non-zero, to prevent spurious warnings
+\(e.g. connection errors from config.yaml) from contaminating
+normal output."
+  (let ((process-environment (cons "NO_COLOR=1" process-environment))
+        (stderr-file (make-temp-file "madolt-stderr")))
+    (unwind-protect
+        (with-temp-buffer
+          (let ((exit (apply #'call-process
+                             madolt-dolt-executable nil
+                             (list t stderr-file) nil
+                             args)))
+            (if (zerop exit)
+                (cons exit (buffer-string))
+              ;; On error, append stderr to output for diagnostics
+              (let ((stderr (with-temp-buffer
+                              (insert-file-contents stderr-file)
+                              (buffer-string))))
+                (cons exit (concat (buffer-string) stderr))))))
+      (delete-file stderr-file))))
 
 (defun madolt--run-sql (args)
   "Try to execute ARGS via SQL translation.
@@ -189,7 +203,12 @@ COMMANDS is a list of argument lists (each is what you would pass
 to `madolt--run').  All processes run in parallel; results are
 stored in `madolt--refresh-cache' under `raw'-prefixed keys so
 that subsequent `madolt--run' calls find them already cached.
-Must be called while `madolt--refresh-cache' is bound."
+Must be called while `madolt--refresh-cache' is bound.
+
+Stderr is redirected to /dev/null to prevent spurious warnings
+\(e.g. dolt sql-server connection errors) from contaminating
+output.  On non-zero exit, the error is visible from the exit
+code; use `madolt--run' for detailed error output."
   (let* ((dir default-directory)
          (global-args madolt-dolt-global-arguments)
          (env (cons "NO_COLOR=1" process-environment))
@@ -202,36 +221,46 @@ Must be called while `madolt--refresh-cache' is bound."
         (unless (assoc cache-key (cdr madolt--refresh-cache))
           (let* ((buf (generate-new-buffer " *madolt-prefetch*"))
                  (process-environment env)
-            (proc (make-process
-                         :name "madolt-prefetch"
-                         :buffer buf
-                         :command (cons madolt-dolt-executable args)
-                         :connection-type 'pipe
-                         :noquery t
-                         :sentinel #'ignore)))
+                 (proc (make-process
+                        :name "madolt-prefetch"
+                        :buffer buf
+                        :command (cons madolt-dolt-executable args)
+                        :connection-type 'pipe
+                        :noquery t
+                        :sentinel #'ignore)))
             (process-put proc 'madolt-cache-key cache-key)
             (push proc all-procs)))))
-    ;; Wait for all to complete (10s timeout)
+    ;; Wait for all to complete (10s timeout).
+    ;; Accept output from each live process in round-robin to ensure
+    ;; all prefetch I/O is serviced.
     (let ((deadline (+ (float-time) 10.0))
-          (live all-procs))
+          (live (copy-sequence all-procs)))
       (while (and live (< (float-time) deadline))
         (setq live (cl-remove-if-not #'process-live-p live))
-        (when live
-          (accept-process-output nil 0.01)))
+        (dolist (proc live)
+          (accept-process-output proc 0.05)))
       ;; Kill any stragglers
       (dolist (proc live)
         (when (process-live-p proc)
           (kill-process proc))))
-    ;; Collect results into cache
+    ;; Collect results into cache.
+    ;; Failed commands (non-zero exit) are NOT cached so that
+    ;; madolt--run falls through to a synchronous retry.  This
+    ;; handles transient failures from dolt lock contention when
+    ;; a stale sql-server.info is present.
     (dolist (proc all-procs)
       (let ((cache-key (process-get proc 'madolt-cache-key))
             (buf (process-buffer proc)))
         (when (buffer-live-p buf)
           (let ((exit (process-exit-status proc))
                 (output (with-current-buffer buf (buffer-string))))
-            (cl-incf (cdar madolt--refresh-cache))
-            (push (cons cache-key (cons exit output))
-                  (cdr madolt--refresh-cache)))
+            (if (zerop exit)
+                (progn
+                  (cl-incf (cdar madolt--refresh-cache))
+                  (push (cons cache-key (cons exit output))
+                        (cdr madolt--refresh-cache)))
+              ;; Non-zero exit: don't cache, let madolt--run retry
+              (cl-incf (cdar madolt--refresh-cache))))
           (kill-buffer buf))))))
 
 (defun madolt-dolt-string (&rest args)
@@ -318,6 +347,32 @@ the file exists and the process is still alive, nil otherwise."
             (when (and (> pid 0)
                        (file-exists-p (format "/proc/%d" pid)))
               (list :pid pid :port port))))))))
+
+(defun madolt-check-stale-sql-server ()
+  "Warn if a stale sql-server.info exists in the database directory chain.
+Dolt CLI checks for sql-server.info in parent directories and attempts
+to connect, which causes timeouts and failures when the server is dead.
+This checks the current database directory and its parents."
+  (let ((dir default-directory)
+        (warned nil))
+    (while (and dir (not warned))
+      (let ((info-file (expand-file-name ".dolt/sql-server.info" dir)))
+        (when (file-exists-p info-file)
+          (let ((contents (with-temp-buffer
+                            (insert-file-contents info-file)
+                            (string-trim (buffer-string)))))
+            (when (string-match "\\`\\([0-9]+\\):\\([0-9]+\\):" contents)
+              (let ((pid (string-to-number (match-string 1 contents)))
+                    (port (string-to-number (match-string 2 contents))))
+                (unless (file-exists-p (format "/proc/%d" pid))
+                  (message "Warning: stale sql-server.info in %s (pid %d port %d is dead). This causes slow dolt commands. Remove the file to fix."
+                           dir pid port)
+                  (setq warned t)))))))
+      (let ((parent (file-name-directory (directory-file-name dir))))
+        (setq dir (and parent
+                       (not (equal parent dir))
+                       (file-directory-p (expand-file-name ".dolt" parent))
+                       parent))))))
 
 (defun madolt-current-branch ()
   "Return the name of the current Dolt branch as a string."

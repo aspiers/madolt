@@ -586,43 +586,42 @@ Uses `madolt-refs--remote-branches' and `madolt-refs--remotes-alist'."
       (dolist (branch branches)
         (let ((remote (plist-get branch :remote)))
           (push branch (gethash remote by-remote))))
-      (maphash
-       (lambda (remote remote-branches)
-         (let* ((rbranches (nreverse remote-branches))
-                (url (cdr (assoc remote remotes-alist #'string=)))
-                (col-width (madolt-refs--column-width
-                            (mapcar (lambda (b)
-                                      (let ((n (plist-get b :name)))
-                                        (if madolt-refs-show-remote-prefix
-                                            (format "%s/%s" remote n)
-                                          n)))
-                                    rbranches))))
-           (magit-insert-section (remote remote t)
-              (magit-insert-heading
-                (if url
-                    (format "Remote %s (%s)" remote url)
-                  (format "Remote %s" remote)))
-             (dolist (branch rbranches)
-               (let* ((name (plist-get branch :name))
-                      (message (plist-get branch :message))
-                      (full-name (format "%s/%s" remote name))
-                      (display-name (if madolt-refs-show-remote-prefix
-                                        full-name
-                                      name))
-                      (padded (truncate-string-to-width
-                               display-name col-width nil ?\s)))
-                  (magit-insert-section (branch full-name)
-                    (magit-insert-heading
-                      (concat
-                       "  "
-                       (propertize padded
-                                   'font-lock-face 'madolt-branch-remote)
-                       " " (or message "")
-                       "\n"))
-                    (madolt-refs--maybe-format-margin
-                     (plist-get branch :hash)))))
-              (insert "\n"))))
-       by-remote)))))
+      ;; Iterate in sorted order for deterministic output
+      (dolist (remote (sort (hash-table-keys by-remote) #'string<))
+        (let* ((rbranches (nreverse (gethash remote by-remote)))
+               (url (cdr (assoc remote remotes-alist #'string=)))
+               (col-width (madolt-refs--column-width
+                           (mapcar (lambda (b)
+                                     (let ((n (plist-get b :name)))
+                                       (if madolt-refs-show-remote-prefix
+                                           (format "%s/%s" remote n)
+                                         n)))
+                                   rbranches))))
+          (magit-insert-section (remote remote t)
+            (magit-insert-heading
+              (if url
+                  (format "Remote %s (%s)" remote url)
+                (format "Remote %s" remote)))
+            (dolist (branch rbranches)
+              (let* ((name (plist-get branch :name))
+                     (message (plist-get branch :message))
+                     (full-name (format "%s/%s" remote name))
+                     (display-name (if madolt-refs-show-remote-prefix
+                                       full-name
+                                     name))
+                     (padded (truncate-string-to-width
+                              display-name col-width nil ?\s)))
+                (magit-insert-section (branch full-name)
+                  (magit-insert-heading
+                    (concat
+                     "  "
+                     (propertize padded
+                                 'font-lock-face 'madolt-branch-remote)
+                     " " (or message "")
+                     "\n"))
+                  (madolt-refs--maybe-format-margin
+                   (plist-get branch :hash)))))
+            (insert "\n"))))))))
 
 (defun madolt-refs--insert-tags ()
   "Insert a section listing tags.
