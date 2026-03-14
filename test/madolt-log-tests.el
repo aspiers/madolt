@@ -146,38 +146,33 @@ Returns in a state with 3 user commits plus the init commit."
 ;;;; Ref label formatting
 
 (ert-deftest test-madolt-format-ref-labels-local-branch ()
-  "Local branch names should use madolt-branch-local face."
+  "Local branch name should use madolt-branch-local face."
   (let ((result (madolt-format-ref-labels "main")))
     (should (string-match-p "main" result))
-    (should (eq (get-text-property 1 'font-lock-face result)
+    (should (eq (get-text-property 0 'font-lock-face result)
                 'madolt-branch-local))))
 
 (ert-deftest test-madolt-format-ref-labels-head-current ()
-  "HEAD -> branch should show @ with madolt-head and branch with madolt-branch-current."
+  "HEAD -> branch should show branch with madolt-branch-current, no @."
   (let ((result (madolt-format-ref-labels "HEAD -> main")))
-    ;; Should contain @ for HEAD
-    (should (string-match-p "@" result))
-    ;; Find the @ character and check its face
-    (let ((at-pos (string-match "@" result)))
-      (should (eq (get-text-property at-pos 'font-lock-face result)
-                  'madolt-head)))
-    ;; Find "main" and check its face
+    ;; No @ -- the boxed face is sufficient to indicate current branch
+    (should-not (string-match-p "@" result))
+    (should (string-match-p "main" result))
     (let ((main-pos (string-match "main" result)))
       (should (eq (get-text-property main-pos 'font-lock-face result)
                   'madolt-branch-current)))))
 
 (ert-deftest test-madolt-format-ref-labels-tag ()
-  "Tags should use madolt-tag face."
+  "Tag should use madolt-tag face with tag: prefix stripped."
   (let ((result (madolt-format-ref-labels "tag: v1.0")))
     (should (string-match-p "v1.0" result))
-    ;; tag: prefix should be stripped; v1.0 should have tag face
     (should-not (string-match-p "tag:" result))
     (let ((pos (string-match "v1.0" result)))
       (should (eq (get-text-property pos 'font-lock-face result)
                   'madolt-tag)))))
 
 (ert-deftest test-madolt-format-ref-labels-remote ()
-  "Remote branches should use madolt-branch-remote face."
+  "Remote branch should use madolt-branch-remote face."
   (let ((result (madolt-format-ref-labels "origin/main" '("origin"))))
     (should (string-match-p "origin/main" result))
     (let ((pos (string-match "origin/main" result)))
@@ -189,14 +184,12 @@ Returns in a state with 3 user commits plus the init commit."
   (let ((result (madolt-format-ref-labels
                  "HEAD -> main, tag: v1.0, origin/main"
                  '("origin"))))
-    ;; Should contain all refs
-    (should (string-match-p "@" result))
     (should (string-match-p "main" result))
     (should (string-match-p "v1.0" result))
     (should (string-match-p "origin/main" result))
-    ;; Should be wrapped in parens
-    (should (string-prefix-p "(" result))
-    (should (string-suffix-p ")" result))))
+    ;; No parentheses -- matches magit's format
+    (should-not (string-prefix-p "(" result))
+    (should-not (string-suffix-p ")" result))))
 
 (ert-deftest test-madolt-format-ref-labels-head-detached ()
   "Detached HEAD should show @ with madolt-head face."
@@ -207,7 +200,7 @@ Returns in a state with 3 user commits plus the init commit."
                   'madolt-head)))))
 
 (ert-deftest test-madolt-format-ref-labels-slash-branch-is-local ()
-  "Branches with slashes like feature/foo should be local, not remote."
+  "Branch with slashes like feature/foo should be local, not remote."
   (let ((result (madolt-format-ref-labels "feature/foo")))
     (let ((pos (string-match "feature/foo" result)))
       (should (eq (get-text-property pos 'font-lock-face result)
@@ -218,20 +211,23 @@ Returns in a state with 3 user commits plus the init commit."
       (should (eq (get-text-property pos 'font-lock-face result)
                   'madolt-branch-local)))))
 
-(ert-deftest test-madolt-format-ref-labels-wrapped-in-parens ()
-  "Result should be wrapped in parentheses."
+(ert-deftest test-madolt-format-ref-labels-no-parens ()
+  "Result should not be wrapped in parentheses (match magit format)."
   (let ((result (madolt-format-ref-labels "main")))
-    (should (string-prefix-p "(" result))
-    (should (string-suffix-p ")" result))))
+    (should (string= result (string-trim result)))
+    (should-not (string-prefix-p "(" result))
+    (should-not (string-suffix-p ")" result))))
 
 (ert-deftest test-madolt-format-ref-labels-ordering ()
-  "Refs should be ordered: HEAD, tags, local branches, remotes."
+  "Refs should be ordered: HEAD/current, tags, local branches, remotes."
   (let ((result (madolt-format-ref-labels
                  "origin/main, tag: v1.0, feature, HEAD -> main"
                  '("origin"))))
-    ;; @ (HEAD) should come before v1.0 (tag)
-    (should (< (string-match "@" result)
-               (string-match "v1.0" result)))
+    ;; current branch (main) should come before v1.0 (tag)
+    (let ((main-pos (string-match "main" result)))
+      (should (eq (get-text-property main-pos 'font-lock-face result)
+                  'madolt-branch-current))
+      (should (< main-pos (string-match "v1.0" result))))
     ;; v1.0 (tag) should come before feature (local branch)
     (should (< (string-match "v1.0" result)
                (string-match "feature" result)))

@@ -77,8 +77,9 @@ Inherits styling from `magit-log-graph'."
   "Format REFS-STRING with per-ref-type faces, like `magit-format-ref-labels'.
 REFS-STRING is the raw decoration from `dolt log', e.g.
 \"HEAD -> main, tag: v1.0, origin/main\".  Returns a propertized
-string with parentheses, where each ref is individually styled
-using the appropriate madolt face.
+string of space-separated ref labels (no parentheses), where each
+ref is individually styled using the corresponding madolt face
+\(which inherits from the matching magit face).
 
 REMOTE-NAMES is an optional list of configured remote names
 \(e.g. (\"origin\" \"upstream\")).  When provided, a ref containing
@@ -94,13 +95,13 @@ remotes)."
         (parts (split-string refs-string ", " t)))
     (dolist (part parts)
       (cond
-       ;; "HEAD -> branchname" -- HEAD pointing to current branch
+       ;; "HEAD -> branchname" -- HEAD pointing to current branch.
+       ;; Like magit, show just the branch name with the current-branch
+       ;; face (boxed); no @ prefix since the face is sufficient.
        ((string-match "\\`HEAD -> \\(.+\\)\\'" part)
-        (let ((branch (match-string 1 part)))
-          (setq head-target
-                (concat (propertize "@" 'font-lock-face 'madolt-head)
-                        (propertize branch 'font-lock-face
-                                    'madolt-branch-current)))))
+        (setq head-target
+              (propertize (match-string 1 part)
+                          'font-lock-face 'madolt-branch-current)))
        ;; "HEAD" alone (detached)
        ((string-equal part "HEAD")
         (setq head-target (propertize "@" 'font-lock-face 'madolt-head)))
@@ -126,7 +127,7 @@ remotes)."
                        (nreverse tags)
                        (nreverse branches)
                        (nreverse remotes))))
-      (concat "(" (mapconcat #'identity all " ") ")"))))
+      (string-join all " "))))
 
 ;;;; Margin configuration
 
