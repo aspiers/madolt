@@ -153,10 +153,15 @@ sleep 0.3
 
 ## Technical Notes
 
-- **Dolt CLI only** -- no `dolt sql-server` dependency. All operations
-  use `dolt sql -q ... -r json` or direct CLI commands.
+- **Dual backend: CLI + SQL** -- madolt defaults to CLI (`dolt`
+  subprocess) but supports opt-in SQL server routing via
+  `madolt-use-sql-server`.  When enabled, queries are routed through
+  a persistent MySQL-protocol connection to `dolt sql-server` for
+  near-zero latency.  Falls back to CLI transparently on failure.
 - **Dolt v1.82.x does NOT support `$EDITOR`-based commit messages.**
   All commits use `-m` flag via minibuffer input.
+- **Dolt does NOT support detached HEAD.** `dolt checkout <hash>`
+  fails with "dolt does not support a detached head state".
 - **Dolt stages whole tables**, not hunks. No partial staging.
 - **`dolt commit --all`** only stages modified/deleted tables, NOT
   untracked. Use `--ALL` for that.
@@ -166,6 +171,42 @@ sleep 0.3
   `((eval type))`**.
 - **`define-derived-mode` replaces the keymap variable** -- bindings
   must be added AFTER the mode definition using `keymap-set`.
+
+### CLI-only operations (no SQL equivalent)
+
+These commands must always use the CLI backend, even when
+`madolt-use-sql-server' is enabled:
+
+| Operation | Why CLI-only |
+|-----------|-------------|
+| `dolt blame` | No SQL equivalent. Could theoretically use `dolt_history_<table>` but complex and low priority. |
+| `dolt diff` (raw tabular mode) | Formatted `\| +\| <\| >\|` output is CLI-specific rendering. |
+| `dolt diff -r json` | JSON diff output has no direct SQL equivalent; `dolt_diff_<table>` system tables have a different schema. |
+| `dolt log --graph` | Graph rendering is CLI-specific; no SQL equivalent. |
+| `dolt stash` | `DOLT_STASH()` exists but requires subcommand args; behavior differs from CLI. |
+| `dolt reflog` | `dolt_reflog` system table does not exist (as of v1.82.x). |
+
+### SQL-routable operations
+
+These have registered SQL translations in `madolt-dolt.el`:
+
+| CLI command | SQL equivalent |
+|-------------|---------------|
+| `dolt status` | `SELECT * FROM dolt_status` |
+| `dolt branch --show-current` | `SELECT active_branch()` |
+| `dolt branch` (list) | `SELECT * FROM dolt_branches` |
+| `dolt remote -v` | `SELECT * FROM dolt_remotes` |
+| `dolt tag` (list) | `SELECT * FROM dolt_tags` |
+| `dolt ls` | `SHOW TABLES` |
+| `dolt log` | `SELECT * FROM dolt_log` |
+| `dolt add` | `CALL DOLT_ADD()` |
+| `dolt reset` | `CALL DOLT_RESET()` |
+| `dolt commit -m` | `CALL DOLT_COMMIT()` |
+| `dolt checkout` | `CALL DOLT_CHECKOUT()` |
+| `dolt branch` (create/delete/rename) | `CALL DOLT_BRANCH()` |
+| `dolt tag` (create/delete) | `CALL DOLT_TAG()` |
+| `dolt fetch/pull/push` | `CALL DOLT_FETCH/PULL/PUSH()` |
+| `dolt merge` | `CALL DOLT_MERGE()` |
 
 ## Issue Tracking (bd/beads)
 

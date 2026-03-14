@@ -462,5 +462,35 @@
   "Warning face should inherit from warning."
   (should (facep 'madolt-branch-warning)))
 
+;;;; Sections hook
+
+(ert-deftest test-madolt-refs-sections-hook-defcustom ()
+  "Sections hook should be a customizable list of functions."
+  (should (listp madolt-refs-sections-hook))
+  (should (= 3 (length madolt-refs-sections-hook)))
+  (dolist (fn madolt-refs-sections-hook)
+    (should (functionp fn))))
+
+(ert-deftest test-madolt-refs-sections-hook-customizable ()
+  "Removing a section from the hook should omit it from the buffer."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-tag-create "v1.0" nil "Tag")
+    (with-temp-buffer
+      (madolt-refs-mode)
+      (setq madolt-refs--upstream "HEAD")
+      ;; Remove tags inserter from hook
+      (let ((madolt-refs-sections-hook
+             (list #'madolt-refs--insert-local-branches
+                   #'madolt-refs--insert-remote-branches))
+            (inhibit-read-only t))
+        (madolt-refs-refresh-buffer))
+      (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+        ;; Branches should still be present
+        (should (string-match-p "Branches" text))
+        ;; Tags should be absent
+        (should-not (string-match-p "Tags" text))))))
+
 (provide 'madolt-refs-tests)
 ;;; madolt-refs-tests.el ends here

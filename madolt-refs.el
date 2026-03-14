@@ -103,6 +103,17 @@ Added to `kill-buffer-hook' so the cache survives buffer kills."
 
 ;;;; Customization
 
+(defcustom madolt-refs-sections-hook
+  (list #'madolt-refs--insert-local-branches
+        #'madolt-refs--insert-remote-branches
+        #'madolt-refs--insert-tags)
+  "Hook run to insert sections into a refs buffer.
+Each function is called with no arguments.  Data is available
+via `madolt-refs--local-branches', `madolt-refs--remote-branches',
+and `madolt-refs--tags'."
+  :group 'madolt
+  :type 'hook)
+
 (defcustom madolt-refs-primary-column-width '(16 . 32)
   "Width of the primary column in refs buffers.
 If an integer, the column is that many columns wide.  Otherwise
@@ -251,6 +262,18 @@ in a refs buffer), show the transient menu to choose options."
 (defvar-local madolt-refs--upstream nil
   "The reference to compare against in this refs buffer.")
 
+(defvar-local madolt-refs--local-branches nil
+  "Local branches for the current refresh cycle.")
+
+(defvar-local madolt-refs--remote-branches nil
+  "Remote branches for the current refresh cycle.")
+
+(defvar-local madolt-refs--tags nil
+  "Tags for the current refresh cycle.")
+
+(defvar-local madolt-refs--remotes-alist nil
+  "Remotes alist for the current refresh cycle.")
+
 (defun madolt-show-refs-head ()
   "Show refs comparing against HEAD."
   (interactive)
@@ -298,17 +321,16 @@ in a refs buffer), show the transient menu to choose options."
         (propertize (format " Comparing with %s"
                             (or madolt-refs--upstream "HEAD"))
                     'font-lock-face 'magit-header-line))
-  (let* ((branches (madolt-branch-list-verbose))
-         (local-branches (cl-remove-if
-                          (lambda (b) (plist-get b :remote)) branches))
-         (remote-branches (cl-remove-if-not
-                           (lambda (b) (plist-get b :remote)) branches))
-         (tags (madolt-tag-list-verbose)))
-    (magit-insert-section (branchbuf)
-      (madolt-refs--insert-local-branches local-branches remote-branches)
-      (madolt-refs--insert-remote-branches remote-branches
-                                          (madolt-remotes))
-      (madolt-refs--insert-tags tags)))
+  ;; Populate data for section inserters
+  (let ((branches (madolt-branch-list-verbose)))
+    (setq madolt-refs--local-branches
+          (cl-remove-if (lambda (b) (plist-get b :remote)) branches))
+    (setq madolt-refs--remote-branches
+          (cl-remove-if-not (lambda (b) (plist-get b :remote)) branches)))
+  (setq madolt-refs--tags (madolt-tag-list-verbose))
+  (setq madolt-refs--remotes-alist (madolt-remotes))
+  (magit-insert-section (branchbuf)
+    (magit-run-section-hook 'madolt-refs-sections-hook))
   ;; Set up margin windows after rendering
   (when (madolt-refs--margin-active-p)
     (dolist (window (get-buffer-window-list nil nil 0))
@@ -515,9 +537,11 @@ ahead/behind indicators."
             parts))
     (string-join (nreverse parts) " ")))
 
-(defun madolt-refs--insert-local-branches (branches remote-branches)
-  "Insert a section listing local BRANCHES.
-REMOTE-BRANCHES is used to determine upstream tracking info."
+(defun madolt-refs--insert-local-branches ()
+  "Insert a section listing local branches.
+Uses `madolt-refs--local-branches' and `madolt-refs--remote-branches'."
+  (let ((branches madolt-refs--local-branches)
+        (remote-branches madolt-refs--remote-branches))
   (when branches
     (let ((col-width (madolt-refs--column-width
                       (mapcar (lambda (b) (plist-get b :name)) branches))))
@@ -549,11 +573,13 @@ REMOTE-BRANCHES is used to determine upstream tracking info."
               (madolt-refs--maybe-format-margin
                (plist-get branch :hash))
               (madolt-refs--insert-cherry-commits name))))
-        (insert "\n")))))
+        (insert "\n"))))))
 
-(defun madolt-refs--insert-remote-branches (branches remotes-alist)
-  "Insert a section listing remote BRANCHES.
-REMOTES-ALIST is an alist of (NAME . URL) from `madolt-remotes'."
+(defun madolt-refs--insert-remote-branches ()
+  "Insert a section listing remote branches.
+Uses `madolt-refs--remote-branches' and `madolt-refs--remotes-alist'."
+  (let ((branches madolt-refs--remote-branches)
+        (remotes-alist madolt-refs--remotes-alist))
   (when branches
     ;; Group by remote
     (let ((by-remote (make-hash-table :test 'equal)))
@@ -596,10 +622,12 @@ REMOTES-ALIST is an alist of (NAME . URL) from `madolt-remotes'."
                     (madolt-refs--maybe-format-margin
                      (plist-get branch :hash)))))
               (insert "\n"))))
-       by-remote))))
+       by-remote)))))
 
-(defun madolt-refs--insert-tags (tags)
-  "Insert a section listing TAGS."
+(defun madolt-refs--insert-tags ()
+  "Insert a section listing tags.
+Uses `madolt-refs--tags'."
+  (let ((tags madolt-refs--tags))
   (when tags
     (let ((col-width (madolt-refs--column-width
                       (mapcar (lambda (tg) (plist-get tg :name)) tags))))
@@ -618,7 +646,7 @@ REMOTES-ALIST is an alist of (NAME . URL) from `madolt-remotes'."
                  "\n"))
               (madolt-refs--maybe-format-margin
                (plist-get tag :hash)))))
-        (insert "\n")))))
+        (insert "\n"))))))
 
 (provide 'madolt-refs)
 ;;; madolt-refs.el ends here
