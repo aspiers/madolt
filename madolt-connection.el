@@ -73,12 +73,17 @@ Empty string means no password."
   :group 'madolt-connection
   :type 'string)
 
-(defcustom madolt-sql-server-auto-start nil
+(defcustom madolt-sql-server-auto-start 'prompt
   "Whether to auto-start dolt sql-server if not running.
-When non-nil and `madolt-use-sql-server' is enabled, madolt
-will start a dolt sql-server process if one is not detected."
+When `madolt-use-sql-server' is enabled and no server is detected:
+
+  prompt  Ask the user interactively whether to start one.
+  t       Start one automatically without asking.
+  nil     Do not start one; fall back to CLI silently."
   :group 'madolt-connection
-  :type 'boolean)
+  :type '(choice (const :tag "Ask the user" prompt)
+                 (const :tag "Start automatically" t)
+                 (const :tag "Never start" nil)))
 
 ;;;; Connection state
 
@@ -252,6 +257,8 @@ Returns non-nil if a connection is active after this call."
       (let* ((info (madolt-connection--detect-server))
              (port (or (plist-get info :port)
                        (and madolt-sql-server-auto-start
+                            (or (eq madolt-sql-server-auto-start t)
+                                (y-or-n-p "No dolt sql-server detected.  Start one? "))
                             (madolt-connection--start-server)))))
         (when port
           (let ((db-name (file-name-nondirectory

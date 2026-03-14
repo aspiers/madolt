@@ -34,8 +34,8 @@
   (should (equal madolt-sql-server-user "root")))
 
 (ert-deftest test-madolt-connection-auto-start-default ()
-  "Auto-start should be disabled by default."
-  (should-not madolt-sql-server-auto-start))
+  "Auto-start should default to prompt."
+  (should (eq madolt-sql-server-auto-start 'prompt)))
 
 ;;;; Batch output parsing
 
