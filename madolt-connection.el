@@ -137,16 +137,20 @@ Returns the port number if a server was started, nil otherwise."
 
 (defun madolt-connection--start-server ()
   "Start a dolt sql-server process in the current database directory.
-Returns the port number on success, nil on failure."
+Returns the port number on success, nil on failure.
+Displays an error message if the server fails to start."
   (let* ((port (madolt-connection--find-free-port))
+         (buf (get-buffer-create " *madolt-sql-server*"))
          (process (start-process
                    "madolt-sql-server"
-                   " *madolt-sql-server*"
+                   buf
                    madolt-dolt-executable
                    "sql-server"
-                   "--host" madolt-sql-server-host
-                   "--port" (number-to-string port)
-                   "--user" madolt-sql-server-user)))
+                   "-H" madolt-sql-server-host
+                   "-P" (number-to-string port))))
+    ;; Clear previous output so we can read errors from this attempt.
+    (with-current-buffer buf
+      (erase-buffer))
     (when process
       (set-process-query-on-exit-flag process nil)
       (setq madolt-connection--server-process process)
@@ -158,11 +162,22 @@ Returns the port number on success, nil on failure."
           (sleep-for 0.1)
           (cl-incf tries)))
       (if (madolt-connection--detect-server)
-          port
-        (when (process-live-p process)
-          (delete-process process))
-        (setq madolt-connection--server-process nil)
-        nil))))
+          (progn
+            (message "Started dolt sql-server on port %d" port)
+            port)
+        ;; Server failed — extract error message for the user.
+        (let ((err (with-current-buffer buf
+                     (string-trim
+                      (buffer-substring-no-properties
+                       (point-min) (point-max))))))
+          (when (process-live-p process)
+            (delete-process process))
+          (setq madolt-connection--server-process nil)
+          (message "Failed to start dolt sql-server: %s"
+                   (if (string-empty-p err)
+                       "server exited with no output"
+                     (car (split-string err "\n"))))
+          nil)))))
 
 (defun madolt-connection--find-free-port ()
   "Find a free TCP port for the sql-server."
