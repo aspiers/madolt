@@ -342,7 +342,23 @@ starts a server; it only connects to an already-running one."
   (madolt-connection-disconnect)
   (when (and madolt-connection--server-process
              (process-live-p madolt-connection--server-process))
-    (delete-process madolt-connection--server-process)
+    ;; Send SIGTERM first for graceful shutdown, then wait briefly
+    ;; for the process to exit and clean up its info file.
+    (signal-process madolt-connection--server-process 'SIGTERM)
+    (let ((tries 0))
+      (while (and (< tries 20)
+                  (process-live-p madolt-connection--server-process))
+        (sleep-for 0.1)
+        (cl-incf tries)))
+    ;; Force kill if it didn't exit gracefully
+    (when (process-live-p madolt-connection--server-process)
+      (delete-process madolt-connection--server-process))
+    ;; Remove stale sql-server.info if dolt didn't clean it up
+    (let ((info-file (expand-file-name
+                      ".dolt/sql-server.info"
+                      (or madolt-connection--db-dir default-directory))))
+      (when (file-exists-p info-file)
+        (delete-file info-file)))
     (setq madolt-connection--server-process nil)))
 
 ;;;; Cleanup hook
