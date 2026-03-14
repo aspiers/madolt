@@ -44,13 +44,31 @@
   "SQL connection settings for madolt."
   :group 'madolt)
 
-(defcustom madolt-use-sql-server nil
-  "Whether to use dolt sql-server for queries.
-When non-nil, madolt will attempt to connect to an existing
-dolt sql-server or start one, and route queries through SQL
-instead of the CLI.  Falls back to CLI if connection fails."
+(define-obsolete-variable-alias 'madolt-sql-server-auto-start
+  'madolt-use-sql-server "0.4.0"
+  "Use `madolt-use-sql-server' instead.
+The auto-start behaviour is now controlled by the value of
+`madolt-use-sql-server' directly.")
+
+(defcustom madolt-use-sql-server 'prompt
+  "Whether and how to use dolt sql-server for queries.
+Using a persistent SQL server is faster than spawning a dolt
+subprocess for each command.  Falls back to CLI transparently
+if the connection fails.
+
+  prompt          Use a running server if detected, otherwise
+                  ask the user whether to start one.
+  auto-start      Use a running server if detected, otherwise
+                  start one automatically.
+  t               Alias for `auto-start'.
+  only-if-running Use a running server if detected, but never
+                  start one.
+  nil             Never use SQL server; always use CLI."
   :group 'madolt-connection
-  :type 'boolean)
+  :type '(choice (const :tag "Prompt to start if needed (recommended)" prompt)
+                 (const :tag "Auto-start if needed" auto-start)
+                 (const :tag "Only use if already running" only-if-running)
+                 (const :tag "Never use SQL server" nil)))
 
 (defcustom madolt-sql-server-host "127.0.0.1"
   "Host for dolt sql-server connection."
@@ -72,18 +90,6 @@ instead of the CLI.  Falls back to CLI if connection fails."
 Empty string means no password."
   :group 'madolt-connection
   :type 'string)
-
-(defcustom madolt-sql-server-auto-start 'prompt
-  "Whether to auto-start dolt sql-server if not running.
-When `madolt-use-sql-server' is enabled and no server is detected:
-
-  prompt  Ask the user interactively whether to start one.
-  t       Start one automatically without asking.
-  nil     Do not start one; fall back to CLI silently."
-  :group 'madolt-connection
-  :type '(choice (const :tag "Ask the user" prompt)
-                 (const :tag "Start automatically" t)
-                 (const :tag "Never start" nil)))
 
 ;;;; Connection state
 
@@ -117,6 +123,17 @@ When `madolt-use-sql-server' is enabled and no server is detected:
   "Detect a running dolt sql-server for the current database.
 Returns a plist (:pid PID :port PORT) or nil."
   (madolt-sql-server-info))
+
+(defun madolt-connection--maybe-start-server ()
+  "Possibly start a dolt sql-server based on `madolt-use-sql-server'.
+Returns the port number if a server was started, nil otherwise."
+  (pcase madolt-use-sql-server
+    ((or 't 'auto-start)
+     (madolt-connection--start-server))
+    ('prompt
+     (when (y-or-n-p "No dolt sql-server detected.  Start one? ")
+       (madolt-connection--start-server)))
+    (_ nil)))
 
 (defun madolt-connection--start-server ()
   "Start a dolt sql-server process in the current database directory.
@@ -252,14 +269,12 @@ Wraps SQL to use dolt's JSON output format via FORMAT='json'."
 
 (defun madolt-connection-ensure ()
   "Ensure an SQL connection is active, establishing one if needed.
-Returns non-nil if a connection is active after this call."
+Returns non-nil if a connection is active after this call.
+Behaviour depends on `madolt-use-sql-server'."
   (or (madolt-connection-active-p)
       (let* ((info (madolt-connection--detect-server))
              (port (or (plist-get info :port)
-                       (and madolt-sql-server-auto-start
-                            (or (eq madolt-sql-server-auto-start t)
-                                (y-or-n-p "No dolt sql-server detected.  Start one? "))
-                            (madolt-connection--start-server)))))
+                       (madolt-connection--maybe-start-server))))
         (when port
           (let ((db-name (file-name-nondirectory
                           (directory-file-name

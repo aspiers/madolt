@@ -18,8 +18,8 @@
 ;;;; Customization defaults
 
 (ert-deftest test-madolt-connection-use-sql-server-default ()
-  "SQL server usage should be disabled by default."
-  (should-not madolt-use-sql-server))
+  "SQL server should default to prompt."
+  (should (eq madolt-use-sql-server 'prompt)))
 
 (ert-deftest test-madolt-connection-host-default ()
   "Default host should be localhost."
@@ -32,10 +32,6 @@
 (ert-deftest test-madolt-connection-user-default ()
   "Default user should be root."
   (should (equal madolt-sql-server-user "root")))
-
-(ert-deftest test-madolt-connection-auto-start-default ()
-  "Auto-start should default to prompt."
-  (should (eq madolt-sql-server-auto-start 'prompt)))
 
 ;;;; Batch output parsing
 

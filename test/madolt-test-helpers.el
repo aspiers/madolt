@@ -27,6 +27,7 @@ Sets NO_COLOR=1 to suppress ANSI escape codes from dolt output."
     `(let ((,dir (file-name-as-directory (make-temp-file "madolt-test-" t))))
        (condition-case err
            (let ((default-directory (file-truename ,dir))
+                 (madolt-use-sql-server nil)
                  (process-environment
                   (append (list "NO_COLOR=1") process-environment)))
              (call-process madolt-dolt-executable nil nil nil "init")

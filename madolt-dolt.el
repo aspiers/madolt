@@ -38,6 +38,10 @@
 
 (eval-when-compile (require 'cl-lib))
 
+;; Defined in madolt-connection.el; declared here to avoid
+;; a circular require.
+(defvar madolt-use-sql-server)
+
 ;;;; Configuration
 
 (defcustom madolt-dolt-executable "dolt"
