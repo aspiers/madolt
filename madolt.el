@@ -98,44 +98,44 @@ With a prefix argument, always prompt for the directory."
   "Invoke a Madolt command from a list of available commands."
   ["Transient commands"
    [("b" "Branch"         madolt-branch)
+    ("A" "Cherry-pick"    madolt-cherry-pick)
     ("c" "Commit"         madolt-commit)
     ("d" "Diff"           madolt-diff)
-    ("l" "Log"            madolt-log)
-    ("L" "Log (change)"   madolt-log-refresh)
-    ("m" "Merge"          madolt-merge)
-    ("t" "Tag"            madolt-tag)]
-   [("A" "Cherry-pick"    madolt-cherry-pick)
-    ("r" "Rebase"         madolt-rebase)
-    ("V" "Revert"         madolt-revert)
-    ("X" "Reset"          madolt-reset)
-    ("z" "Stash"          madolt-stash)]
-   [("E" "SQL server"     madolt-server)
     ("f" "Fetch"          madolt-fetch)
+    ("l" "Log"            madolt-log)]
+   [("L" "Log (change)"   madolt-log-refresh)
+    ("m" "Merge"          madolt-merge)
     ("F" "Pull"           madolt-pull)
     ("P" "Push"           madolt-push)
-    ("M" "Remote"         madolt-remote-manage)]]
-  ["Inspecting"
-   [("B" "Blame"          madolt-blame)
+    ("r" "Rebase"         madolt-rebase)
+    ("M" "Remote"         madolt-remote-manage)]
+   [("X" "Reset"          madolt-reset)
+    ("V" "Revert"         madolt-revert)
+    ("E" "SQL server"     madolt-server)
+    ("z" "Stash"          madolt-stash)
+    ("t" "Tag"            madolt-tag)]]
+  [["Inspecting"
+    ("B" "Blame"          madolt-blame)
     ("C" "Conflicts"      madolt-conflicts)
-    ("e" "SQL query"      madolt-sql-query)
-    ("y" "Refs"           madolt-show-refs)]]
-  ["Applying changes"
-   :if-derived madolt-mode
-   [("s" "Stage"          madolt-stage)
-    ("u" "Unstage"        madolt-unstage)
+    ("y" "Refs"           madolt-show-refs)
+    ("e" "SQL query"      madolt-sql-query)]
+   ["Applying changes"
+    :if-derived madolt-mode
     ("k" "Discard"        madolt-discard)
-    ("x" "Clean"          madolt-clean)]
-   [("S" "Stage all"      madolt-stage-all)
+    ("x" "Clean"          madolt-clean)
+    ("s" "Stage"          madolt-stage)
+    ("S" "Stage all"      madolt-stage-all)
+    ("u" "Unstage"        madolt-unstage)
     ("U" "Unstage all"    madolt-unstage-all)]]
   ["Essential commands"
    :if-derived madolt-mode
    [("g"   "Refresh buffer"          madolt-refresh)
     ("j"   "Jump to section"         madolt-status-jump)
+    ("$"   "Process buffer"          madolt-process-buffer)
     ("q"   "Bury buffer"             quit-window)]
    [("<tab>"    "Toggle section"     magit-section-toggle)
     ("<return>" "Visit thing"        madolt-visit-thing)
-    ("w"        "Copy section value" madolt-copy-section-value)
-    ("$"        "Process buffer"     madolt-process-buffer)]])
+    ("w"        "Copy section value" madolt-copy-section-value)]])
 
 (provide 'madolt)
 ;;; madolt.el ends here
