@@ -55,7 +55,7 @@
 ;;;; Interactive commands
 
 (defun madolt-stash-create-command (&optional args)
-  "Stash current changes.
+  "Stash current change.
 ARGS are additional arguments from the transient."
   (interactive (list (transient-args 'madolt-stash)))
   (let ((result (apply #'madolt-call-dolt "stash" args)))

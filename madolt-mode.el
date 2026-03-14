@@ -53,6 +53,7 @@
 (declare-function madolt-diff "madolt-diff" ())
 (declare-function madolt-fetch "madolt-remote" ())
 (declare-function madolt-log "madolt-log" ())
+(declare-function madolt-log-refresh "madolt-log" ())
 (declare-function madolt-merge "madolt-merge" ())
 (declare-function madolt-rebase "madolt-rebase" ())
 (declare-function madolt-reset "madolt-reset" ())
@@ -259,6 +260,7 @@ copies the full commit hash."
   (keymap-set map "C"   #'madolt-conflicts)
   ;; Log (autoloaded from madolt-log.el)
   (keymap-set map "l"   #'madolt-log)
+  (keymap-set map "L"   #'madolt-log-refresh)
   ;; SQL (autoloaded from madolt-sql.el)
   (keymap-set map "e"   #'madolt-sql-query)
   ;; Merge (autoloaded from madolt-merge.el)
@@ -422,6 +424,7 @@ Convention: for `madolt-foo-mode', the refresh function is
 
 (defun madolt--section-toggle-with-cache (orig-fn &rest args)
   "Activate `madolt--refresh-cache' around ORIG-FN for madolt buffers.
+ARGS are passed to ORIG-FN.
 When expanding a section (e.g. Tab on a commit or table diff),
 the washer may make multiple dolt CLI calls for the same data.
 Without a cache each call costs ~170ms of process startup.  This

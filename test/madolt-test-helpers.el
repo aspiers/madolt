@@ -117,7 +117,10 @@ After calling this function the dolt status will show:
 
 (defun madolt-test--transient-suffix-keys (prefix-sym)
   "Return an alist of (KEY . COMMAND) for transient PREFIX-SYM.
-Handles both flat groups and nested column groups."
+Handles both flat groups and nested column groups.
+Also resolves keys from `transient-define-suffix' commands
+where the key is stored on the command symbol rather than
+inline in the layout."
   (let ((layout (get prefix-sym 'transient--layout))
         result)
     (when (and layout (>= (length layout) 3))
@@ -134,7 +137,17 @@ Handles both flat groups and nested column groups."
                 ((and (listp item) (plist-get (cdr item) :key))
                  (push (cons (plist-get (cdr item) :key)
                              (plist-get (cdr item) :command))
-                       result))))))
+                       result))
+                ;; Suffix defined via transient-define-suffix: the key
+                ;; lives on the command symbol's transient--suffix plist.
+                ((and (listp item)
+                      (plist-get (cdr item) :command)
+                      (not (plist-get (cdr item) :key)))
+                 (let* ((cmd (plist-get (cdr item) :command))
+                        (obj (get cmd 'transient--suffix))
+                        (key (and obj (oref obj key))))
+                   (when key
+                     (push (cons key cmd) result))))))))
         (dolist (group (aref layout 2))
           (when (vectorp group)
             (collect-suffixes (aref group 2))))))

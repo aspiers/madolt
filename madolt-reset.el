@@ -69,7 +69,7 @@ are permanently lost."
   (interactive
    (list (madolt-reset--read-revision "Hard reset to")))
   (unless (yes-or-no-p
-           (format "Hard reset to %s? All uncommitted changes will be lost. "
+           (format "Hard reset to %s?  All uncommitted changes will be lost?"
                    revision))
     (user-error "Aborted"))
   (let ((result (madolt-call-dolt "reset" "--hard" revision)))

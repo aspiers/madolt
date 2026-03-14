@@ -101,6 +101,7 @@ With a prefix argument, always prompt for the directory."
     ("c" "Commit"         madolt-commit)
     ("d" "Diff"           madolt-diff)
     ("l" "Log"            madolt-log)
+    ("L" "Log (change)"   madolt-log-refresh)
     ("m" "Merge"          madolt-merge)
     ("t" "Tag"            madolt-tag)]
    [("A" "Cherry-pick"    madolt-cherry-pick)

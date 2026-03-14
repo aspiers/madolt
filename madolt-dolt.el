@@ -551,6 +551,7 @@ only for initial commits that have no parent."
                       :parents current-parents
                       :graph current-graph
                       :graph-pre nil
+                      :graph-post nil
                       :message (string-trim
                                 (mapconcat #'identity
                                            (nreverse current-message-lines)
@@ -612,6 +613,7 @@ only for initial commits that have no parent."
                   :parents current-parents
                   :graph current-graph
                   :graph-pre nil
+                  :graph-post nil
                   :message (string-trim
                             (mapconcat #'identity
                                        (nreverse current-message-lines)
@@ -634,12 +636,17 @@ ENTRIES is a reversed list of plists (newest first, as built by
 output.  Junction lines are graph-only lines containing fork/join
 characters (backslash or forward slash) that appear between
 commits.  Each entry's :graph-pre is set to a list of junction
-line strings that should be rendered before that entry."
+line strings that should be rendered before that entry.
+
+Additionally, junction characters found within a commit's content
+lines (e.g. the `|\\' on a Merge: line) are captured as
+:graph-post on that entry, to be rendered after the commit heading."
   ;; Build a hash→entry lookup for quick access.
   (let ((hash-map (make-hash-table :test 'equal))
         (state 'between)  ; 'in-commit or 'between
         (current-entry nil)
-        (junction-lines nil))
+        (junction-lines nil)
+        (seen-commit-line nil))
     (dolist (entry entries)
       (puthash (plist-get entry :hash) entry hash-map))
     (dolist (raw-line (split-string clean-output "\n"))
@@ -654,13 +661,28 @@ line strings that should be rendered before that entry."
                        :graph-pre (nreverse junction-lines)))
           (setq junction-lines nil)
           (setq current-entry (gethash hash hash-map))
+          (setq seen-commit-line t)
           (setq state 'in-commit)))
-       ;; Graph-only line with junction chars (\ or /) between commits
-       ;; These are lines where stripping graph chars leaves nothing.
-       ((and (eq state 'between)
-             (string-match "^\\([|*/ \\\\]+\\)\\s-*$" raw-line)
-             ;; Must contain a junction character (\ or /)
+       ;; Content line within a commit that has junction chars in its
+       ;; graph prefix (e.g. "|\ Merge: ...").  Capture the graph
+       ;; prefix as :graph-post on the current entry.
+       ((and (eq state 'in-commit) seen-commit-line current-entry
+             (string-match "^\\([|*/ \\\\]+\\)\\s-+" raw-line)
+             (string-match-p "[/\\\\]" (match-string 1 raw-line))
+             ;; Only capture the first junction within a commit
+             (not (plist-get current-entry :graph-post)))
+        (plist-put current-entry :graph-post
+                   (list (string-trim-right (match-string 1 raw-line))))
+        ;; Don't change state — still in-commit
+        )
+       ;; Graph-only line with junction chars (\ or /) — collect as
+       ;; junction line.  When in-commit, this also triggers a
+       ;; transition to between-commits state (e.g. "|  /" after a
+       ;; commit's message marks the start of the join region).
+       ((and (string-match "^\\([|*/ \\\\]+\\)\\s-*$" raw-line)
              (string-match-p "[/\\\\]" raw-line))
+        (when (eq state 'in-commit)
+          (setq state 'between))
         (push (match-string 1 raw-line) junction-lines))
        ;; Blank line after message — transition to 'between state
        ;; A line that is just graph continuation (| or | |) with no
@@ -720,7 +742,7 @@ TABLES is a list of table name strings."
   (madolt--run "reset"))
 
 (defun madolt-checkout-table (table)
-  "Discard working changes to TABLE."
+  "Discard working change to TABLE."
   (madolt--run "checkout" table))
 
 ;;;; Branch operations

@@ -222,7 +222,7 @@ Returns nil on error or empty result."
     (madolt-connection--parse-batch-output output)))
 
 (defun madolt-connection--output-complete-p ()
-  "Check if the pending output contains a complete result."
+  "Check if the pending output contain a complete result."
   ;; In batch mode, mysql output ends with a newline after the last row.
   ;; We detect completion by checking for a trailing newline after content.
   (and (not (string-empty-p madolt-connection--pending-output))

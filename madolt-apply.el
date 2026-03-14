@@ -124,7 +124,7 @@ On the section heading itself, unstages all tables."
 ;;;; Discard
 
 (defun madolt-discard ()
-  "Discard changes to the table at point.
+  "Discard change to the table at point.
 Prompts for confirmation because discard is destructive and
 irreversible."
   (interactive)

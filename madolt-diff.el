@@ -225,13 +225,13 @@ functions can look up primary key columns.")
 ;;;; Diff buffer commands
 
 (defun madolt-diff-unstaged (&optional args)
-  "Show diff of unstaged changes.
+  "Show diff of unstaged change.
 ARGS are additional arguments from the transient."
   (interactive (list (transient-args 'madolt-diff)))
   (madolt-diff--show-buffer args nil nil nil nil))
 
 (defun madolt-diff-staged (&optional args)
-  "Show diff of staged changes.
+  "Show diff of staged change.
 ARGS are additional arguments from the transient."
   (interactive (list (transient-args 'madolt-diff)))
   (madolt-diff--show-buffer args nil nil nil t))

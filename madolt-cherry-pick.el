@@ -82,7 +82,7 @@ ARGS are additional arguments from the transient."
    ("V" "Revert"  madolt-revert-command)])
 
 (defun madolt-revert-command (commit)
-  "Revert the changes from COMMIT."
+  "Revert the change from COMMIT."
   (interactive
    (list (read-string "Revert commit: ")))
   (when (string-empty-p commit)

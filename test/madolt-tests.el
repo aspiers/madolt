@@ -125,6 +125,12 @@
     (should (assoc "l" suffixes))
     (should (eq (cdr (assoc "l" suffixes)) 'madolt-log))))
 
+(ert-deftest test-madolt-dispatch-has-log-refresh ()
+  "The dispatch menu has an \"L\" binding for log refresh."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
+    (should (assoc "L" suffixes))
+    (should (eq (cdr (assoc "L" suffixes)) 'madolt-log-refresh))))
+
 (ert-deftest test-madolt-dispatch-has-commit ()
   "The dispatch menu has a \"c\" binding for commit."
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-dispatch)))
