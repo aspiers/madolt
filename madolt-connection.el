@@ -419,7 +419,10 @@ Added to `kill-buffer-hook' for graceful cleanup."
         (madolt-connection-shutdown)
         (message "SQL server stopped")
         (when (derived-mode-p 'madolt-mode)
-          (madolt-refresh)))
+          ;; Suppress connection-setup prompt during this refresh;
+          ;; the user just explicitly stopped the server.
+          (let ((madolt-use-sql-server nil))
+            (madolt-refresh))))
     (message "No sql-server connection to stop")))
 
 ;;;###autoload
