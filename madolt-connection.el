@@ -37,6 +37,7 @@
 ;;; Code:
 
 (require 'madolt-dolt)
+(require 'transient)
 
 ;;;; Customization
 
@@ -356,6 +357,83 @@ Added to `kill-buffer-hook' for graceful cleanup."
                             (derived-mode-p 'madolt-mode))))
                    (buffer-list))
     (madolt-connection-shutdown)))
+
+;;;; Interactive commands
+
+;;;###autoload
+(defun madolt-server-start ()
+  "Start a dolt sql-server and connect to it."
+  (interactive)
+  (when (madolt-connection-active-p)
+    (user-error "Already connected to sql-server on port %d"
+                madolt-connection--port))
+  (let* ((info (madolt-connection--detect-server))
+         (port (plist-get info :port)))
+    (if port
+        ;; Server already running, just connect
+        (let ((db-name (file-name-nondirectory
+                        (directory-file-name
+                         (or (madolt-database-dir) default-directory)))))
+          (setq madolt-connection--db-dir
+                (or (madolt-database-dir) default-directory))
+          (if (madolt-connection--connect port db-name)
+              (message "Connected to existing sql-server on port %d" port)
+            (message "Failed to connect to sql-server on port %d" port)))
+      ;; No server running, start one
+      (let ((new-port (madolt-connection--start-server)))
+        (if new-port
+            (let ((db-name (file-name-nondirectory
+                            (directory-file-name
+                             (or (madolt-database-dir)
+                                 default-directory)))))
+              (setq madolt-connection--db-dir
+                    (or (madolt-database-dir) default-directory))
+              (madolt-connection--connect new-port db-name))
+          (message "Failed to start sql-server")))))
+  (when (derived-mode-p 'madolt-mode)
+    (madolt-refresh)))
+
+;;;###autoload
+(defun madolt-server-stop ()
+  "Stop the sql-server and disconnect."
+  (interactive)
+  (if (or madolt-connection--process
+          madolt-connection--server-process)
+      (progn
+        (madolt-connection-shutdown)
+        (message "SQL server stopped")
+        (when (derived-mode-p 'madolt-mode)
+          (madolt-refresh)))
+    (message "No sql-server connection to stop")))
+
+;;;###autoload
+(defun madolt-server-status ()
+  "Display the sql-server connection status."
+  (interactive)
+  (let ((info (madolt-connection--detect-server)))
+    (cond
+     ((madolt-connection-active-p)
+      (message "Connected to sql-server on port %d (pid %s)"
+               madolt-connection--port
+               (if madolt-connection--server-process
+                   (format "%d, started by madolt"
+                           (process-id madolt-connection--server-process))
+                 (format "%d" (plist-get info :pid)))))
+     (info
+      (message "sql-server running on port %d (pid %d) but not connected"
+               (plist-get info :port) (plist-get info :pid)))
+     (t
+      (message "No sql-server running")))))
+
+;;;; Transient menu
+
+;;;###autoload (autoload 'madolt-server "madolt-connection" nil t)
+(transient-define-prefix madolt-server ()
+  "Manage the dolt sql-server."
+  ["SQL Server"
+   ("s" "Start / connect" madolt-server-start)
+   ("k" "Stop"            madolt-server-stop)
+   ("i" "Status"          madolt-server-status)])
 
 (provide 'madolt-connection)
 ;;; madolt-connection.el ends here

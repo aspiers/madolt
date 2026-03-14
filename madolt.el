@@ -109,7 +109,8 @@ With a prefix argument, always prompt for the directory."
     ("V" "Revert"         madolt-revert)
     ("X" "Reset"          madolt-reset)
     ("z" "Stash"          madolt-stash)]
-   [("f" "Fetch"          madolt-fetch)
+   [("E" "SQL server"     madolt-server)
+    ("f" "Fetch"          madolt-fetch)
     ("F" "Pull"           madolt-pull)
     ("P" "Push"           madolt-push)
     ("M" "Remote"         madolt-remote-manage)]]

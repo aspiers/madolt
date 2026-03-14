@@ -14,6 +14,7 @@
 
 (require 'ert)
 (require 'madolt-connection)
+(require 'madolt-mode)
 
 ;;;; Customization defaults
 
@@ -126,10 +127,22 @@
   "All public API functions should be defined."
   (dolist (fn '(madolt-connection-query
                 madolt-connection-ensure
+                madolt-connection-setup
                 madolt-connection-active-p
                 madolt-connection-disconnect
-                madolt-connection-shutdown))
+                madolt-connection-shutdown
+                madolt-server-start
+                madolt-server-stop
+                madolt-server-status))
     (should (fboundp fn))))
+
+(ert-deftest test-madolt-mode-map-has-server ()
+  "E should be bound to madolt-server in madolt-mode-map."
+  (should (eq (keymap-lookup madolt-mode-map "E") #'madolt-server)))
+
+(ert-deftest test-madolt-server-transient-defined ()
+  "The madolt-server transient should be defined."
+  (should (fboundp 'madolt-server)))
 
 (provide 'madolt-connection-tests)
 ;;; madolt-connection-tests.el ends here
