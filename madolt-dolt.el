@@ -98,6 +98,32 @@ Cache hits/misses are counted in the car of `madolt--refresh-cache'."
       (replace-regexp-in-string madolt--ansi-escape-re "" string)
     ""))
 
+;;;; SQL translation registry
+
+;; Forward declarations for optional SQL connection module
+(declare-function madolt-connection-ensure "madolt-connection")
+(declare-function madolt-connection-query "madolt-connection")
+
+(defvar madolt--sql-translations nil
+  "Alist mapping CLI arg patterns to SQL query generators.
+Each entry is (PATTERN . GENERATOR) where:
+  PATTERN is a function taking a flat args list, returning non-nil on match.
+  GENERATOR is a function taking the args list, returning a SQL string.
+Populated by individual migration tasks (e.g. madolt-hlh, madolt-a61).")
+
+(defun madolt--register-sql-translation (name pattern generator)
+  "Register a SQL translation with NAME.
+PATTERN is a predicate on the flat args list.
+GENERATOR produces SQL from the matched args."
+  (setf (alist-get name madolt--sql-translations) (cons pattern generator)))
+
+(defun madolt--find-sql-translation (args)
+  "Find a SQL translation for ARGS.
+Returns the generator function or nil."
+  (cl-loop for (_name . (pattern . generator)) in madolt--sql-translations
+           when (funcall pattern args)
+           return generator))
+
 ;;;; Core execution
 
 (defun madolt--run (&rest args)
@@ -107,7 +133,10 @@ Global arguments from `madolt-dolt-global-arguments' are prepended.
 Nil arguments are removed and nested lists are flattened.
 When `madolt--refresh-cache' is active, the raw result is cached
 under a `raw'-prefixed key so that repeated calls with the same
-arguments avoid process startup (~170ms per call)."
+arguments avoid process startup (~170ms per call).
+When `madolt-use-sql-server' is enabled and a SQL translation
+exists for the given args, routes through the SQL connection
+instead of spawning a CLI process.  Falls back to CLI on failure."
   (let* ((args (madolt--flatten-args
                 (append madolt-dolt-global-arguments args)))
          (cache-key (and madolt--refresh-cache
@@ -119,15 +148,38 @@ arguments avoid process startup (~170ms per call)."
           (cdr hit))
       (when cache-key
         (cl-incf (cdar madolt--refresh-cache)))
-      (let* ((process-environment (cons "NO_COLOR=1" process-environment))
-             (result (with-temp-buffer
-                       (let ((exit (apply #'call-process
-                                          madolt-dolt-executable nil t nil
-                                          args)))
-                         (cons exit (buffer-string))))))
+      (let ((result (or (madolt--run-sql args)
+                        (madolt--run-cli args))))
         (when cache-key
           (push (cons cache-key result) (cdr madolt--refresh-cache)))
         result))))
+
+(defun madolt--run-cli (args)
+  "Execute dolt CLI with ARGS synchronously.
+Return (EXIT-CODE . OUTPUT-STRING)."
+  (let ((process-environment (cons "NO_COLOR=1" process-environment)))
+    (with-temp-buffer
+      (let ((exit (apply #'call-process
+                         madolt-dolt-executable nil t nil
+                         args)))
+        (cons exit (buffer-string))))))
+
+(defun madolt--run-sql (args)
+  "Try to execute ARGS via SQL translation.
+Returns (0 . OUTPUT) on success, nil if no translation or connection."
+  (when (and (bound-and-true-p madolt-use-sql-server)
+             (fboundp 'madolt-connection-ensure))
+    (when-let ((generator (madolt--find-sql-translation args)))
+      (condition-case nil
+          (when (funcall 'madolt-connection-ensure)
+            (let* ((sql (funcall generator args))
+                   (rows (funcall 'madolt-connection-query sql))
+                   (output (mapconcat
+                            (lambda (row) (string-join row "\t"))
+                            rows "\n")))
+              (cons 0 (if (string-empty-p output) output
+                        (concat output "\n")))))
+        (error nil)))))
 
 ;;;; Parallel prefetch
 
@@ -773,6 +825,257 @@ When MESSAGE is non-nil, create an annotated tag."
 (defun madolt-tag-delete (name)
   "Delete tag NAME."
   (madolt--run "tag" "-d" name))
+
+;;;; SQL translations for read-only queries
+
+;; These register SQL equivalents for CLI commands so that
+;; madolt--run can route through sql-server when available.
+
+(madolt--register-sql-translation
+ 'branch-show-current
+ (lambda (args)
+   (and (equal (car args) "branch")
+        (member "--show-current" args)))
+ (lambda (_args) "SELECT active_branch()"))
+
+(madolt--register-sql-translation
+ 'branch-list
+ (lambda (args)
+   (and (equal (car args) "branch")
+        (not (member "-d" args))
+        (not (member "-m" args))
+        (not (member "-c" args))
+        (not (member "--show-current" args))
+        (not (member "-a" args))
+        (not (member "-r" args))
+        (not (member "-v" args))))
+ (lambda (_args) "SELECT CONCAT(IF(name = active_branch(), '* ', '  '), name) FROM dolt_branches ORDER BY name"))
+
+(madolt--register-sql-translation
+ 'remote-list
+ (lambda (args)
+   (and (equal (car args) "remote")
+        (member "-v" args)))
+ (lambda (_args)
+   "SELECT CONCAT(name, '\t', url) FROM dolt_remotes ORDER BY name"))
+
+(madolt--register-sql-translation
+ 'tag-list
+ (lambda (args)
+   (and (equal (car args) "tag")
+        (not (member "-d" args))
+        (not (member "-v" args))))
+ (lambda (_args) "SELECT tag_name FROM dolt_tags ORDER BY tag_name"))
+
+(madolt--register-sql-translation
+ 'status
+ (lambda (args) (equal args '("status")))
+ (lambda (_args) "SELECT table_name, staged, status FROM dolt_status"))
+
+(madolt--register-sql-translation
+ 'ls
+ (lambda (args) (equal args '("ls")))
+ (lambda (_args) "SHOW TABLES"))
+
+;;;; SQL translations for log queries
+
+(madolt--register-sql-translation
+ 'log-basic
+ (lambda (args)
+   (and (equal (car args) "log")
+        (member "--parents" args)
+        (not (member "--graph" args))))
+ (lambda (args)
+   ;; Parse -n limit and optional rev/range
+   (let ((limit 10) rev)
+     (cl-loop for (a b) on args
+              do (cond ((equal a "-n") (setq limit (string-to-number b)))
+                       ((and (not (string-prefix-p "-" a))
+                             (not (equal a "log"))
+                             (not (equal a "--parents")))
+                        (setq rev a))))
+     (if rev
+         (format "SELECT commit_hash, committer, email, date, message, parent_hashes FROM dolt_log('%s') LIMIT %d"
+                 rev limit)
+       (format "SELECT commit_hash, committer, email, date, message, parent_hashes FROM dolt_log LIMIT %d"
+               limit)))))
+
+;;;; SQL translations for mutation commands (DOLT_* stored procedures)
+
+(madolt--register-sql-translation
+ 'add-tables
+ (lambda (args)
+   (and (equal (car args) "add")
+        (not (member "--help" args))))
+ (lambda (args)
+   (let ((tables (cl-remove-if (lambda (a) (or (equal a "add")
+                                               (string-prefix-p "-" a)))
+                               args)))
+     (if (member "." tables)
+         "CALL DOLT_ADD('.')"
+       (format "CALL DOLT_ADD(%s)"
+               (mapconcat (lambda (tbl) (format "'%s'" tbl)) tables ", "))))))
+
+(madolt--register-sql-translation
+ 'reset-tables
+ (lambda (args)
+   (and (equal (car args) "reset")
+        (not (member "--help" args))))
+ (lambda (args)
+   (let ((tables (cl-remove-if (lambda (a) (or (equal a "reset")
+                                               (string-prefix-p "-" a)))
+                               args)))
+     (if (or (null tables) (member "." tables))
+         "CALL DOLT_RESET('.')"
+       (format "CALL DOLT_RESET(%s)"
+               (mapconcat (lambda (tbl) (format "'%s'" tbl)) tables ", "))))))
+
+(madolt--register-sql-translation
+ 'commit-msg
+ (lambda (args)
+   (and (equal (car args) "commit")
+        (member "-m" args)))
+ (lambda (args)
+   (let* ((msg-idx (cl-position "-m" args :test #'equal))
+          (msg (and msg-idx (nth (1+ msg-idx) args)))
+          (all (or (member "--all" args) (member "-a" args)))
+          (ALL (member "--ALL" args)))
+     (cond
+      (ALL (format "CALL DOLT_COMMIT('--ALL', '-m', '%s')"
+                   (replace-regexp-in-string "'" "''" (or msg ""))))
+      (all (format "CALL DOLT_COMMIT('-a', '-m', '%s')"
+                   (replace-regexp-in-string "'" "''" (or msg ""))))
+      (t (format "CALL DOLT_COMMIT('-m', '%s')"
+                 (replace-regexp-in-string "'" "''" (or msg ""))))))))
+
+(madolt--register-sql-translation
+ 'checkout-branch
+ (lambda (args)
+   (and (equal (car args) "checkout")
+        (= (length args) 2)
+        (not (string-prefix-p "-" (nth 1 args)))))
+ (lambda (args)
+   (format "CALL DOLT_CHECKOUT('%s')" (nth 1 args))))
+
+(madolt--register-sql-translation
+ 'branch-create
+ (lambda (args)
+   (and (equal (car args) "branch")
+        (>= (length args) 2)
+        (not (member "-d" args))
+        (not (member "-m" args))
+        (not (member "-c" args))
+        (not (member "-v" args))
+        (not (member "-a" args))
+        (not (member "-r" args))
+        (not (member "--show-current" args))
+        (not (member "--list" args))
+        (not (string-prefix-p "-" (nth 1 args)))))
+ (lambda (args)
+   (let ((name (nth 1 args))
+         (start (and (>= (length args) 3) (nth 2 args))))
+     (if start
+         (format "CALL DOLT_BRANCH('%s', '%s')" name start)
+       (format "CALL DOLT_BRANCH('%s')" name)))))
+
+(madolt--register-sql-translation
+ 'branch-delete
+ (lambda (args)
+   (and (equal (car args) "branch")
+        (member "-d" args)))
+ (lambda (args)
+   (let ((name (car (cl-remove-if
+                     (lambda (a) (or (equal a "branch")
+                                     (string-prefix-p "-" a)))
+                     args)))
+         (force (or (member "-f" args) (member "--force" args))))
+     (if force
+         (format "CALL DOLT_BRANCH('-D', '%s')" name)
+       (format "CALL DOLT_BRANCH('-d', '%s')" name)))))
+
+(madolt--register-sql-translation
+ 'branch-rename
+ (lambda (args)
+   (and (equal (car args) "branch")
+        (member "-m" args)))
+ (lambda (args)
+   (let ((names (cl-remove-if
+                 (lambda (a) (or (equal a "branch")
+                                 (string-prefix-p "-" a)))
+                 args)))
+     (format "CALL DOLT_BRANCH('-m', '%s', '%s')"
+             (nth 0 names) (nth 1 names)))))
+
+(madolt--register-sql-translation
+ 'tag-create
+ (lambda (args)
+   (and (equal (car args) "tag")
+        (>= (length args) 2)
+        (not (member "-d" args))
+        (not (member "-v" args))
+        (not (string-prefix-p "-" (nth 1 args)))))
+ (lambda (args)
+   (let* ((name (nth 1 args))
+          (msg-idx (cl-position "-m" args :test #'equal))
+          (msg (and msg-idx (nth (1+ msg-idx) args)))
+          (ref (car (cl-remove-if
+                     (lambda (a) (or (equal a "tag")
+                                     (equal a name)
+                                     (equal a "-m")
+                                     (and msg (equal a msg))
+                                     (string-prefix-p "-" a)))
+                     args))))
+     (cond
+      ((and msg ref)
+       (format "CALL DOLT_TAG('%s', '%s', '-m', '%s')"
+               name ref (replace-regexp-in-string "'" "''" msg)))
+      (msg
+       (format "CALL DOLT_TAG('%s', '-m', '%s')"
+               name (replace-regexp-in-string "'" "''" msg)))
+      (ref (format "CALL DOLT_TAG('%s', '%s')" name ref))
+      (t (format "CALL DOLT_TAG('%s')" name))))))
+
+(madolt--register-sql-translation
+ 'tag-delete
+ (lambda (args)
+   (and (equal (car args) "tag")
+        (member "-d" args)))
+ (lambda (args)
+   (let ((name (car (cl-remove-if
+                     (lambda (a) (or (equal a "tag")
+                                     (string-prefix-p "-" a)))
+                     args))))
+     (format "CALL DOLT_TAG('-d', '%s')" name))))
+
+(madolt--register-sql-translation
+ 'fetch
+ (lambda (args) (equal (car args) "fetch"))
+ (lambda (args)
+   (let ((remote (or (nth 1 args) "origin")))
+     (format "CALL DOLT_FETCH('%s')" remote))))
+
+(madolt--register-sql-translation
+ 'pull
+ (lambda (args) (equal (car args) "pull"))
+ (lambda (args)
+   (let ((remote (or (nth 1 args) "origin")))
+     (format "CALL DOLT_PULL('%s')" remote))))
+
+(madolt--register-sql-translation
+ 'push
+ (lambda (args) (equal (car args) "push"))
+ (lambda (args)
+   (let ((remote (or (nth 1 args) "origin")))
+     (format "CALL DOLT_PUSH('%s')" remote))))
+
+(madolt--register-sql-translation
+ 'merge
+ (lambda (args)
+   (and (equal (car args) "merge")
+        (>= (length args) 2)))
+ (lambda (args)
+   (let ((branch (nth 1 args)))
+     (format "CALL DOLT_MERGE('%s')" branch))))
 
 (provide 'madolt-dolt)
 ;;; madolt-dolt.el ends here

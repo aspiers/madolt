@@ -126,6 +126,22 @@ EXIT-CODE is the integer exit code.
 OUTPUT is the string output from the command.
 Layout matches magit-process: right-justified 3-char exit code,
 space, then the command string."
+  (madolt--process-insert-section-1
+   (concat (file-name-nondirectory madolt-dolt-executable)
+           " "
+           (mapconcat #'shell-quote-argument args " "))
+   exit-code output))
+
+(defun madolt--process-insert-sql-section (sql exit-code output)
+  "Insert a SQL query section into the process buffer.
+SQL is the query string, EXIT-CODE is the result status,
+OUTPUT is the query output."
+  (madolt--process-insert-section-1
+   (concat "SQL> " (truncate-string-to-width sql 200 nil nil "..."))
+   exit-code output))
+
+(defun madolt--process-insert-section-1 (heading exit-code output)
+  "Insert a process section with HEADING, EXIT-CODE, and OUTPUT."
   (let ((buf (madolt-process-buffer t)))
     (when (buffer-live-p buf)
       (with-current-buffer buf
@@ -142,11 +158,8 @@ space, then the command string."
                                             'madolt-process-ok
                                           'madolt-process-ng)))
                     (magit-insert-heading
-                      (propertize
-                       (concat (file-name-nondirectory madolt-dolt-executable)
-                               " "
-                               (mapconcat #'shell-quote-argument args " "))
-                       'font-lock-face 'madolt-process-heading))
+                      (propertize heading
+                                  'font-lock-face 'madolt-process-heading))
                     (when has-output
                       (magit-insert-section-body
                         (insert output)

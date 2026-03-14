@@ -22,7 +22,7 @@ SRCS = madolt-dolt.el madolt-process.el madolt-mode.el madolt.el \
        madolt-blame.el madolt-conflicts.el \
        madolt-cherry-pick.el madolt-merge.el madolt-rebase.el \
        madolt-reset.el madolt-reflog.el madolt-sql.el madolt-remote.el \
-       madolt-stash.el madolt-tag.el madolt-refs.el
+       madolt-stash.el madolt-tag.el madolt-refs.el madolt-connection.el
 
 # Test files
 TEST_HELPERS = test/madolt-test-helpers.el

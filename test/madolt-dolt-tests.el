@@ -701,5 +701,78 @@ remote commits reliably."
       (madolt--run "branch" "--show-current")
       (should (= (caar madolt--refresh-cache) 1)))))
 
+;;;; SQL translation registry
+
+(ert-deftest test-madolt-sql-translation-register ()
+  "Registering a SQL translation should add it to the alist."
+  (let ((madolt--sql-translations nil))
+    (madolt--register-sql-translation
+     'test-branch
+     (lambda (args) (equal (car args) "branch"))
+     (lambda (_args) "SELECT * FROM dolt_branches"))
+    (should (= 1 (length madolt--sql-translations)))
+    (should (eq 'test-branch (caar madolt--sql-translations)))))
+
+(ert-deftest test-madolt-sql-translation-find ()
+  "Finding a translation should match the pattern."
+  (let ((madolt--sql-translations nil))
+    (madolt--register-sql-translation
+     'test-branch
+     (lambda (args) (equal (car args) "branch"))
+     (lambda (_args) "SELECT * FROM dolt_branches"))
+    (should (madolt--find-sql-translation '("branch" "-v")))
+    (should-not (madolt--find-sql-translation '("log" "-n" "10")))))
+
+(ert-deftest test-madolt-sql-translation-find-none ()
+  "Finding a translation with no registry should return nil."
+  (let ((madolt--sql-translations nil))
+    (should-not (madolt--find-sql-translation '("branch")))))
+
+(ert-deftest test-madolt-run-sql-disabled ()
+  "madolt--run-sql should return nil when SQL is disabled."
+  (let ((madolt-use-sql-server nil))
+    (should-not (madolt--run-sql '("branch")))))
+
+(ert-deftest test-madolt-run-cli-returns-cons ()
+  "madolt--run-cli should return (EXIT-CODE . OUTPUT)."
+  (madolt-with-test-database
+    (let ((result (madolt--run-cli '("branch" "--show-current"))))
+      (should (consp result))
+      (should (integerp (car result)))
+      (should (stringp (cdr result))))))
+
+;;;; Built-in SQL translations
+
+(ert-deftest test-madolt-sql-translations-registered ()
+  "Built-in SQL translations should be registered."
+  (should (madolt--find-sql-translation '("branch" "--show-current")))
+  (should (madolt--find-sql-translation '("branch")))
+  (should (madolt--find-sql-translation '("remote" "-v")))
+  (should (madolt--find-sql-translation '("tag")))
+  (should (madolt--find-sql-translation '("status")))
+  (should (madolt--find-sql-translation '("ls"))))
+
+(ert-deftest test-madolt-sql-translations-mutations ()
+  "Mutation commands should have SQL translations for stored procedures."
+  (should (madolt--find-sql-translation '("add" ".")))
+  (should (madolt--find-sql-translation '("reset" ".")))
+  (should (madolt--find-sql-translation '("commit" "-m" "test")))
+  (should (madolt--find-sql-translation '("checkout" "main")))
+  (should (madolt--find-sql-translation '("branch" "new-branch")))
+  (should (madolt--find-sql-translation '("branch" "-d" "foo")))
+  (should (madolt--find-sql-translation '("branch" "-m" "old" "new")))
+  (should (madolt--find-sql-translation '("tag" "v1.0")))
+  (should (madolt--find-sql-translation '("tag" "-d" "v1")))
+  (should (madolt--find-sql-translation '("fetch" "origin")))
+  (should (madolt--find-sql-translation '("pull" "origin")))
+  (should (madolt--find-sql-translation '("push" "origin")))
+  (should (madolt--find-sql-translation '("merge" "feature"))))
+
+(ert-deftest test-madolt-sql-translation-log ()
+  "Log command should have a SQL translation."
+  (should (madolt--find-sql-translation '("log" "--parents" "-n" "10")))
+  ;; Graph mode should NOT have SQL translation
+  (should-not (madolt--find-sql-translation '("log" "--parents" "--graph" "-n" "10"))))
+
 (provide 'madolt-dolt-tests)
 ;;; madolt-dolt-tests.el ends here

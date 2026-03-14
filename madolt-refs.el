@@ -37,6 +37,30 @@
 (require 'madolt-dolt)
 (require 'madolt-mode)
 
+;;;; Visibility cache
+
+(defvar madolt-refs--visibility-caches (make-hash-table :test 'equal)
+  "Hash table mapping database directories to section visibility caches.
+Used to preserve expand/collapse state across buffer recreations,
+mirroring magit's `magit-preserve-section-visibility-cache'.")
+
+(defun madolt-refs--preserve-visibility-cache ()
+  "Save section visibility cache for the current refs buffer.
+Added to `kill-buffer-hook' so the cache survives buffer kills."
+  (when (and (derived-mode-p 'madolt-refs-mode)
+             madolt-buffer-database-dir
+             magit-section-visibility-cache)
+    (puthash madolt-buffer-database-dir
+             magit-section-visibility-cache
+             madolt-refs--visibility-caches)))
+
+(defun madolt-refs--restore-visibility-cache ()
+  "Restore section visibility cache for the current refs buffer."
+  (when madolt-buffer-database-dir
+    (setq magit-section-visibility-cache
+          (gethash madolt-buffer-database-dir
+                   madolt-refs--visibility-caches))))
+
 ;;;; Faces
 
 (defface madolt-branch-local
@@ -51,9 +75,24 @@
   "Face for remote branch names in refs buffers."
   :group 'madolt-faces)
 
+(defface madolt-branch-remote-head
+  '((t :inherit madolt-branch-remote :box t))
+  "Face for the remote HEAD branch (e.g. origin/HEAD)."
+  :group 'madolt-faces)
+
 (defface madolt-branch-current
   '((t :inherit madolt-branch-local :box t))
   "Face for the current branch in refs buffers."
+  :group 'madolt-faces)
+
+(defface madolt-branch-upstream
+  '((t :inherit madolt-branch-remote :slant italic))
+  "Face for upstream tracking branches."
+  :group 'madolt-faces)
+
+(defface madolt-branch-warning
+  '((t :inherit warning))
+  "Face for warning indicators on branches."
   :group 'madolt-faces)
 
 (defface madolt-tag
@@ -79,10 +118,115 @@ When non-nil, show \"origin/main\"."
   :group 'madolt
   :type 'boolean)
 
+(defcustom madolt-refs-margin '(nil age 18 t 18)
+  "Format of the margin in `madolt-refs-mode' buffers.
+The value has the form (INIT STYLE WIDTH AUTHOR AUTHOR-WIDTH).
+
+If INIT is non-nil, the margin is shown initially.
+STYLE controls how dates are displayed:
+  `age'              -- show relative age (e.g. \"2 days\")
+  `age-abbreviated'  -- show abbreviated age (e.g. \"2d\")
+  a format string    -- use `format-time-string' (e.g. \"%Y-%m-%d\")
+WIDTH is the total width of the margin.
+If AUTHOR is non-nil, show author names.
+AUTHOR-WIDTH is the width of the author column."
+  :group 'madolt
+  :type '(list (boolean :tag "Show margin initially")
+               (choice  :tag "Show committer"
+                        (string :tag "date using time-format" "%Y-%m-%d %H:%M ")
+                        (const  :tag "date's age" age)
+                        (const  :tag "date's age (abbreviated)" age-abbreviated))
+               (integer :tag "Margin width")
+               (boolean :tag "Show author name by default")
+               (integer :tag "Show author name using width")))
+
 ;;;; Refs mode
 
 (define-derived-mode madolt-refs-mode madolt-mode "Madolt Refs"
-  "Mode for madolt refs buffers.")
+  "Mode for madolt refs buffers."
+  (add-hook 'kill-buffer-hook #'madolt-refs--preserve-visibility-cache nil t))
+
+;;;; Section keymaps
+
+(defun madolt-refs-visit-branch ()
+  "Check out the branch at point."
+  (interactive)
+  (when-let ((section (magit-current-section)))
+    (let ((value (oref section value)))
+      (when (and value (eq (oref section type) 'branch))
+        ;; Strip remote prefix for remote branches
+        (if (string-match "^\\([^/]+\\)/\\(.+\\)$" value)
+            (madolt-branch-checkout-create
+             (match-string 2 value)
+             value)
+          (madolt-branch-checkout value))
+        (madolt-refresh)))))
+
+(defun madolt-refs-delete-branch ()
+  "Delete the branch at point."
+  (interactive)
+  (when-let ((section (magit-current-section)))
+    (let ((value (oref section value)))
+      (when (and value (eq (oref section type) 'branch))
+        (when (yes-or-no-p (format "Delete branch %s? " value))
+          (madolt-branch-delete value)
+          (madolt-refresh))))))
+
+(defun madolt-refs-rename-branch ()
+  "Rename the branch at point."
+  (interactive)
+  (when-let ((section (magit-current-section)))
+    (let ((value (oref section value)))
+      (when (and value (eq (oref section type) 'branch))
+        (let ((new-name (read-string
+                         (format "Rename branch %s to: " value)
+                         value)))
+          (madolt-branch-rename value new-name)
+          (madolt-refresh))))))
+
+(defun madolt-refs-delete-tag ()
+  "Delete the tag at point."
+  (interactive)
+  (when-let ((section (magit-current-section)))
+    (let ((value (oref section value)))
+      (when (and value (eq (oref section type) 'tag))
+        (when (yes-or-no-p (format "Delete tag %s? " value))
+          (madolt-tag-delete value)
+          (madolt-refresh))))))
+
+(defun madolt-refs-delete-remote ()
+  "Remove the remote at point."
+  (interactive)
+  (when-let ((section (magit-current-section)))
+    (let ((value (oref section value)))
+      (when (and value (eq (oref section type) 'remote))
+        (when (yes-or-no-p (format "Remove remote %s? " value))
+          (madolt-remote-remove value)
+          (madolt-refresh))))))
+
+;; Section keymaps follow the magit-<type>-section-map naming
+;; convention, which magit-section resolves automatically.
+;; Only define them if magit hasn't already (i.e. magit-refs not loaded).
+
+(unless (and (boundp 'magit-branch-section-map)
+             (keymapp (symbol-value 'magit-branch-section-map)))
+  (defvar-keymap magit-branch-section-map
+    :doc "Keymap for `branch' sections."
+    "RET"   #'madolt-refs-visit-branch
+    "k"     #'madolt-refs-delete-branch
+    "R"     #'madolt-refs-rename-branch))
+
+(unless (and (boundp 'magit-remote-section-map)
+             (keymapp (symbol-value 'magit-remote-section-map)))
+  (defvar-keymap magit-remote-section-map
+    :doc "Keymap for `remote' sections."
+    "k"     #'madolt-refs-delete-remote))
+
+(unless (and (boundp 'magit-tag-section-map)
+             (keymapp (symbol-value 'magit-tag-section-map)))
+  (defvar-keymap magit-tag-section-map
+    :doc "Keymap for `tag' sections."
+    "k"     #'madolt-refs-delete-tag))
 
 ;;;; Transient menu
 
@@ -140,6 +284,8 @@ in a refs buffer), show the transient menu to choose options."
       (setq default-directory db-dir)
       (setq madolt-buffer-database-dir db-dir)
       (setq madolt-refs--upstream upstream)
+      (madolt-refs--restore-visibility-cache)
+      (madolt-refs--setup-margin)
       (madolt-refresh))
     (madolt-display-buffer buffer)
     buffer))
@@ -148,19 +294,171 @@ in a refs buffer), show the transient menu to choose options."
 
 (defun madolt-refs-refresh-buffer ()
   "Refresh the refs buffer."
+  (setq header-line-format
+        (propertize (format " Comparing with %s"
+                            (or madolt-refs--upstream "HEAD"))
+                    'font-lock-face 'magit-header-line))
   (let* ((branches (madolt-branch-list-verbose))
          (local-branches (cl-remove-if
                           (lambda (b) (plist-get b :remote)) branches))
          (remote-branches (cl-remove-if-not
                            (lambda (b) (plist-get b :remote)) branches))
          (tags (madolt-tag-list-verbose)))
-    (magit-insert-section (refs)
-      (magit-insert-heading
-        (format "References for %s:" (or madolt-refs--upstream "HEAD")))
+    (magit-insert-section (branchbuf)
       (madolt-refs--insert-local-branches local-branches remote-branches)
       (madolt-refs--insert-remote-branches remote-branches
                                           (madolt-remotes))
-      (madolt-refs--insert-tags tags))))
+      (madolt-refs--insert-tags tags)))
+  ;; Set up margin windows after rendering
+  (when (madolt-refs--margin-active-p)
+    (dolist (window (get-buffer-window-list nil nil 0))
+      (with-selected-window window
+        (madolt-refs--set-window-margin window)
+        (add-hook 'window-configuration-change-hook
+                  #'madolt-refs--set-window-margin nil t)))))
+
+;;;; Focus column
+
+(defun madolt-refs--format-focus-column (current name)
+  "Format the focus column indicator for a branch line.
+CURRENT is non-nil if this is the current branch.
+NAME is the branch name.
+When comparing against HEAD, use @ for the current branch.
+When comparing against a named ref, use * for the matching ref."
+  (cond
+   ;; Current branch and comparing against HEAD: use @
+   ((and current (equal madolt-refs--upstream "HEAD"))
+    (propertize "@ " 'font-lock-face 'magit-section-heading))
+   ;; Branch matches the comparison target: use *
+   ((equal name madolt-refs--upstream)
+    (propertize "* " 'font-lock-face 'magit-section-heading))
+   ;; Current branch (comparing against named ref): use space
+   (current "  ")
+   ;; Other branches: use space
+   (t "  ")))
+
+;;;; Margin support
+
+(defvar-local madolt-refs--margin-config nil
+  "Current margin configuration for this refs buffer.
+A list of (ACTIVE STYLE WIDTH AUTHOR AUTHOR-WIDTH).")
+
+(defun madolt-refs--setup-margin ()
+  "Initialize the right margin for the refs buffer."
+  (setq madolt-refs--margin-config (copy-sequence madolt-refs-margin)))
+
+(defun madolt-refs--margin-active-p ()
+  "Return non-nil if the right margin is active."
+  (and madolt-refs--margin-config
+       (car madolt-refs--margin-config)))
+
+(defun madolt-refs--set-window-margin (&optional window)
+  "Set the right margin width for WINDOW."
+  (when (or window (setq window (get-buffer-window)))
+    (with-selected-window window
+      (set-window-margins
+       nil
+       (car (window-margins))
+       (and (madolt-refs--margin-active-p)
+            (nth 2 madolt-refs--margin-config))))))
+
+(defun madolt-refs--format-age (date &optional abbreviate)
+  "Format DATE as a relative age string.
+DATE is a Unix timestamp as a number or string.
+When ABBREVIATE is non-nil, use short form (e.g. \"2d\" vs \"2 days\")."
+  (let* ((seconds (abs (- (float-time)
+                          (if (stringp date)
+                              (string-to-number date)
+                            date))))
+         (spec `((?Y "year"   "years"   ,(round (* 60 60 24 365.2425)))
+                 (?M "month"  "months"  ,(round (* 60 60 24 30.436875)))
+                 (?w "week"   "weeks"   ,(* 60 60 24 7))
+                 (?d "day"    "days"    ,(* 60 60 24))
+                 (?h "hour"   "hours"   ,(* 60 60))
+                 (?m "minute" "minutes" 60)
+                 (?s "second" "seconds" 1))))
+    (cl-loop for (char unit units weight) in spec
+             when (or (null (cdr (memq (assq char spec) spec)))
+                      (>= (/ seconds weight) 1))
+             return (let ((cnt (round (/ seconds weight 1.0))))
+                      (if abbreviate
+                          (format "%d%c" cnt char)
+                        (format "%d %s" cnt (if (= cnt 1) unit units)))))))
+
+(defun madolt-refs--format-margin-string (author date)
+  "Format AUTHOR and DATE for the right margin overlay.
+Uses `madolt-refs--margin-config' to control style and width."
+  (when madolt-refs--margin-config
+    (pcase-let ((`(,_active ,style ,width ,details ,details-width)
+                 madolt-refs--margin-config))
+      (concat (and details author
+                   (concat (propertize
+                            (truncate-string-to-width
+                             author details-width nil ?\s)
+                            'font-lock-face 'shadow)
+                           " "))
+              (propertize
+               (if (stringp style)
+                   (format-time-string
+                    style
+                    (seconds-to-time
+                     (if (stringp date) (string-to-number date) date)))
+                 (let* ((abbr (eq style 'age-abbreviated))
+                        (age-str (madolt-refs--format-age date abbr)))
+                   (format (format "%%-%ds"
+                                   (- width
+                                      (if (and details author)
+                                          (1+ details-width) 0)))
+                           age-str)))
+               'font-lock-face 'shadow)))))
+
+(defun madolt-refs--make-margin-overlay (&optional string)
+  "Create a right-margin overlay with STRING on the previous line."
+  (save-excursion
+    (forward-line (if (bolp) -1 0))
+    (let ((o (make-overlay (1+ (point)) (line-end-position) nil t)))
+      (overlay-put o 'evaporate t)
+      (overlay-put o 'before-string
+                   (propertize "o" 'display
+                               (list (list 'margin 'right-margin)
+                                     (or string " ")))))))
+
+(defun madolt-refs--maybe-format-margin (hash)
+  "Insert a margin overlay for the commit at HASH, if margin is active."
+  (when (madolt-refs--margin-active-p)
+    (let* ((entry (car (madolt-log-entries 1 hash)))
+           (author (and entry (plist-get entry :author)))
+           (date (and entry (plist-get entry :date))))
+      (if (and author date)
+          (madolt-refs--make-margin-overlay
+           (madolt-refs--format-margin-string author date))
+        (madolt-refs--make-margin-overlay)))))
+
+;;;; Cherry commits
+
+(defun madolt-refs--insert-cherry-commits (ref)
+  "Insert cherry commits for REF as expandable sub-section body.
+Shows commits in REF that are not in the comparison upstream.
+Since dolt lacks `git cherry', uses `dolt log upstream..ref' instead."
+  (magit-insert-section-body
+    (let* ((upstream (or madolt-refs--upstream "HEAD"))
+           (range (format "%s..%s" upstream ref))
+           (entries (condition-case nil
+                        (madolt-log-entries 25 range)
+                      (error nil))))
+      (when entries
+        (dolist (entry entries)
+          (let* ((hash (plist-get entry :hash))
+                 (msg (or (plist-get entry :message) ""))
+                 (short-hash (if (> (length hash) 7)
+                                 (substring hash 0 7)
+                               hash)))
+            (magit-insert-section (commit hash)
+              (magit-insert-heading
+                (concat
+                 "  "
+                 (propertize short-hash 'font-lock-face 'shadow)
+                 " " msg "\n")))))))))
 
 ;;;; Section inserters
 
@@ -224,7 +522,7 @@ REMOTE-BRANCHES is used to determine upstream tracking info."
     (let ((col-width (madolt-refs--column-width
                       (mapcar (lambda (b) (plist-get b :name)) branches))))
       (magit-insert-section (local nil t)
-        (magit-insert-heading "Branches:")
+        (magit-insert-heading "Branches")
         (dolist (branch branches)
           (let* ((name (plist-get branch :name))
                  (message (plist-get branch :message))
@@ -239,15 +537,18 @@ REMOTE-BRANCHES is used to determine upstream tracking info."
                   (when upstream
                     (madolt-refs--format-upstream-info
                      upstream (car ab) (cdr ab)))))
-            (magit-insert-section (branch name)
+            (magit-insert-section (branch name t)
               (magit-insert-heading
                 (concat
-                 (if current "* " "  ")
+                 (madolt-refs--format-focus-column current name)
                  (propertize padded 'font-lock-face face)
                  (when upstream-info
                    (concat " " upstream-info))
                  " " (or message "")
-                 "\n")))))
+                 "\n"))
+              (madolt-refs--maybe-format-margin
+               (plist-get branch :hash))
+              (madolt-refs--insert-cherry-commits name))))
         (insert "\n")))))
 
 (defun madolt-refs--insert-remote-branches (branches remotes-alist)
@@ -271,10 +572,10 @@ REMOTES-ALIST is an alist of (NAME . URL) from `madolt-remotes'."
                                           n)))
                                     rbranches))))
            (magit-insert-section (remote remote t)
-             (magit-insert-heading
-               (if url
-                   (format "Remote %s (%s):" remote url)
-                 (format "Remote %s:" remote)))
+              (magit-insert-heading
+                (if url
+                    (format "Remote %s (%s)" remote url)
+                  (format "Remote %s" remote)))
              (dolist (branch rbranches)
                (let* ((name (plist-get branch :name))
                       (message (plist-get branch :message))
@@ -284,15 +585,17 @@ REMOTES-ALIST is an alist of (NAME . URL) from `madolt-remotes'."
                                       name))
                       (padded (truncate-string-to-width
                                display-name col-width nil ?\s)))
-                 (magit-insert-section (branch full-name)
-                   (magit-insert-heading
-                     (concat
-                      "  "
-                      (propertize padded
-                                  'font-lock-face 'madolt-branch-remote)
-                      " " (or message "")
-                      "\n")))))
-             (insert "\n"))))
+                  (magit-insert-section (branch full-name)
+                    (magit-insert-heading
+                      (concat
+                       "  "
+                       (propertize padded
+                                   'font-lock-face 'madolt-branch-remote)
+                       " " (or message "")
+                       "\n"))
+                    (madolt-refs--maybe-format-margin
+                     (plist-get branch :hash)))))
+              (insert "\n"))))
        by-remote))))
 
 (defun madolt-refs--insert-tags (tags)
@@ -301,7 +604,7 @@ REMOTES-ALIST is an alist of (NAME . URL) from `madolt-remotes'."
     (let ((col-width (madolt-refs--column-width
                       (mapcar (lambda (tg) (plist-get tg :name)) tags))))
       (magit-insert-section (tags nil t)
-        (magit-insert-heading "Tags:")
+        (magit-insert-heading "Tags")
         (dolist (tag tags)
           (let* ((name (plist-get tag :name))
                  (message (plist-get tag :message))
@@ -312,7 +615,9 @@ REMOTES-ALIST is an alist of (NAME . URL) from `madolt-remotes'."
                  "  "
                  (propertize padded 'font-lock-face 'madolt-tag)
                  (when message (concat " " message))
-                 "\n")))))
+                 "\n"))
+              (madolt-refs--maybe-format-margin
+               (plist-get tag :hash)))))
         (insert "\n")))))
 
 (provide 'madolt-refs)
