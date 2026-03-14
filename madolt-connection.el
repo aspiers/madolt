@@ -267,14 +267,35 @@ Wraps SQL to use dolt's JSON output format via FORMAT='json'."
 
 ;;;; Connection lifecycle
 
+(defun madolt-connection-setup ()
+  "Set up the SQL connection, possibly prompting to start a server.
+Call this once at the start of a refresh cycle (e.g. from
+`madolt-status-refresh-buffer').  Handles server detection,
+user prompting, and auto-starting based on
+`madolt-use-sql-server'.  Subsequent commands in the same
+refresh should use `madolt-connection-ensure' which never
+prompts."
+  (when (and madolt-use-sql-server
+             (not (madolt-connection-active-p)))
+    (let* ((info (madolt-connection--detect-server))
+           (port (or (plist-get info :port)
+                     (madolt-connection--maybe-start-server))))
+      (when port
+        (let ((db-name (file-name-nondirectory
+                        (directory-file-name
+                         (or (madolt-database-dir) default-directory)))))
+          (setq madolt-connection--db-dir
+                (or (madolt-database-dir) default-directory))
+          (madolt-connection--connect port db-name))))))
+
 (defun madolt-connection-ensure ()
   "Ensure an SQL connection is active, establishing one if needed.
 Returns non-nil if a connection is active after this call.
-Behaviour depends on `madolt-use-sql-server'."
+Unlike `madolt-connection-setup', this never prompts the user or
+starts a server; it only connects to an already-running one."
   (or (madolt-connection-active-p)
       (let* ((info (madolt-connection--detect-server))
-             (port (or (plist-get info :port)
-                       (madolt-connection--maybe-start-server))))
+             (port (plist-get info :port)))
         (when port
           (let ((db-name (file-name-nondirectory
                           (directory-file-name

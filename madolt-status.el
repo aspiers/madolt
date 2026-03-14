@@ -170,6 +170,11 @@ Uses a two-phase prefetch strategy:
   (setq madolt--log-entries-cache nil)
   ;; Warn about stale sql-server.info (causes parallel dolt failures)
   (madolt-check-stale-sql-server)
+  ;; Set up SQL connection (may prompt to start a server).
+  ;; Must happen before prefetch so subsequent madolt--run calls
+  ;; can use the connection without prompting.
+  (when (fboundp 'madolt-connection-setup)
+    (madolt-connection-setup))
   ;; Phase 1: prefetch independent CLI commands in parallel.
   (madolt--prefetch
    '(("branch" "--show-current")
