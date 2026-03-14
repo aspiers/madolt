@@ -121,9 +121,11 @@ With a prefix argument, always prompt for the directory."
     ("e" "SQL query"      madolt-sql-query)]
    ["Applying changes"
     :if-derived madolt-mode
-    ("k" "Discard"        madolt-discard)
     ("x" "Clean"          madolt-clean)
-    ("s" "Stage"          madolt-stage)
+    ("k" "Discard"        madolt-discard)
+    ("s" "Stage"          madolt-stage)]
+   [""
+    :if-derived madolt-mode
     ("S" "Stage all"      madolt-stage-all)
     ("u" "Unstage"        madolt-unstage)
     ("U" "Unstage all"    madolt-unstage-all)]]
