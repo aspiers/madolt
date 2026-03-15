@@ -633,8 +633,11 @@ entries with conflict status (which covers SQL-routed output)."
 
 (defun madolt-rebase-in-progress-p ()
   "Return non-nil if a dolt rebase is currently in progress.
-Checks the raw `dolt status' output for rebase indicators."
-  (let ((output (madolt-dolt-string "status")))
+Checks the raw CLI `dolt status' output for rebase indicators.
+Must use CLI directly because dolt_status (the SQL system table)
+has no concept of rebase state."
+  (let* ((result (madolt--run-cli '("status")))
+         (output (and (zerop (car result)) (cdr result))))
     (and output (string-match-p "rebase in progress" output))))
 
 ;;;; Schema queries

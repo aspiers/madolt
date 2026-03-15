@@ -227,5 +227,16 @@
     (should (madolt-dolt-success-p "sql" "-q" "SELECT 1 FROM t2 LIMIT 1"))
     (should (madolt-dolt-success-p "sql" "-q" "SELECT 1 FROM t3 LIMIT 1"))))
 
+(ert-deftest test-madolt-rebase-in-progress-p-bypasses-sql ()
+  "madolt-rebase-in-progress-p should use CLI, not SQL routing."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    ;; Enable SQL server routing and verify we still get the right answer
+    ;; via CLI.  If SQL were used, dolt_status returns tab-separated rows
+    ;; that never contain "rebase in progress".
+    (let ((madolt-use-sql-server t))
+      (should-not (madolt-rebase-in-progress-p)))))
+
 (provide 'madolt-rebase-tests)
 ;;; madolt-rebase-tests.el ends here
