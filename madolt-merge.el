@@ -95,10 +95,12 @@ then re-enables it after."
                                   (string-match-p "conflict" col))
                                 (car rows)))))
             (if has-conflicts
-                ;; Abort the merge and report conflict
+                ;; Report conflict; disconnect to reset session state
+                ;; (DOLT_MERGE('--abort') can be very slow on large databases,
+                ;; so we just disconnect instead, which rolls back the transaction)
                 (progn
-                  (funcall query-fn "CALL DOLT_MERGE('--abort')" 60)
-                  (funcall query-fn "SET @@autocommit = 1" 10)
+                  (when (fboundp 'madolt-connection-disconnect)
+                    (funcall 'madolt-connection-disconnect))
                   (cons 1 (format "Merge conflict: %s"
                                   (string-join (car rows) " "))))
               ;; Commit and re-enable autocommit
