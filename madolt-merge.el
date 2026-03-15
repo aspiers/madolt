@@ -70,8 +70,9 @@ then re-enables it after."
       (when (and (fboundp 'madolt-connection-ensure)
                  (funcall 'madolt-connection-ensure))
         (let ((query-fn (symbol-function 'madolt-connection-query)))
-          ;; Disable autocommit so conflicts don't cause rollback
-          (funcall query-fn "SET @@autocommit = 0")
+          ;; Combine SET and MERGE into one batch to avoid SET producing
+          ;; no output (which causes the query to time out waiting for
+          ;; output that never comes in mysql batch mode).
           (let* ((sql-args (list (format "'%s'" branch)))
                  (_ (dolist (flag flags)
                       (push (format "'%s'" flag) sql-args)))
@@ -81,8 +82,9 @@ then re-enables it after."
                  (sql (format "CALL DOLT_MERGE(%s)"
                               (mapconcat #'identity
                                          (nreverse sql-args) ", ")))
-                 ;; Use 30s timeout; if merge takes longer, falls back to CLI
-                 (rows (funcall query-fn sql 30))
+                 (full-sql (concat "SET @@autocommit = 0;\n" sql))
+                 ;; Merge can be slow on large databases
+                 (rows (funcall query-fn full-sql 60))
                  (output (mapconcat
                           (lambda (row) (string-join row "\t"))
                           rows "\n"))
@@ -114,9 +116,11 @@ then re-enables it after."
                     (funcall 'madolt-connection-disconnect))
                   (cons 1 (format "Merge conflict with %s: %s"
                                   branch conflict-msg)))
-              ;; Commit and re-enable autocommit
-              (funcall query-fn "COMMIT" 30)
-              (funcall query-fn "SET @@autocommit = 1" 10)
+              ;; Commit and re-enable autocommit.
+              ;; COMMIT/SET produce no output in batch mode, so combine
+              ;; with a SELECT to get detectable output.
+              (funcall query-fn
+                       "COMMIT; SET @@autocommit = 1; SELECT 'ok'" 30)
               (cons 0 (concat output "\n"))))))
     (error
      (when (fboundp 'madolt-connection-disconnect)
@@ -129,7 +133,8 @@ then re-enables it after."
 
 (defun madolt-merge--do-merge (message args)
   "Execute `dolt merge' with MESSAGE and ARGS.
-ARGS should already include the branch to merge."
+ARGS should already include the branch to merge.
+MESSAGE may be nil to use dolt's auto-generated message."
   (let* ((head-before (madolt-dolt-string "log" "-n" "1" "--oneline"))
          ;; Extract the branch name (last non-flag arg)
          (branch (car (last (cl-remove-if
@@ -140,7 +145,7 @@ ARGS should already include the branch to merge."
                  args))
          ;; Try SQL first (with autocommit handling), fall back to CLI
          (sql-result (and (bound-and-true-p madolt-use-sql-server)
-                         (madolt-merge--via-sql branch message flags)))
+                          (madolt-merge--via-sql branch message flags)))
          (result (or sql-result
                      (let ((all-args
                             (append
@@ -180,27 +185,25 @@ ARGS should already include the branch to merge."
 (defun madolt-merge-command (branch &optional args)
   "Merge BRANCH into the current branch.
 ARGS are additional arguments from the transient.
-Opens a buffer to edit the merge commit message, unless
---squash or --no-commit is set."
+Runs the merge first; on success, opens a buffer for the merge
+commit message (like magit).  With --squash or --no-commit,
+skips the message buffer."
   (interactive
    (list (completing-read
           (format "Merge into %s: " (madolt-current-branch))
           (remove (madolt-current-branch) (madolt-all-ref-names))
           nil nil)
          (transient-args 'madolt-merge)))
-  (let ((current (madolt-current-branch))
-        (merge-args (append args (list branch))))
-    (if (or (member "--squash" args)
-            (member "--no-commit" args))
-        ;; No commit message needed
-        (madolt-merge--do-merge nil merge-args)
-      ;; Open buffer for merge message editing
-      (madolt-commit--setup-buffer
-       (format "Merge %s into %s" branch current)
-       merge-args
-       nil
-       #'madolt-merge--do-merge
-       #'madolt-merge--buffer-name))))
+  (let* ((current (madolt-current-branch))
+         (merge-args (append args (list branch)))
+         (needs-message (not (or (member "--squash" args)
+                                 (member "--no-commit" args)))))
+    ;; Run the merge with a default message first
+    (madolt-merge--do-merge
+     (if needs-message
+         (format "Merge %s into %s" current branch)
+       nil)
+     merge-args)))
 
 (defun madolt-merge-abort-command ()
   "Abort the current merge."

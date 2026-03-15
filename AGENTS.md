@@ -201,6 +201,15 @@ sleep 0.3
   `madolt-use-sql-server`.  When enabled, queries are routed through
   a persistent MySQL-protocol connection to `dolt sql-server` for
   near-zero latency.  Falls back to CLI transparently on failure.
+- **SQL queries should never hang** -- if a SQL query to
+  `dolt sql-server` appears to hang, the problem is almost certainly
+  in how the query or connection is being used, NOT in the server
+  being slow.  Common causes: `SET` commands produce no output in
+  mysql batch mode (combine with a `SELECT` to get detectable
+  output); stale data in `pending-output` from a prior query;
+  `madolt-connection--output-complete-p` waiting for output that
+  will never arrive.  Never increase timeouts as a workaround for
+  hangs — find and fix the root cause.
 - **Dolt v1.82.x does NOT support `$EDITOR`-based commit messages.**
   All commits use `-m` flag via minibuffer input.
 - **Dolt does NOT support detached HEAD.** `dolt checkout <hash>`
