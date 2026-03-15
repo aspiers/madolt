@@ -769,10 +769,10 @@ remote commits reliably."
   (should (madolt--find-sql-translation '("merge" "feature"))))
 
 (ert-deftest test-madolt-sql-translation-log ()
-  "Log command should have a SQL translation."
-  (should (madolt--find-sql-translation '("log" "--parents" "-n" "10")))
-  ;; Graph mode should NOT have SQL translation
-  (should-not (madolt--find-sql-translation '("log" "--parents" "--graph" "-n" "10"))))
+  "Log command should NOT have a SQL translation.
+The dolt_log system table lacks a parent_hashes column, so
+--parents output cannot be reproduced via SQL."
+  (should-not (madolt--find-sql-translation '("log" "--parents" "-n" "10"))))
 
 (provide 'madolt-dolt-tests)
 ;;; madolt-dolt-tests.el ends here

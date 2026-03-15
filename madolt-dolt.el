@@ -960,26 +960,9 @@ When MESSAGE is non-nil, create an annotated tag."
 
 ;;;; SQL translations for log queries
 
-(madolt--register-sql-translation
- 'log-basic
- (lambda (args)
-   (and (equal (car args) "log")
-        (member "--parents" args)
-        (not (member "--graph" args))))
- (lambda (args)
-   ;; Parse -n limit and optional rev/range
-   (let ((limit 10) rev)
-     (cl-loop for (a b) on args
-              do (cond ((equal a "-n") (setq limit (string-to-number b)))
-                       ((and (not (string-prefix-p "-" a))
-                             (not (equal a "log"))
-                             (not (equal a "--parents")))
-                        (setq rev a))))
-     (if rev
-         (format "SELECT commit_hash, committer, email, date, message, parent_hashes FROM dolt_log('%s') LIMIT %d"
-                 rev limit)
-       (format "SELECT commit_hash, committer, email, date, message, parent_hashes FROM dolt_log LIMIT %d"
-               limit)))))
+;; dolt log is CLI-only: the dolt_log system table does not have a
+;; parent_hashes column, so --parents output cannot be reproduced
+;; via SQL.  No SQL translation is registered.
 
 ;;;; SQL translations for mutation commands (DOLT_* stored procedures)
 
