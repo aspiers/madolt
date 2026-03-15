@@ -78,21 +78,23 @@ ARGS should already include the branch to merge."
     ;; (DOLT_MERGE can leave the connection in a bad state on conflict)
     (when (fboundp 'madolt-connection-disconnect)
       (madolt-connection-disconnect))
-    (madolt-refresh)
-    ;; Message after refresh so it's not overwritten by "Refreshing...done"
-    (cond
-     ;; Non-zero exit code (CLI failure)
-     ((not (zerop (car result)))
-      (message "Merge failed: %s" output))
-     ;; SQL path: error or conflict in output text
-     ((string-match-p "\\(conflict\\|error\\|rolled back\\)" output)
-      (message "Merge failed: %s" output))
-     ;; HEAD didn't change — merge silently did nothing
-     ((equal head-before head-after)
-      (message "Merge failed: HEAD unchanged (possible conflict with autocommit)"))
-     (t
-      (message "Merged %s into %s" branch
-               (madolt-current-branch))))))
+    ;; Detect failure BEFORE refresh so refresh doesn't overwrite the message
+    (let ((failure
+           (cond
+            ;; Non-zero exit code (CLI failure)
+            ((not (zerop (car result)))
+             output)
+            ;; SQL path: error or conflict in output text
+            ((string-match-p "\\(conflict\\|error\\|rolled back\\)" output)
+             output)
+            ;; HEAD didn't change — merge silently did nothing
+            ((equal head-before head-after)
+             "HEAD unchanged (possible conflict with autocommit)"))))
+      (madolt-refresh)
+      (if failure
+          (user-error "Merge failed: %s" failure)
+        (message "Merged %s into %s" branch
+                 (madolt-current-branch))))))
 
 (defun madolt-merge-command (branch &optional args)
   "Merge BRANCH into the current branch.
