@@ -153,28 +153,34 @@ Merges feature into main, producing a conflict."
 ;;;; Resolve commands
 
 (ert-deftest test-madolt-conflicts-resolve-ours-calls-dolt ()
-  "Resolving with ours should call dolt with correct args."
+  "Resolving with ours should call dolt resolve then dolt add."
   (madolt-with-test-database
     (madolt-test-create-conflict)
-    (let (called-args)
+    (let (all-calls)
       (cl-letf (((symbol-function 'madolt-call-dolt)
-                 (lambda (&rest args) (setq called-args args) '(0 . "")))
+                 (lambda (&rest args) (push args all-calls) '(0 . "")))
                 ((symbol-function 'madolt-refresh) #'ignore))
         (madolt-conflicts-resolve-ours "t")
-        (should (equal called-args
-                       '("conflicts" "resolve" "--ours" "t")))))))
+        (setq all-calls (nreverse all-calls))
+        (should (equal (car all-calls)
+                       '("conflicts" "resolve" "--ours" "t")))
+        (should (equal (cadr all-calls)
+                       '("add" "t")))))))
 
 (ert-deftest test-madolt-conflicts-resolve-theirs-calls-dolt ()
-  "Resolving with theirs should call dolt with correct args."
+  "Resolving with theirs should call dolt resolve then dolt add."
   (madolt-with-test-database
     (madolt-test-create-conflict)
-    (let (called-args)
+    (let (all-calls)
       (cl-letf (((symbol-function 'madolt-call-dolt)
-                 (lambda (&rest args) (setq called-args args) '(0 . "")))
+                 (lambda (&rest args) (push args all-calls) '(0 . "")))
                 ((symbol-function 'madolt-refresh) #'ignore))
         (madolt-conflicts-resolve-theirs "t")
-        (should (equal called-args
-                       '("conflicts" "resolve" "--theirs" "t")))))))
+        (setq all-calls (nreverse all-calls))
+        (should (equal (car all-calls)
+                       '("conflicts" "resolve" "--theirs" "t")))
+        (should (equal (cadr all-calls)
+                       '("add" "t")))))))
 
 (ert-deftest test-madolt-conflicts-resolve-ours-clears-conflicts ()
   "After resolving with ours, conflicts should be cleared."

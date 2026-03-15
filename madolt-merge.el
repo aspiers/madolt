@@ -46,12 +46,17 @@
 (transient-define-prefix madolt-merge ()
   "Merge branches."
   ["Arguments"
+   :if-not madolt-merge-in-progress-p
    ("-n" "No fast-forward"  "--no-ff")
    ("-f" "Fast-forward only" "--ff-only")
    ("-s" "Squash"           "--squash")
    ("-c" "No commit"        "--no-commit")]
   ["Merge"
-   ("m" "Merge"             madolt-merge-command)
+   :if-not madolt-merge-in-progress-p
+   ("m" "Merge"             madolt-merge-command)]
+  ["Actions"
+   :if madolt-merge-in-progress-p
+   ("m" "Continue"          madolt-merge-continue-command)
    ("a" "Abort"             madolt-merge-abort-command)])
 
 ;;;; Interactive commands
@@ -212,6 +217,32 @@ skips the message buffer."
          (format "Merge %s into %s" current branch)
        nil)
      merge-args)))
+
+(defun madolt-merge-continue-command ()
+  "Continue the current merge after resolving conflicts.
+Stages all tables with `dolt add .' and commits.  If there are
+still unresolved conflicts, reports an error."
+  (interactive)
+  (unless (madolt-merge-in-progress-p)
+    (user-error "No merge in progress"))
+  ;; Check for remaining conflicts
+  (let ((conflicts (alist-get 'conflicts (madolt-status-tables))))
+    (when conflicts
+      (user-error "Cannot continue: %d table(s) still have conflicts: %s"
+                  (length conflicts)
+                  (mapconcat #'car conflicts ", "))))
+  ;; Stage all resolved tables
+  (let ((add-result (madolt-call-dolt "add" ".")))
+    (unless (zerop (car add-result))
+      (user-error "Failed to stage: %s" (string-trim (cdr add-result)))))
+  ;; Commit the merge
+  (let* ((msg (read-string "Merge commit message: "
+                           (format "Merge into %s" (madolt-current-branch))))
+         (result (madolt-call-dolt "commit" "-m" msg)))
+    (madolt-refresh)
+    (if (zerop (car result))
+        (message "Merge committed: %s" msg)
+      (message "Commit failed: %s" (string-trim (cdr result))))))
 
 (defun madolt-merge-abort-command ()
   "Abort the current merge."

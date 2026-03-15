@@ -83,26 +83,28 @@ Use \".\" for all tables."
   (madolt-conflicts--show (if (string= table ".") nil table)))
 
 (defun madolt-conflicts-resolve-ours (table)
-  "Resolve conflicts in TABLE by taking ours."
+  "Resolve conflicts in TABLE by taking ours, then stage."
   (interactive
    (list (completing-read "Resolve (ours) table: "
                           (append '(".") (madolt-conflicts--table-names)))))
   (let ((result (madolt-call-dolt "conflicts" "resolve" "--ours" table)))
     (if (zerop (car result))
         (progn
-          (message "Resolved conflicts in %s (ours)" table)
+          (madolt-call-dolt "add" table)
+          (message "Resolved conflicts in %s (ours) and staged" table)
           (madolt-refresh))
       (message "Failed to resolve conflicts: %s" (cdr result)))))
 
 (defun madolt-conflicts-resolve-theirs (table)
-  "Resolve conflicts in TABLE by taking theirs."
+  "Resolve conflicts in TABLE by taking theirs, then stage."
   (interactive
    (list (completing-read "Resolve (theirs) table: "
                           (append '(".") (madolt-conflicts--table-names)))))
   (let ((result (madolt-call-dolt "conflicts" "resolve" "--theirs" table)))
     (if (zerop (car result))
         (progn
-          (message "Resolved conflicts in %s (theirs)" table)
+          (madolt-call-dolt "add" table)
+          (message "Resolved conflicts in %s (theirs) and staged" table)
           (madolt-refresh))
       (message "Failed to resolve conflicts: %s" (cdr result)))))
 

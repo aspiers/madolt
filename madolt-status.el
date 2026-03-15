@@ -293,6 +293,13 @@ launches parallel prefetch for:
                         (or message ""))
               "")
             "\n")
+    ;; Merge state line
+    (when (madolt-merge-in-progress-p)
+      (insert (format "%-10s" "Merge:")
+              (propertize "in progress" 'font-lock-face 'warning)
+              " — resolve conflicts then commit, or abort with "
+              (propertize "m a" 'font-lock-face 'bold)
+              "\n"))
     ;; Upstream line (if tracking a remote branch)
     (when upstream
       (insert (format "%-10s" "Upstream:")
