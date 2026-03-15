@@ -102,6 +102,18 @@ Cache hits/misses are counted in the car of `madolt--refresh-cache'."
       (replace-regexp-in-string madolt--ansi-escape-re "" string)
     ""))
 
+(defun madolt--clean-output (string)
+  "Clean CLI output by processing backspaces and stripping ANSI escapes.
+Dolt uses backspace characters for spinner animation (e.g.
+\"- Fetching...\\b\\b\\b...\"); this applies them to produce clean text."
+  (let ((result (madolt--strip-ansi (or string ""))))
+    ;; Process backspaces: each \b erases the preceding character
+    (while (string-match ".\010" result)
+      (setq result (replace-match "" t t result)))
+    ;; Remove any remaining standalone backspaces
+    (setq result (replace-regexp-in-string "\010" "" result))
+    (string-trim result)))
+
 ;;;; SQL translation registry
 
 ;; Forward declarations for optional SQL connection module
@@ -1241,26 +1253,10 @@ When MESSAGE is non-nil, create an annotated tag."
                      args))))
      (format "CALL DOLT_TAG('-d', '%s')" name))))
 
-(madolt--register-sql-translation
- 'fetch
- (lambda (args) (equal (car args) "fetch"))
- (lambda (args)
-   (let ((remote (or (nth 1 args) "origin")))
-     (format "CALL DOLT_FETCH('%s')" remote))))
-
-(madolt--register-sql-translation
- 'pull
- (lambda (args) (equal (car args) "pull"))
- (lambda (args)
-   (let ((remote (or (nth 1 args) "origin")))
-     (format "CALL DOLT_PULL('%s')" remote))))
-
-(madolt--register-sql-translation
- 'push
- (lambda (args) (equal (car args) "push"))
- (lambda (args)
-   (let ((remote (or (nth 1 args) "origin")))
-     (format "CALL DOLT_PUSH('%s')" remote))))
+;;; fetch, pull, push are NOT routed through SQL.
+;;; DOLT_FETCH/PULL/PUSH stored procedures return errors as result
+;;; rows with exit code 0, so failures are silently swallowed.
+;;; The CLI correctly returns non-zero exit codes for these operations.
 
 (madolt--register-sql-translation
  'merge

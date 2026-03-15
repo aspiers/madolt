@@ -150,7 +150,9 @@
 
 (ert-deftest test-madolt-database-dir-nil-outside ()
   "madolt-database-dir returns nil outside a dolt database."
-  (let ((default-directory temporary-file-directory))
+  ;; Use /dev/null's directory (/dev/) which cannot contain .dolt.
+  ;; Cannot use /tmp/ because it may contain .dolt on some systems.
+  (let ((default-directory "/dev/"))
     (should (null (madolt-database-dir)))))
 
 (ert-deftest test-madolt-database-p-true ()
@@ -160,7 +162,7 @@
 
 (ert-deftest test-madolt-database-p-false ()
   "madolt-database-p returns nil outside a dolt database."
-  (let ((default-directory temporary-file-directory))
+  (let ((default-directory "/dev/"))
     (should-not (madolt-database-p))))
 
 (ert-deftest test-madolt-current-branch ()
@@ -830,9 +832,12 @@ remote commits reliably."
   (should (madolt--find-sql-translation '("branch" "-m" "old" "new")))
   (should (madolt--find-sql-translation '("tag" "v1.0")))
   (should (madolt--find-sql-translation '("tag" "-d" "v1")))
-  (should (madolt--find-sql-translation '("fetch" "origin")))
-  (should (madolt--find-sql-translation '("pull" "origin")))
-  (should (madolt--find-sql-translation '("push" "origin")))
+  ;; fetch, pull, push are CLI-only: DOLT_FETCH/PULL/PUSH stored
+  ;; procedures return errors as result rows with exit code 0,
+  ;; silently swallowing failures.
+  (should-not (madolt--find-sql-translation '("fetch" "origin")))
+  (should-not (madolt--find-sql-translation '("pull" "origin")))
+  (should-not (madolt--find-sql-translation '("push" "origin")))
   (should (madolt--find-sql-translation '("merge" "feature"))))
 
 (ert-deftest test-madolt-sql-translation-log ()

@@ -34,6 +34,11 @@ faster.
 The Makefile assumes `straight.el` packages under `~/.emacs.d/straight/build/`.
 Override with `STRAIGHT_DIR=/path/to/packages`.
 
+**Pre-existing test failures are NEVER acceptable to ignore.** If
+failures are unrelated to ongoing work, create a bead to track them
+(if not already tracked) and fix them at medium-high priority.  Never
+dismiss failures as "pre-existing" without filing an issue.
+
 ## Interactive QA Testing via tmux
 
 **Both automated AND interactive testing are required** when working on
@@ -229,8 +234,13 @@ These have registered SQL translations in `madolt-dolt.el`:
 | `dolt checkout` | `CALL DOLT_CHECKOUT()` |
 | `dolt branch` (create/delete/rename) | `CALL DOLT_BRANCH()` |
 | `dolt tag` (create/delete) | `CALL DOLT_TAG()` |
-| `dolt fetch/pull/push` | `CALL DOLT_FETCH/PULL/PUSH()` |
 | `dolt merge` | `CALL DOLT_MERGE()` |
+
+**Not** SQL-routed (must use CLI):
+
+| CLI command | Why CLI-only |
+|-------------|-------------|
+| `dolt fetch/pull/push` | `DOLT_FETCH/PULL/PUSH()` return errors as result rows with exit code 0, silently swallowing failures. CLI correctly returns non-zero exit codes. |
 
 ## Issue Tracking (bd/beads)
 

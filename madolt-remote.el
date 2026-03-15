@@ -68,7 +68,7 @@ RESULT is (EXIT-CODE . OUTPUT-STRING)."
       (message "%s from %s complete" operation remote)
     (message "%s from %s failed: %s"
              operation remote
-             (string-trim (cdr result)))))
+             (madolt--clean-output (cdr result)))))
 
 ;;;; Fetch transient
 
