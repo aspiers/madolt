@@ -240,9 +240,14 @@ ARGS are additional arguments from the transient."
   "Show diff between two revisions REV-A and REV-B.
 ARGS are additional arguments from the transient."
   (interactive
-   (list (read-string "From revision: ")
-         (read-string "To revision: ")
-         (transient-args 'madolt-diff)))
+   (let ((default (madolt-branch-or-commit-at-point)))
+     (list (completing-read
+            (format "From revision%s: "
+                    (if default (format " (default %s)" default) ""))
+            (madolt-all-ref-names) nil nil nil nil default)
+           (completing-read "To revision (default HEAD): "
+                            (madolt-all-ref-names) nil nil nil nil "HEAD")
+           (transient-args 'madolt-diff))))
   (madolt-diff--show-buffer args (cons rev-a rev-b) nil nil nil))
 
 (defun madolt-diff-table (table &optional args)

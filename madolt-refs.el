@@ -299,7 +299,8 @@ in a refs buffer), show the transient menu to choose options."
 (defun madolt-show-refs-other (ref)
   "Show refs comparing against REF."
   (interactive
-   (list (completing-read "Show refs for: " (madolt-branch-names))))
+   (list (completing-read "Show refs for: " (madolt-branch-names)
+                          nil nil nil nil (madolt-branch-at-point))))
   (madolt-refs--show ref))
 
 ;;;; Buffer setup

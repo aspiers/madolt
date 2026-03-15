@@ -210,6 +210,37 @@ without requiring the user to press \"+\"."
 
 (add-hook 'magit-section-movement-hook #'madolt-maybe-show-more)
 
+;;;; Section-at-point readers
+
+(defun madolt-commit-at-point ()
+  "Return the commit hash at point, or nil.
+Checks for commit sections (in log, status, refs buffers) and
+reflog-entry sections."
+  (magit-section-case
+    (commit (oref it value))
+    (reflog-entry (oref it value))))
+
+(defun madolt-branch-at-point ()
+  "Return the branch name at point, or nil.
+Returns the branch name from branch sections in the refs buffer."
+  (magit-section-case
+    (branch (oref it value))))
+
+(defun madolt-tag-at-point ()
+  "Return the tag name at point, or nil.
+Returns the tag name from tag sections in the refs buffer."
+  (magit-section-case
+    (tag (oref it value))))
+
+(defun madolt-branch-or-commit-at-point ()
+  "Return the branch, tag, or commit at point, or nil.
+Checks branch sections first (returns branch name), then tag
+sections (returns tag name), then commit/reflog-entry sections
+\(returns commit hash).  This priority ordering matches magit."
+  (or (madolt-branch-at-point)
+      (madolt-tag-at-point)
+      (madolt-commit-at-point)))
+
 ;;;; Copy section value
 
 (defun madolt-copy-section-value ()

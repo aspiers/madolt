@@ -189,6 +189,151 @@
       (should (eq (keymap-lookup madolt-mode-map (car binding))
                   (cdr binding))))))
 
+;;;; Section-at-point readers
+
+(ert-deftest test-madolt-commit-at-point-on-commit-section ()
+  "madolt-commit-at-point returns hash from commit section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (commit "abc12345def67890")
+                (insert "  abc1234  Initial commit\n"))))
+      (goto-char (oref child start))
+      (should (equal (madolt-commit-at-point) "abc12345def67890")))))
+
+(ert-deftest test-madolt-commit-at-point-on-reflog-entry ()
+  "madolt-commit-at-point returns hash from reflog-entry section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (reflog-entry "deadbeef12345678")
+                (insert "  deadbeef  checkout: main\n"))))
+      (goto-char (oref child start))
+      (should (equal (madolt-commit-at-point) "deadbeef12345678")))))
+
+(ert-deftest test-madolt-commit-at-point-nil-on-non-commit ()
+  "madolt-commit-at-point returns nil on non-commit section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (table "users")
+                (insert "  modified  users\n"))))
+      (goto-char (oref child start))
+      (should (null (madolt-commit-at-point))))))
+
+(ert-deftest test-madolt-branch-at-point-on-branch-section ()
+  "madolt-branch-at-point returns name from branch section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (branch "feature-xyz")
+                (insert "  feature-xyz\n"))))
+      (goto-char (oref child start))
+      (should (equal (madolt-branch-at-point) "feature-xyz")))))
+
+(ert-deftest test-madolt-branch-at-point-nil-on-commit ()
+  "madolt-branch-at-point returns nil on commit section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (commit "abc12345")
+                (insert "  abc12345  some commit\n"))))
+      (goto-char (oref child start))
+      (should (null (madolt-branch-at-point))))))
+
+(ert-deftest test-madolt-tag-at-point-on-tag-section ()
+  "madolt-tag-at-point returns name from tag section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (tag "v1.0")
+                (insert "  v1.0\n"))))
+      (goto-char (oref child start))
+      (should (equal (madolt-tag-at-point) "v1.0")))))
+
+(ert-deftest test-madolt-tag-at-point-nil-on-branch ()
+  "madolt-tag-at-point returns nil on branch section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (branch "main")
+                (insert "  main\n"))))
+      (goto-char (oref child start))
+      (should (null (madolt-tag-at-point))))))
+
+(ert-deftest test-madolt-branch-or-commit-at-point-prefers-branch ()
+  "madolt-branch-or-commit-at-point returns branch name on branch section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (branch "develop")
+                (insert "  develop\n"))))
+      (goto-char (oref child start))
+      (should (equal (madolt-branch-or-commit-at-point) "develop")))))
+
+(ert-deftest test-madolt-branch-or-commit-at-point-returns-tag ()
+  "madolt-branch-or-commit-at-point returns tag name on tag section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (tag "v2.0")
+                (insert "  v2.0\n"))))
+      (goto-char (oref child start))
+      (should (equal (madolt-branch-or-commit-at-point) "v2.0")))))
+
+(ert-deftest test-madolt-branch-or-commit-at-point-falls-back-to-commit ()
+  "madolt-branch-or-commit-at-point returns hash on commit section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (commit "cafebabe12345678")
+                (insert "  cafebabe  A commit\n"))))
+      (goto-char (oref child start))
+      (should (equal (madolt-branch-or-commit-at-point) "cafebabe12345678")))))
+
+(ert-deftest test-madolt-branch-or-commit-at-point-nil-on-table ()
+  "madolt-branch-or-commit-at-point returns nil on table section."
+  (with-temp-buffer
+    (madolt-mode)
+    (let ((inhibit-read-only t)
+          child)
+      (magit-insert-section (root)
+        (setq child
+              (magit-insert-section (table "orders")
+                (insert "  orders\n"))))
+      (goto-char (oref child start))
+      (should (null (madolt-branch-or-commit-at-point))))))
+
 ;;;; Copy section value
 
 (ert-deftest test-madolt-mode-map-has-copy ()

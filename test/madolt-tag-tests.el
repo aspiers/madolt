@@ -131,7 +131,10 @@
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
     (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
-              ((symbol-function 'read-string) (lambda (&rest _) "")))
+              ((symbol-function 'read-string) (lambda (&rest _) ""))
+              ((symbol-function 'completing-read) (lambda (&rest _) "HEAD"))
+              ((symbol-function 'madolt-branch-or-commit-at-point)
+               (lambda () nil)))
       (madolt-tag-create-command "v2.0" nil))
     (should (member "v2.0" (madolt-tag-names)))))
 
@@ -147,7 +150,10 @@
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
     (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
-              ((symbol-function 'read-string) (lambda (&rest _) "")))
+              ((symbol-function 'read-string) (lambda (&rest _) ""))
+              ((symbol-function 'completing-read) (lambda (&rest _) "HEAD"))
+              ((symbol-function 'madolt-branch-or-commit-at-point)
+               (lambda () nil)))
       (madolt-tag-create-command "v3.0" '("-mRelease 3.0")))
     (should (member "v3.0" (madolt-tag-names)))))
 

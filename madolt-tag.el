@@ -37,6 +37,8 @@
 (require 'madolt-dolt)
 (require 'madolt-process)
 
+(declare-function madolt-branch-or-commit-at-point "madolt-mode" ())
+
 ;;;; Transient menu
 
 ;;;###autoload (autoload 'madolt-tag "madolt-tag" nil t)
@@ -59,8 +61,15 @@ ARGS are additional arguments from the transient."
          (transient-args 'madolt-tag)))
   (when (string-empty-p name)
     (user-error "Tag name must not be empty"))
-  (let* ((ref (let ((r (read-string "Tag at (default HEAD): ")))
-                (and (not (string-empty-p r)) r)))
+  (let* ((at-point (madolt-branch-or-commit-at-point))
+         (ref (let ((r (completing-read
+                        (format "Tag at (default %s): "
+                                (or at-point "HEAD"))
+                        (madolt-all-ref-names) nil nil nil nil
+                        (or at-point "HEAD"))))
+                (and (not (string-empty-p r))
+                     (not (equal r "HEAD"))
+                     r)))
          (msg-flag (seq-find (lambda (a) (string-prefix-p "-m" a)) args))
          (message (when msg-flag
                     (if (string-match "^-m\\(.+\\)" msg-flag)

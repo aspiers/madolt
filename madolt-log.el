@@ -381,7 +381,8 @@ ARGS are additional arguments from the transient."
   "Show log for BRANCH.
 ARGS are additional arguments from the transient."
   (interactive
-   (list (completing-read "Branch: " (madolt-branch-names))
+   (list (completing-read "Branch: " (madolt-branch-names)
+                          nil nil nil nil (madolt-branch-at-point))
          (transient-args 'madolt-log)))
   (madolt-log--show branch args))
 

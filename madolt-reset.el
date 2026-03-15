@@ -39,6 +39,8 @@
 (require 'madolt-dolt)
 (require 'madolt-process)
 
+(declare-function madolt-branch-or-commit-at-point "madolt-mode" ())
+
 ;;;; Transient menu
 
 ;;;###autoload (autoload 'madolt-reset "madolt-reset" nil t)
@@ -93,9 +95,10 @@ without changing the working set."
 
 (defun madolt-reset--read-revision (prompt)
   "Read a revision (branch or commit) with PROMPT."
-  (completing-read (concat prompt ": ")
-                   (madolt-branch-names)
-                   nil nil nil nil "HEAD"))
+  (let ((default (or (madolt-branch-or-commit-at-point) "HEAD")))
+    (completing-read (format "%s (default %s): " prompt default)
+                     (madolt-all-ref-names)
+                     nil nil nil nil default)))
 
 (provide 'madolt-reset)
 ;;; madolt-reset.el ends here

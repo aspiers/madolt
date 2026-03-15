@@ -38,6 +38,8 @@
 (require 'madolt-process)
 (require 'madolt-commit)
 
+(declare-function madolt-branch-or-commit-at-point "madolt-mode" ())
+
 ;;;; Transient menu
 
 ;;;###autoload (autoload 'madolt-merge "madolt-merge" nil t)
@@ -189,11 +191,17 @@ Runs the merge first; on success, opens a buffer for the merge
 commit message (like magit).  With --squash or --no-commit,
 skips the message buffer."
   (interactive
-   (list (completing-read
-          (format "Merge into %s: " (madolt-current-branch))
-          (remove (madolt-current-branch) (madolt-all-ref-names))
-          nil nil)
-         (transient-args 'madolt-merge)))
+   (let* ((current (madolt-current-branch))
+          (at-point (madolt-branch-or-commit-at-point))
+          (default (and at-point
+                        (not (equal at-point current))
+                        at-point)))
+     (list (completing-read
+            (format "Merge into %s%s: " current
+                    (if default (format " (default %s)" default) ""))
+            (remove current (madolt-all-ref-names))
+            nil nil nil nil default)
+           (transient-args 'madolt-merge))))
   (let* ((current (madolt-current-branch))
          (merge-args (append args (list branch)))
          (needs-message (not (or (member "--squash" args)

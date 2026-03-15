@@ -37,6 +37,8 @@
 (require 'madolt-dolt)
 (require 'madolt-process)
 
+(declare-function madolt-branch-or-commit-at-point "madolt-mode" ())
+
 ;;;; Transient menu
 
 ;;;###autoload (autoload 'madolt-rebase "madolt-rebase" nil t)
@@ -60,11 +62,17 @@
   "Rebase current branch onto UPSTREAM.
 ARGS are additional arguments from the transient."
   (interactive
-   (list (completing-read
-          (format "Rebase %s onto: " (madolt-current-branch))
-          (remove (madolt-current-branch) (madolt-branch-names))
-          nil t)
-         (transient-args 'madolt-rebase)))
+   (let* ((current (madolt-current-branch))
+          (at-point (madolt-branch-or-commit-at-point))
+          (default (and at-point
+                        (not (equal at-point current))
+                        at-point)))
+     (list (completing-read
+            (format "Rebase %s onto%s: " current
+                    (if default (format " (default %s)" default) ""))
+            (remove current (madolt-branch-names))
+            nil t nil nil default)
+           (transient-args 'madolt-rebase))))
   (when (string-empty-p upstream)
     (user-error "Must specify an upstream branch"))
   (let ((result (apply #'madolt-call-dolt "rebase" (append args (list upstream)))))

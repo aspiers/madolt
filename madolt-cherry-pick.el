@@ -39,6 +39,8 @@
 (require 'madolt-dolt)
 (require 'madolt-process)
 
+(declare-function madolt-commit-at-point "madolt-mode" ())
+
 ;;;; Cherry-pick transient
 
 ;;;###autoload (autoload 'madolt-cherry-pick "madolt-cherry-pick" nil t)
@@ -54,8 +56,12 @@
   "Cherry-pick COMMIT onto the current branch.
 ARGS are additional arguments from the transient."
   (interactive
-   (list (read-string "Cherry-pick commit: ")
-         (transient-args 'madolt-cherry-pick)))
+   (let ((default (madolt-commit-at-point)))
+     (list (completing-read
+            (format "Cherry-pick commit%s: "
+                    (if default (format " (default %s)" default) ""))
+            (madolt-all-ref-names) nil nil nil nil default)
+           (transient-args 'madolt-cherry-pick))))
   (when (string-empty-p commit)
     (user-error "Commit must not be empty"))
   (let ((result (apply #'madolt-call-dolt "cherry-pick" commit args)))
@@ -84,7 +90,11 @@ ARGS are additional arguments from the transient."
 (defun madolt-revert-command (commit)
   "Revert the change from COMMIT."
   (interactive
-   (list (read-string "Revert commit: ")))
+   (let ((default (madolt-commit-at-point)))
+     (list (completing-read
+            (format "Revert commit%s: "
+                    (if default (format " (default %s)" default) ""))
+            (madolt-all-ref-names) nil nil nil nil default))))
   (when (string-empty-p commit)
     (user-error "Commit must not be empty"))
   (let ((result (madolt-call-dolt "revert" commit)))

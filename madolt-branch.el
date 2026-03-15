@@ -37,6 +37,9 @@
 (require 'madolt-dolt)
 (require 'madolt-process)
 
+(declare-function madolt-branch-at-point "madolt-mode" ())
+(declare-function madolt-branch-or-commit-at-point "madolt-mode" ())
+
 ;;;; Transient menu
 
 ;;;###autoload (autoload 'madolt-branch "madolt-branch" nil t)
@@ -55,7 +58,9 @@
   "Switch to BRANCH."
   (interactive
    (list (completing-read "Checkout branch: " (madolt-branch-names)
-                          nil t nil nil (madolt-current-branch))))
+                          nil t nil nil
+                          (or (madolt-branch-at-point)
+                              (madolt-current-branch)))))
   (madolt-run-dolt "checkout" branch)
   (message "Switched to branch %s" branch))
 
@@ -63,9 +68,17 @@
   "Create and switch to a new branch NAME.
 Optional START-POINT specifies the starting commit or branch."
   (interactive
-   (list (read-string "Create and checkout branch: ")
-         (let ((start (read-string "Starting point (default HEAD): ")))
-           (and (not (string-empty-p start)) start))))
+   (let ((default (madolt-branch-or-commit-at-point)))
+     (list (read-string "Create and checkout branch: ")
+           (let ((start (read-string
+                         (format "Starting point%s: "
+                                 (if default
+                                     (format " (default %s)" default)
+                                   " (default HEAD)"))
+                         nil nil (or default "HEAD"))))
+             (and (not (string-empty-p start))
+                  (not (equal start "HEAD"))
+                  start)))))
   (if start-point
       (madolt-run-dolt "checkout" "-b" name start-point)
     (madolt-run-dolt "checkout" "-b" name))
@@ -75,9 +88,17 @@ Optional START-POINT specifies the starting commit or branch."
   "Create a new branch NAME without switching to it.
 Optional START-POINT specifies the starting commit or branch."
   (interactive
-   (list (read-string "Create branch: ")
-         (let ((start (read-string "Starting point (default HEAD): ")))
-           (and (not (string-empty-p start)) start))))
+   (let ((default (madolt-branch-or-commit-at-point)))
+     (list (read-string "Create branch: ")
+           (let ((start (read-string
+                         (format "Starting point%s: "
+                                 (if default
+                                     (format " (default %s)" default)
+                                   " (default HEAD)"))
+                         nil nil (or default "HEAD"))))
+             (and (not (string-empty-p start))
+                  (not (equal start "HEAD"))
+                  start)))))
   (if start-point
       (madolt-run-dolt "branch" name start-point)
     (madolt-run-dolt "branch" name))
@@ -86,10 +107,14 @@ Optional START-POINT specifies the starting commit or branch."
 (defun madolt-branch-delete-command (name)
   "Delete branch NAME after confirmation."
   (interactive
-   (list (completing-read "Delete branch: "
-                          (remove (madolt-current-branch)
-                                  (madolt-branch-names))
-                          nil t)))
+   (let* ((current (madolt-current-branch))
+          (at-point (madolt-branch-at-point))
+          (default (and at-point
+                        (not (equal at-point current))
+                        at-point)))
+     (list (completing-read "Delete branch: "
+                            (remove current (madolt-branch-names))
+                            nil t nil nil default))))
   (when (yes-or-no-p (format "Delete branch %s? " name))
     (let ((result (madolt-call-dolt "branch" "-d" name)))
       (if (zerop (car result))
@@ -106,7 +131,9 @@ Optional START-POINT specifies the starting commit or branch."
   "Rename branch OLD-NAME to NEW-NAME."
   (interactive
    (let ((old (completing-read "Rename branch: " (madolt-branch-names)
-                               nil t nil nil (madolt-current-branch))))
+                               nil t nil nil
+                               (or (madolt-branch-at-point)
+                                   (madolt-current-branch)))))
      (list old (read-string (format "Rename %s to: " old)))))
   (madolt-run-dolt "branch" "-m" old-name new-name)
   (message "Renamed branch %s to %s" old-name new-name))
