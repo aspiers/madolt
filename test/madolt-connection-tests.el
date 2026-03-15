@@ -27,8 +27,8 @@
   (should (equal madolt-sql-server-host "127.0.0.1")))
 
 (ert-deftest test-madolt-connection-port-default ()
-  "Default port should be 3306."
-  (should (= madolt-sql-server-port 3306)))
+  "Default port should be 0 (auto-pick free port)."
+  (should (= madolt-sql-server-port 0)))
 
 (ert-deftest test-madolt-connection-user-default ()
   "Default user should be root."

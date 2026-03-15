@@ -77,8 +77,9 @@ if the connection fails.
   :group 'madolt-connection
   :type 'string)
 
-(defcustom madolt-sql-server-port 3306
-  "Port for dolt sql-server connection."
+(defcustom madolt-sql-server-port 0
+  "Port for dolt sql-server connection.
+When zero, a free port is chosen automatically."
   :group 'madolt-connection
   :type 'integer)
 
@@ -176,8 +177,18 @@ this database."
 (defun madolt-connection--start-server ()
   "Start a dolt sql-server process in the current database directory.
 Returns the port number on success, nil on failure.
+Displays an error message if the server fails to start.
+Uses `madolt-sql-server-port' if non-zero, otherwise finds a free port."
+  (madolt-connection--start-server-on-port
+   (if (and madolt-sql-server-port (> madolt-sql-server-port 0))
+       madolt-sql-server-port
+     (madolt-connection--find-free-port))))
+
+(defun madolt-connection--start-server-on-port (port)
+  "Start a dolt sql-server on PORT.
+Returns the port number on success, nil on failure.
 Displays an error message if the server fails to start."
-  (let* ((port (madolt-connection--find-free-port))
+  (let* ((port port)
          (conn (madolt-connection--get-or-create))
          (buf (get-buffer-create " *madolt-sql-server*"))
          (process (start-process
@@ -515,13 +526,58 @@ Added to `kill-buffer-hook' for graceful cleanup."
 
 ;;;; Transient menu
 
+(defun madolt-server--current-port ()
+  "Return the port of the active connection, or the configured default."
+  (let ((conn (madolt-connection--get)))
+    (if (and conn (madolt-connection-active-p))
+        (madolt-connection-port conn)
+      madolt-sql-server-port)))
+
+(defun madolt-server--set-port (port)
+  "Set the server PORT, restarting if necessary.
+If a server is running on a different port, prompt to restart."
+  (let ((conn (madolt-connection--get))
+        (new-port (if (stringp port) (string-to-number port) port)))
+    (cond
+     ;; No active connection — just update the setting
+     ((not (and conn (madolt-connection-active-p)))
+      (setq madolt-sql-server-port new-port)
+      (message "Server port set to %d" new-port))
+     ;; Same port — nothing to do
+     ((= new-port (madolt-connection-port conn))
+      (message "Already using port %d" new-port))
+     ;; Different port while running — prompt to restart
+     ((y-or-n-p (format "Restart server on port %d? " new-port))
+      (setq madolt-sql-server-port new-port)
+      (madolt-connection-shutdown)
+      (let ((started-port (madolt-connection--start-server-on-port new-port)))
+        (when started-port
+          (madolt-connection--connect
+           started-port (madolt-connection--db-name))
+          (when (derived-mode-p 'madolt-mode)
+            (madolt-refresh)))))
+     ;; User declined restart — keep current port
+     (t
+      (message "Keeping port %d" (madolt-connection-port conn))))))
+
+(transient-define-infix madolt-server-port-infix ()
+  "Set the sql-server port."
+  :class 'transient-lisp-variable
+  :variable 'madolt-sql-server-port
+  :reader (lambda (_prompt _initial-input _history)
+            (let* ((current (madolt-server--current-port))
+                   (input (read-number "Port: " current)))
+              (madolt-server--set-port input)
+              input)))
+
 ;;;###autoload (autoload 'madolt-server "madolt-connection" nil t)
 (transient-define-prefix madolt-server ()
   "Manage the dolt sql-server."
   ["SQL Server"
-   ("s" "Start / connect" madolt-server-start)
-   ("k" "Stop"            madolt-server-stop)
-   ("i" "Status"          madolt-server-status)])
+   [("s" "Start / connect" madolt-server-start)
+    ("k" "Stop"            madolt-server-stop)
+    ("i" "Status"          madolt-server-status)]
+   [("-p" "Port" madolt-server-port-infix)]])
 
 (provide 'madolt-connection)
 ;;; madolt-connection.el ends here
