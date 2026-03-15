@@ -161,25 +161,35 @@ instead of spawning a CLI process.  Falls back to CLI on failure."
 (defun madolt--run-cli (args)
   "Execute dolt CLI with ARGS synchronously.
 Return (EXIT-CODE . OUTPUT-STRING).
-Stderr is captured separately and only included in the output
-when the exit code is non-zero, to prevent spurious warnings
-\(e.g. connection errors from config.yaml) from contaminating
-normal output."
+Stderr is captured separately.  Non-empty stderr is surfaced as
+an Emacs warning.  On non-zero exit, stderr is also appended to
+the output string for callers that inspect it."
   (let ((process-environment (cons "NO_COLOR=1" process-environment))
         (stderr-file (make-temp-file "madolt-stderr")))
     (unwind-protect
         (with-temp-buffer
-          (let ((exit (apply #'call-process
-                             madolt-dolt-executable nil
-                             (list t stderr-file) nil
-                             args)))
+          (let* ((exit (apply #'call-process
+                              madolt-dolt-executable nil
+                              (list t stderr-file) nil
+                              args))
+                 (stdout (buffer-string))
+                 (stderr (with-temp-buffer
+                           (insert-file-contents stderr-file)
+                           (string-trim (buffer-string)))))
+            ;; Surface non-empty stderr as a warning
+            (when (and (not (string-empty-p stderr))
+                       ;; Suppress noisy "Successful" messages from
+                       ;; dolt add/reset/commit on stderr
+                       (not (string-prefix-p "Successful" stderr)))
+              (display-warning
+               'madolt
+               (format "dolt %s: %s"
+                       (car args)
+                       (car (split-string stderr "\n")))
+               (if (zerop exit) :warning :error)))
             (if (zerop exit)
-                (cons exit (buffer-string))
-              ;; On error, append stderr to output for diagnostics
-              (let ((stderr (with-temp-buffer
-                              (insert-file-contents stderr-file)
-                              (buffer-string))))
-                (cons exit (concat (buffer-string) stderr))))))
+                (cons exit stdout)
+              (cons exit (concat stdout stderr)))))
       (delete-file stderr-file))))
 
 (defun madolt--run-sql (args)
@@ -269,41 +279,78 @@ code; use `madolt--run' for detailed error output."
 
 (defun madolt-dolt-string (&rest args)
   "Execute dolt with ARGS, returning the first line of output.
-Return nil if exit code is non-zero or if there is no output."
+Return nil and display a warning if the command fails."
   (setq args (madolt--flatten-args args))
   (madolt--with-refresh-cache (cons default-directory args)
     (let ((result (apply #'madolt--run args)))
-      (and (zerop (car result))
-           (not (string-empty-p (cdr result)))
-           (car (split-string (cdr result) "\n" t))))))
+      (if (zerop (car result))
+          (and (not (string-empty-p (cdr result)))
+               (car (split-string (cdr result) "\n" t)))
+        (display-warning
+         'madolt
+         (format "dolt %s failed (exit %d): %s"
+                 (car args) (car result)
+                 (car (split-string (string-trim (cdr result)) "\n")))
+         :error)
+        nil))))
 
 (defun madolt-dolt-lines (&rest args)
   "Execute dolt with ARGS, returning output as a list of lines.
-Empty lines are omitted."
+Empty lines are omitted.  Return nil and display a warning if
+the command fails."
   (setq args (madolt--flatten-args args))
   (madolt--with-refresh-cache (cons default-directory args)
     (let ((result (apply #'madolt--run args)))
-      (split-string (cdr result) "\n" t))))
+      (if (zerop (car result))
+          (split-string (cdr result) "\n" t)
+        (display-warning
+         'madolt
+         (format "dolt %s failed (exit %d): %s"
+                 (car args) (car result)
+                 (car (split-string (string-trim (cdr result)) "\n")))
+         :error)
+        nil))))
 
 (defun madolt-dolt-json (&rest args)
   "Execute dolt with ARGS, returning parsed JSON output.
-Return nil if the output cannot be parsed as JSON.
-Uses `json-parse-string' with alist object type and list array type."
+Return nil and display a warning if the command fails or the
+output cannot be parsed as JSON."
   (setq args (madolt--flatten-args args))
   (madolt--with-refresh-cache (cons default-directory args)
     (let ((result (apply #'madolt--run args)))
-      (and (zerop (car result))
-           (not (string-empty-p (cdr result)))
-           (condition-case nil
-               (json-parse-string (cdr result)
-                                  :object-type 'alist
-                                  :array-type 'list)
-             (json-parse-error nil))))))
+      (if (not (zerop (car result)))
+          (progn
+            (display-warning
+             'madolt
+             (format "dolt %s failed (exit %d): %s"
+                     (car args) (car result)
+                     (car (split-string (string-trim (cdr result)) "\n")))
+             :error)
+            nil)
+        (and (not (string-empty-p (cdr result)))
+             (condition-case err
+                 (json-parse-string (cdr result)
+                                    :object-type 'alist
+                                    :array-type 'list)
+               (json-parse-error
+                (display-warning
+                 'madolt
+                 (format "dolt %s: JSON parse error: %s"
+                         (car args) (error-message-string err))
+                 :error)
+                nil)))))))
 
 (defun madolt-dolt-insert (&rest args)
   "Execute dolt with ARGS, inserting output at point.
-Return the exit code."
+Return the exit code.  Display a warning on failure."
   (let ((result (apply #'madolt--run args)))
+    (unless (zerop (car result))
+      (display-warning
+       'madolt
+       (format "dolt %s failed (exit %d): %s"
+               (car args) (car result)
+               (car (split-string (string-trim (cdr result)) "\n")))
+       :error))
     (insert (cdr result))
     (car result)))
 
