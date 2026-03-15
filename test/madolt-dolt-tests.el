@@ -838,7 +838,8 @@ remote commits reliably."
   (should-not (madolt--find-sql-translation '("fetch" "origin")))
   (should-not (madolt--find-sql-translation '("pull" "origin")))
   (should-not (madolt--find-sql-translation '("push" "origin")))
-  (should (madolt--find-sql-translation '("merge" "feature"))))
+  ;; merge is handled by madolt-merge--via-sql, not generic SQL translation
+  (should-not (madolt--find-sql-translation '("merge" "feature"))))
 
 (ert-deftest test-madolt-sql-translation-log ()
   "Log command should NOT have a SQL translation.

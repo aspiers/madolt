@@ -248,13 +248,13 @@ These have registered SQL translations in `madolt-dolt.el`:
 | `dolt checkout` | `CALL DOLT_CHECKOUT()` |
 | `dolt branch` (create/delete/rename) | `CALL DOLT_BRANCH()` |
 | `dolt tag` (create/delete) | `CALL DOLT_TAG()` |
-| `dolt merge` | `CALL DOLT_MERGE()` |
 
 **Not** SQL-routed (currently use CLI):
 
 | CLI command | Why CLI for now |
 |-------------|-------------|
 | `dolt fetch/pull/push` | `DOLT_FETCH/PULL/PUSH()` return errors as result rows with exit code 0, silently swallowing failures. CLI correctly returns non-zero exit codes. SQL routing could be revisited if error detection is added. |
+| `dolt merge` | `DOLT_MERGE()` requires `@@autocommit = 0` to handle conflicts. Handled specially by `madolt-merge--via-sql` rather than the generic SQL translation. |
 
 ## Issue Tracking (bd/beads)
 

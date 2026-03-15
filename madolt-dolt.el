@@ -1293,26 +1293,11 @@ Returns a plist (:branch BRANCH :message MSG :flags FLAGS)."
       (setq rest (cdr rest)))
     (list :branch branch :message message :flags (nreverse flags))))
 
-(madolt--register-sql-translation
- 'merge
- (lambda (args)
-   (and (equal (car args) "merge")
-        (>= (length args) 2)
-        ;; Don't translate --abort
-        (not (member "--abort" args))))
- (lambda (args)
-   (let* ((parsed (madolt--merge-parse-args args))
-          (branch (plist-get parsed :branch))
-          (message (plist-get parsed :message))
-          (flags (plist-get parsed :flags))
-          (sql-args (list (format "'%s'" branch))))
-     (dolist (flag flags)
-       (push (format "'%s'" flag) sql-args))
-     (when message
-       (push "'-m'" sql-args)
-       (push (format "'%s'" message) sql-args))
-     (format "CALL DOLT_MERGE(%s)"
-             (mapconcat #'identity (nreverse sql-args) ", ")))))
+;;; merge is NOT routed through the generic SQL translation.
+;;; DOLT_MERGE requires @@autocommit = 0 to handle conflicts, which the
+;;; generic madolt--run-sql path doesn't do.  Instead, madolt-merge--via-sql
+;;; in madolt-merge.el handles the SQL path with proper autocommit management.
+;;; The CLI fallback in madolt--run is needed for repos without sql-server.
 
 (provide 'madolt-dolt)
 ;;; madolt-dolt.el ends here

@@ -336,14 +336,14 @@ Extract the message, run `dolt commit -m', and close the buffer."
       (user-error "Empty commit message"))
     (let ((args madolt-commit--args)
           (db-dir madolt-commit--db-dir)
-          (source-buf madolt-commit--source-buffer))
-      ;; Close the commit buffer
+          (source-buf madolt-commit--source-buffer)
+          (finish-fn (or madolt-commit--finish-function
+                        #'madolt-commit--do-commit)))
+      ;; Close the commit/merge message buffer first
       (quit-window t)
-      ;; Execute the commit/merge in the database directory
+      ;; Execute in the database directory
       (let ((default-directory db-dir))
-        (funcall (or madolt-commit--finish-function
-                     #'madolt-commit--do-commit)
-                 message args))
+        (funcall finish-fn message args))
       ;; Refresh source buffer if still alive
       (when (buffer-live-p source-buf)
         (with-current-buffer source-buf

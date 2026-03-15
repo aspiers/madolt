@@ -81,8 +81,8 @@ then re-enables it after."
                  (sql (format "CALL DOLT_MERGE(%s)"
                               (mapconcat #'identity
                                          (nreverse sql-args) ", ")))
-                 ;; Merge can be very slow for large databases
-                 (rows (funcall query-fn sql 300))
+                 ;; Use 30s timeout; if merge takes longer, falls back to CLI
+                 (rows (funcall query-fn sql 30))
                  (output (mapconcat
                           (lambda (row) (string-join row "\t"))
                           rows "\n"))
@@ -126,8 +126,9 @@ ARGS should already include the branch to merge."
                  (lambda (a) (string-prefix-p "-" a))
                  args))
          ;; Try SQL first (with autocommit handling), fall back to CLI
-         (result (or (and (bound-and-true-p madolt-use-sql-server)
-                          (madolt-merge--via-sql branch message flags))
+         (sql-result (and (bound-and-true-p madolt-use-sql-server)
+                         (madolt-merge--via-sql branch message flags)))
+         (result (or sql-result
                      (let ((all-args
                             (append
                              (when (and message
@@ -154,10 +155,12 @@ ARGS should already include the branch to merge."
       (madolt-refresh)
       (if failure
           (progn
-            ;; Log to process buffer so `$` shows the error
+            ;; Log to process buffer and display it
             (madolt--process-insert-section
              (list "merge" branch) 1 failure)
-            (user-error "Merge failed: %s" failure))
+            (madolt-process-buffer)
+            (message "Merge failed: %s"
+                     (truncate-string-to-width failure 80 nil nil "...")))
         (message "Merged %s into %s" branch
                  (madolt-current-branch))))))
 

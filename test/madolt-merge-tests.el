@@ -202,14 +202,18 @@
     (madolt-branch-checkout "main")
     (madolt-test-update-row "t1" "val = 'main-change'" "id = 1")
     (madolt-test-commit "main change")
-    ;; Attempt merge — should signal user-error with conflict info
-    (let ((error-msg nil))
-      (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
-        (condition-case err
-            (madolt-merge--do-merge "" '("feature"))
-          (user-error (setq error-msg (error-message-string err)))))
-      (should error-msg)
-      (should (string-match-p "\\(conflict\\|failed\\|CONFLICT\\)" error-msg)))))
+    ;; Attempt merge — should report failure via message
+    (let ((messages nil))
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
+                ((symbol-function 'madolt-process-buffer) #'ignore)
+                ((symbol-function 'message)
+                 (lambda (fmt &rest args)
+                   (push (apply #'format fmt args) messages))))
+        (madolt-merge--do-merge "" '("feature")))
+      ;; Should have reported failure
+      (should (cl-some (lambda (msg)
+                         (string-match-p "\\(conflict\\|failed\\|CONFLICT\\)" msg))
+                       messages)))))
 
 ;;;; Merge with --ff-only flag
 
