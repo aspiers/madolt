@@ -97,6 +97,11 @@ This is a marker so it tracks insertions in the editable area.")
   "The madolt status buffer that initiated this commit.
 Used to refresh it after a successful commit.")
 
+(defvar-local madolt-commit--finish-function nil
+  "Function to call when the commit message buffer is finalized.
+Called with two arguments: MESSAGE and ARGS.
+Defaults to `madolt-commit--do-commit' for normal commits.")
+
 ;;;; Commit message major mode
 
 (defconst madolt-commit-summary-max-column 72
@@ -210,14 +215,19 @@ ARGS are additional arguments from the transient."
             (file-name-nondirectory
              (directory-file-name db-dir)))))
 
-(defun madolt-commit--setup-buffer (initial-message args amend-p)
+(defun madolt-commit--setup-buffer (initial-message args amend-p
+                                   &optional finish-fn buf-name-fn)
   "Create and display the commit message buffer.
 INITIAL-MESSAGE is optional pre-populated text (for amend).
 ARGS are the transient arguments to pass to `dolt commit'.
-When AMEND-P is non-nil, add --amend to the final arguments."
+When AMEND-P is non-nil, add --amend to the final arguments.
+FINISH-FN, if non-nil, overrides the default finish action
+\(`madolt-commit--do-commit').  BUF-NAME-FN, if non-nil, is
+called to generate the buffer name."
   (let* ((db-dir (or (madolt-database-dir) default-directory))
          (source-buf (current-buffer))
-         (buf-name (madolt-commit--buffer-name))
+         (buf-name (if buf-name-fn (funcall buf-name-fn)
+                     (madolt-commit--buffer-name)))
          (buf (get-buffer-create buf-name))
          (final-args (if amend-p (cons "--amend" args) args)))
     (with-current-buffer buf
@@ -253,6 +263,8 @@ When AMEND-P is non-nil, add --amend to the final arguments."
       (setq madolt-commit--args final-args)
       (setq madolt-commit--db-dir db-dir)
       (setq madolt-commit--source-buffer source-buf)
+      (setq madolt-commit--finish-function
+            (or finish-fn #'madolt-commit--do-commit))
       ;; Position cursor at start of buffer for typing
       (goto-char (point-min))
       (when initial-message
@@ -327,9 +339,11 @@ Extract the message, run `dolt commit -m', and close the buffer."
           (source-buf madolt-commit--source-buffer))
       ;; Close the commit buffer
       (quit-window t)
-      ;; Execute the commit in the database directory
+      ;; Execute the commit/merge in the database directory
       (let ((default-directory db-dir))
-        (madolt-commit--do-commit message args))
+        (funcall (or madolt-commit--finish-function
+                     #'madolt-commit--do-commit)
+                 message args))
       ;; Refresh source buffer if still alive
       (when (buffer-live-p source-buf)
         (with-current-buffer source-buf

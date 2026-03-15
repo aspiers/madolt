@@ -36,6 +36,7 @@
 (require 'transient)
 (require 'madolt-dolt)
 (require 'madolt-process)
+(require 'madolt-commit)
 
 ;;;; Transient menu
 
@@ -53,29 +54,54 @@
 
 ;;;; Interactive commands
 
+(defun madolt-merge--buffer-name ()
+  "Return the merge message buffer name for the current database."
+  (let ((db (file-name-nondirectory
+             (directory-file-name (or (madolt-database-dir) "")))))
+    (format "madolt-merge: %s" db)))
+
+(defun madolt-merge--do-merge (message args)
+  "Execute `dolt merge' with MESSAGE and ARGS.
+ARGS should already include the branch to merge."
+  (let* ((all-args (if (and message (not (string-empty-p message)))
+                       (append (list "-m" message) args)
+                     args))
+         (result (apply #'madolt-call-dolt "merge" all-args))
+         ;; Extract the branch name (last non-flag arg)
+         (branch (car (last (cl-remove-if
+                             (lambda (a) (string-prefix-p "-" a))
+                             args)))))
+    (madolt-refresh)
+    (if (zerop (car result))
+        (message "Merged %s into %s" branch
+                 (madolt-current-branch))
+      (message "Merge failed: %s"
+               (madolt--clean-output (cdr result))))))
+
 (defun madolt-merge-command (branch &optional args)
   "Merge BRANCH into the current branch.
-ARGS are additional arguments from the transient."
+ARGS are additional arguments from the transient.
+Opens a buffer to edit the merge commit message, unless
+--squash or --no-commit is set."
   (interactive
    (list (completing-read
           (format "Merge into %s: " (madolt-current-branch))
           (remove (madolt-current-branch) (madolt-all-ref-names))
           nil nil)
          (transient-args 'madolt-merge)))
-  (let* ((current (madolt-current-branch))
-         (msg-arg (and (not (member "--squash" args))
-                       (not (member "--no-commit" args))
-                       (read-string "Merge message (empty for default): ")))
-         (all-args (append args
-                          (when (and msg-arg (not (string-empty-p msg-arg)))
-                            (list "-m" msg-arg))
-                          (list branch)))
-         (result (apply #'madolt-call-dolt "merge" all-args)))
-    (madolt-refresh)
-    (if (zerop (car result))
-        (message "Merged %s into %s" branch current)
-      (message "Merge failed: %s"
-               (madolt--clean-output (cdr result))))))
+  (let ((current (madolt-current-branch))
+        (merge-args (append args (list branch))))
+    (if (or (member "--squash" args)
+            (member "--no-commit" args))
+        ;; No commit message needed
+        (madolt-merge--do-merge nil merge-args)
+      ;; Open buffer for merge message editing
+      (madolt-commit--setup-buffer
+       (format "Merge %s into %s" branch current)
+       merge-args
+       nil
+       #'madolt-merge--do-merge
+       #'madolt-merge--buffer-name))))
 
 (defun madolt-merge-abort-command ()
   "Abort the current merge."

@@ -66,9 +66,8 @@
     (madolt-test-commit "add t2")
     ;; Switch back to main and merge feature
     (madolt-branch-checkout "main")
-    (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
-              ((symbol-function 'read-string) (lambda (&rest _) "")))
-      (madolt-merge-command "feature" nil))
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-merge--do-merge "" '("feature")))
     ;; t2 should now exist on main
     (should (madolt-dolt-success-p "sql" "-q" "SELECT 1 FROM t2 LIMIT 1"))))
 
@@ -85,10 +84,8 @@
     (madolt-test-commit "add t2")
     ;; Switch back to main and merge with --no-ff and a custom message
     (madolt-branch-checkout "main")
-    (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
-              ((symbol-function 'read-string)
-               (lambda (&rest _) "Custom merge message")))
-      (madolt-merge-command "feature" '("--no-ff")))
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-merge--do-merge "Custom merge message" '("--no-ff" "feature")))
     ;; t2 should exist
     (should (madolt-dolt-success-p "sql" "-q" "SELECT 1 FROM t2 LIMIT 1"))
     ;; The latest commit message should be our custom message
@@ -136,8 +133,8 @@
 
 ;;;; Merge command — calls dolt with correct args
 
-(ert-deftest test-madolt-merge-command-calls-dolt ()
-  "madolt-merge-command should invoke dolt merge with correct args."
+(ert-deftest test-madolt-merge-do-merge-calls-dolt ()
+  "madolt-merge--do-merge should invoke dolt merge with correct args."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
@@ -145,16 +142,14 @@
     (let (called-args)
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
-                ((symbol-function 'madolt-refresh) #'ignore)
-                ((symbol-function 'read-string)
-                 (lambda (&rest _) "my merge")))
-        (madolt-merge-command "feature" '("--no-ff"))
+                ((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-merge--do-merge "my merge" '("--no-ff" "feature"))
         (should (equal called-args
-                       '("merge" "--no-ff" "-m" "my merge" "feature")))))))
+                       '("merge" "-m" "my merge" "--no-ff" "feature")))))))
 
 ;;;; Merge command — empty message omits -m flag
 
-(ert-deftest test-madolt-merge-command-empty-message ()
+(ert-deftest test-madolt-merge-do-merge-empty-message ()
   "Empty merge message should omit the -m flag."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
@@ -163,10 +158,8 @@
     (let (called-args)
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
-                ((symbol-function 'madolt-refresh) #'ignore)
-                ((symbol-function 'read-string)
-                 (lambda (&rest _) "")))
-        (madolt-merge-command "feature" nil)
+                ((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-merge--do-merge "" '("feature"))
         (should (equal called-args '("merge" "feature")))))))
 
 ;;;; Abort command
@@ -199,11 +192,10 @@
     ;; Attempt merge — should fail with conflict
     (let ((messages nil))
       (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
-                ((symbol-function 'read-string) (lambda (&rest _) ""))
                 ((symbol-function 'message)
                  (lambda (fmt &rest args)
                    (push (apply #'format fmt args) messages))))
-        (madolt-merge-command "feature" nil))
+        (madolt-merge--do-merge "" '("feature")))
       ;; Should have reported failure
       (should (cl-some (lambda (msg) (string-match-p "\\(conflict\\|failed\\)" msg))
                        messages)))))
@@ -211,7 +203,7 @@
 ;;;; Merge with --ff-only flag
 
 (ert-deftest test-madolt-merge-ff-only-calls-dolt ()
-  "madolt-merge-command with --ff-only should pass the flag."
+  "madolt-merge--do-merge with --ff-only should pass the flag."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
@@ -219,9 +211,8 @@
     (let (called-args)
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
-                ((symbol-function 'madolt-refresh) #'ignore)
-                ((symbol-function 'read-string) (lambda (&rest _) "")))
-        (madolt-merge-command "feature" '("--ff-only"))
+                ((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-merge--do-merge "" '("--ff-only" "feature"))
         (should (equal called-args '("merge" "--ff-only" "feature")))))))
 
 (provide 'madolt-merge-tests)
