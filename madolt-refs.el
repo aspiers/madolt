@@ -320,7 +320,7 @@ in a refs buffer), show the transient menu to choose options."
 (defun madolt-refs-refresh-buffer ()
   "Refresh the refs buffer."
   (setq header-line-format
-        (propertize (format " Comparing with %s"
+        (propertize (format "Comparing with %s"
                             (or madolt-refs--upstream "HEAD"))
                     'font-lock-face 'magit-header-line))
   ;; Populate data for section inserters
@@ -523,21 +523,15 @@ BEHIND is commits in UPSTREAM not in BRANCH-NAME."
                          100 (format "%s..%s" branch-name upstream)))))
     (cons ahead behind)))
 
-(defun madolt-refs--format-upstream-info (upstream ahead behind)
-  "Format UPSTREAM tracking info with AHEAD and BEHIND counts.
-Returns a propertized string like \"origin/main\" with optional
-ahead/behind indicators."
-  (let ((parts (list (propertize upstream
-                                 'font-lock-face 'shadow))))
-    (when (and ahead (> ahead 0))
-      (push (propertize (format "%d>" ahead)
-                        'font-lock-face 'shadow)
-            parts))
-    (when (and behind (> behind 0))
-      (push (propertize (format "<%d" behind)
-                        'font-lock-face 'shadow)
-            parts))
-    (string-join (nreverse parts) " ")))
+(defun madolt-refs--format-ahead (ahead)
+  "Format AHEAD count as a propertized string like \"1>\"."
+  (when (and ahead (> ahead 0))
+    (propertize (format "%d>" ahead) 'font-lock-face 'shadow)))
+
+(defun madolt-refs--format-behind (behind)
+  "Format BEHIND count as a propertized string like \"<9\"."
+  (when (and behind (> behind 0))
+    (propertize (format "<%d" behind) 'font-lock-face 'shadow)))
 
 (defun madolt-refs--insert-local-branches ()
   "Insert a section listing local branches.
@@ -545,32 +539,54 @@ Uses `madolt-refs--local-branches' and `madolt-refs--remote-branches'."
   (let ((branches madolt-refs--local-branches)
         (remote-branches madolt-refs--remote-branches))
   (when branches
-    (let ((col-width (madolt-refs--column-width
-                      (mapcar (lambda (b) (plist-get b :name)) branches))))
-      (magit-insert-section (local nil t)
+    ;; Pre-compute ahead/behind for all branches to determine column width.
+    (let* ((branch-data
+            (mapcar
+             (lambda (b)
+               (let* ((name (plist-get b :name))
+                      (upstream (madolt-refs--find-upstream
+                                 name remote-branches))
+                      (ab (when upstream
+                            (madolt-refs--ahead-behind name upstream)))
+                      (u:ahead (madolt-refs--format-ahead (car ab)))
+                      (u:behind (madolt-refs--format-behind (cdr ab))))
+                 (list :branch b :upstream upstream
+                       :u:ahead u:ahead :u:behind u:behind
+                       :left-width (+ (length name) (length u:ahead))
+                       :right-width (length u:behind))))
+             branches))
+           (col-width (+ 2 (apply #'max
+                                  (mapcar (lambda (d)
+                                            (+ (plist-get d :left-width)
+                                               (plist-get d :right-width)))
+                                          branch-data)))))
+      (magit-insert-section (local)
         (magit-insert-heading "Branches")
-        (dolist (branch branches)
-          (let* ((name (plist-get branch :name))
+        (dolist (data branch-data)
+          (let* ((branch (plist-get data :branch))
+                 (name (plist-get branch :name))
                  (message (plist-get branch :message))
                  (current (plist-get branch :current))
                  (face (if current 'madolt-branch-current 'madolt-branch-local))
-                 (padded (truncate-string-to-width name col-width nil ?\s))
-                 (upstream (madolt-refs--find-upstream
-                            name remote-branches))
-                 (ab (when upstream
-                       (madolt-refs--ahead-behind name upstream)))
-                 (upstream-info
-                  (when upstream
-                    (madolt-refs--format-upstream-info
-                     upstream (car ab) (cdr ab)))))
+                 (upstream (plist-get data :upstream))
+                 (u:ahead (plist-get data :u:ahead))
+                 (u:behind (plist-get data :u:behind))
+                 (left-len (plist-get data :left-width))
+                 (right-len (plist-get data :right-width))
+                 (padding (make-string
+                           (max 1 (- col-width left-len right-len))
+                           ?\s)))
             (magit-insert-section (branch name t)
               (magit-insert-heading
                 (concat
                  (madolt-refs--format-focus-column current name)
-                 (propertize padded 'font-lock-face face)
-                 (when upstream-info
-                   (concat " " upstream-info))
-                 " " (or message "")
+                 (propertize name 'font-lock-face face)
+                 (when (or u:ahead u:behind upstream message)
+                   (concat u:ahead padding u:behind
+                           (when upstream
+                             (propertize upstream
+                                         'font-lock-face 'shadow))
+                           (when message (concat " " message))))
                  "\n"))
               (madolt-refs--maybe-format-margin
                (plist-get branch :hash))
@@ -599,7 +615,7 @@ Uses `madolt-refs--remote-branches' and `madolt-refs--remotes-alist'."
                                            (format "%s/%s" remote n)
                                          n)))
                                    rbranches))))
-          (magit-insert-section (remote remote t)
+          (magit-insert-section (remote remote)
             (magit-insert-heading
               (if url
                   (format "Remote %s (%s)" remote url)
@@ -611,15 +627,16 @@ Uses `madolt-refs--remote-branches' and `madolt-refs--remotes-alist'."
                      (display-name (if madolt-refs-show-remote-prefix
                                        full-name
                                      name))
-                     (padded (truncate-string-to-width
-                              display-name col-width nil ?\s)))
+                     (padding (make-string
+                               (max 0 (- col-width (length display-name)))
+                               ?\s)))
                 (magit-insert-section (branch full-name)
                   (magit-insert-heading
                     (concat
                      "  "
-                     (propertize padded
+                     (propertize display-name
                                  'font-lock-face 'madolt-branch-remote)
-                     " " (or message "")
+                     (when message (concat padding " " message))
                      "\n"))
                   (madolt-refs--maybe-format-margin
                    (plist-get branch :hash)))))
@@ -632,18 +649,19 @@ Uses `madolt-refs--tags'."
   (when tags
     (let ((col-width (madolt-refs--column-width
                       (mapcar (lambda (tg) (plist-get tg :name)) tags))))
-      (magit-insert-section (tags nil t)
+      (magit-insert-section (tags)
         (magit-insert-heading "Tags")
         (dolist (tag tags)
           (let* ((name (plist-get tag :name))
                  (message (plist-get tag :message))
-                 (padded (truncate-string-to-width name col-width nil ?\s)))
+                 (padding (make-string
+                           (max 0 (- col-width (length name))) ?\s)))
             (magit-insert-section (tag name)
               (magit-insert-heading
                 (concat
                  "  "
-                 (propertize padded 'font-lock-face 'madolt-tag)
-                 (when message (concat " " message))
+                 (propertize name 'font-lock-face 'madolt-tag)
+                 (when message (concat padding " " message))
                  "\n"))
               (madolt-refs--maybe-format-margin
                (plist-get tag :hash)))))
