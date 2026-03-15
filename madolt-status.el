@@ -178,11 +178,27 @@ Uses a two-phase prefetch strategy:
      ("branch" "-a")
      ("status")
      ("stash" "list")))
-  ;; Phase 2: now that status, branch, and remote data are cached,
-  ;; compute dependent values and prefetch the commands they need.
-  (madolt--status-prefetch-phase2)
-  (magit-insert-section (status)
-    (madolt-run-section-hook 'madolt-status-sections-hook)))
+  ;; Check if basic commands are working by testing branch query.
+  ;; If dolt CLI itself is broken, show an error instead of a
+  ;; corrupted status buffer.
+  (let ((branch-result (madolt--run "branch" "--show-current")))
+    (if (not (zerop (car branch-result)))
+        ;; CLI is broken — show error prominently
+        (magit-insert-section (status)
+          (madolt-insert-status-header)
+          (insert "\n"
+                  (propertize "ERROR: dolt CLI is not working\n"
+                              'font-lock-face 'error)
+                  "\n"
+                  (propertize (string-trim (cdr branch-result))
+                              'font-lock-face 'shadow)
+                  "\n\n"
+                  (propertize "Check *madolt-sql-log* (E l) for details.\n"
+                              'font-lock-face 'shadow)))
+      ;; CLI works — proceed normally
+      (madolt--status-prefetch-phase2)
+      (magit-insert-section (status)
+        (madolt-run-section-hook 'madolt-status-sections-hook)))))
 
 (defun madolt--status-prefetch-phase2 ()
   "Prefetch commands that depend on phase 1 results.
@@ -263,9 +279,12 @@ launches parallel prefetch for:
               "\n"))
     ;; Head line
     (insert (format "%-10s" "Head:")
-            (if branch
-                (propertize branch 'font-lock-face 'madolt-branch-local)
-              "(detached)")
+            (cond
+             (branch
+              (propertize branch 'font-lock-face 'madolt-branch-local))
+             (hash "(detached)")
+             (t (propertize "unknown (CLI error)"
+                            'font-lock-face 'error)))
             (if hash
                 (concat " "
                         (propertize (substring hash 0 (min 8 (length hash)))
