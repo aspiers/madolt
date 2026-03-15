@@ -713,6 +713,56 @@
                 (should (= (point) (point-min))))
             (kill-buffer buf)))))))
 
+(ert-deftest test-madolt-refresh-preserves-point-at-eob ()
+  "When point is at end of buffer, refresh preserves it near eob."
+  (madolt-with-test-database
+    (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+               (lambda ()
+                 (magit-insert-section (status)
+                   (magit-insert-section (unstaged)
+                     (magit-insert-heading "Unstaged changes")
+                     (magit-insert-section (table "users")
+                       (insert "  modified    users\n")))))))
+      (let ((buf (madolt-setup-buffer 'madolt-status-mode)))
+        (unwind-protect
+            (with-current-buffer buf
+              ;; Go to end of buffer
+              (goto-char (point-max))
+              (let ((old-max (point-max)))
+                ;; Refresh — buffer content is identical
+                (madolt-refresh)
+                ;; Point should be at or near end, not at point-min
+                (should (= (point) (min old-max (point-max))))))
+          (kill-buffer buf))))))
+
+(ert-deftest test-madolt-refresh-preserves-point-past-sections ()
+  "When point is between last section and eob, it stays near that position."
+  (madolt-with-test-database
+    (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+               (lambda ()
+                 (magit-insert-section (status)
+                   (magit-insert-section (unstaged)
+                     (magit-insert-heading "Unstaged changes")
+                     (magit-insert-section (table "users")
+                       (insert "  modified    users\n")))
+                   ;; Extra blank lines after sections
+                   (insert "\n\n")))))
+      (let ((buf (madolt-setup-buffer 'madolt-status-mode)))
+        (unwind-protect
+            (with-current-buffer buf
+              ;; Position point on the blank line after all sections
+              (goto-char (point-max))
+              (forward-line -1)
+              (let ((pos (point)))
+                (should (null (magit-section-at)))
+                ;; Refresh
+                (madolt-refresh)
+                ;; Point should be restored near the same position
+                (should (>= (point) (1- pos)))
+                ;; And definitely not at point-min
+                (should (> (point) (point-min)))))
+          (kill-buffer buf))))))
+
 ;;;; Display
 
 (ert-deftest test-madolt--buffer-name ()

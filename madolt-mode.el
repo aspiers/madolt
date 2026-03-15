@@ -415,9 +415,15 @@ This is the workhorse called by `madolt-refresh' for each buffer."
                                      (list (cons 0 0))))
          (madolt-connection--refresh-errors nil)
          (refresh-fn (madolt--refresh-function))
-         (section (magit-current-section))
+         ;; Use magit-section-at (not magit-current-section) so we
+         ;; get nil when point is past the last section rather than
+         ;; falling back to magit-root-section.
+         (section (magit-section-at))
          (rel-pos (and section
-                        (magit-section-get-relative-position section))))
+                        (magit-section-get-relative-position section)))
+         ;; Save raw point for fallback when point is not on any
+         ;; section (e.g. at end of buffer).
+         (saved-point (point)))
     (message "Refreshing madolt...")
     (when refresh-fn
       ;; Set up SQL connection before erasing the buffer so that
@@ -444,11 +450,20 @@ This is the workhorse called by `madolt-refresh' for each buffer."
           (funcall refresh-fn)))
       ;; Restore position: delegate to magit-section-goto-successor
       ;; which tries --same (find identical section) then --related
-      ;; (opposite section, sibling, or parent).
-      (unless (and section rel-pos
-                    (apply #'magit-section-goto-successor
-                           section rel-pos))
+      ;; (opposite section, sibling, or parent).  When point was not
+      ;; on any section (e.g. at end of buffer), restore the raw
+      ;; position clamped to the new buffer size.
+      (cond
+       ((and section rel-pos
+             (apply #'magit-section-goto-successor section rel-pos))
+        ;; Successfully restored to the same or related section.
+        nil)
+       (section
+        ;; Had a section but couldn't find successor; go to start.
         (goto-char (point-min)))
+       (t
+        ;; Point was not on any section; restore raw position.
+        (goto-char (min saved-point (point-max)))))
       ;; Apply section visibility: show/hide overlays based on
       ;; the `hidden' slot (which was set from the visibility
       ;; cache during section creation).  Bind
