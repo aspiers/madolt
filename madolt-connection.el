@@ -487,19 +487,50 @@ Added to `kill-buffer-hook' for graceful cleanup."
 
 ;;;###autoload
 (defun madolt-server-stop ()
-  "Stop the sql-server and disconnect."
+  "Stop the sql-server and disconnect.
+If the server was started by madolt, stop it immediately.
+If it was started externally, prompt for confirmation first."
   (interactive)
-  (let ((conn (madolt-connection--get)))
-    (if (and conn
-             (or (madolt-connection-process conn)
-                 (madolt-connection-server-process conn)))
-        (progn
-          (madolt-connection-shutdown)
-          (madolt-connection--set-declined t)
-          (message "SQL server stopped")
-          (when (derived-mode-p 'madolt-mode)
-            (madolt-refresh)))
-      (message "No sql-server connection to stop"))))
+  (let ((conn (madolt-connection--get))
+        (info (madolt-connection--detect-server)))
+    (cond
+     ;; We started this server — stop without prompting
+     ((and conn (madolt-connection-server-process conn))
+      (madolt-connection-shutdown)
+      (madolt-connection--set-declined t)
+      (message "SQL server stopped")
+      (when (derived-mode-p 'madolt-mode)
+        (madolt-refresh)))
+     ;; We have a client connection but didn't start the server
+     ((and conn (madolt-connection-process conn))
+      (madolt-connection-disconnect)
+      (if (and info
+               (y-or-n-p
+                (format "Kill external sql-server (pid %d, port %d)? "
+                        (plist-get info :pid) (plist-get info :port))))
+          (progn
+            (signal-process (plist-get info :pid) 'SIGTERM)
+            (message "Sent SIGTERM to sql-server pid %d"
+                     (plist-get info :pid)))
+        (message "Disconnected client; server still running"))
+      (madolt-connection--set-declined t)
+      (when (derived-mode-p 'madolt-mode)
+        (madolt-refresh)))
+     ;; No connection but a server is detected
+     (info
+      (if (y-or-n-p
+           (format "Kill external sql-server (pid %d, port %d)? "
+                   (plist-get info :pid) (plist-get info :port)))
+          (progn
+            (signal-process (plist-get info :pid) 'SIGTERM)
+            (madolt-connection--set-declined t)
+            (message "Sent SIGTERM to sql-server pid %d"
+                     (plist-get info :pid))
+            (when (derived-mode-p 'madolt-mode)
+              (madolt-refresh)))
+        (message "Server left running")))
+     (t
+      (message "No sql-server connection to stop")))))
 
 ;;;###autoload
 (defun madolt-server-status ()
