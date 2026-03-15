@@ -81,12 +81,13 @@ RESULT is (EXIT-CODE . OUTPUT-STRING)."
    ("e" "elsewhere"   madolt-fetch-from-remote)])
 
 (transient-define-suffix madolt-fetch-from-default (&optional args)
-  "Fetch from the default remote."
+  "Fetch from a remote, prompting when multiple exist.
+With a single remote, uses it directly.  With multiple remotes,
+prompts via `completing-read' with the default pre-selected."
   :if (lambda () (madolt-remote--default))
   :description (lambda () (or (madolt-remote--default) "no remote"))
   (interactive (list (transient-args 'madolt-fetch)))
-  (let* ((remote (or (madolt-remote--default)
-                     (user-error "No remotes configured")))
+  (let* ((remote (madolt-remote--read-remote "Fetch from remote: "))
          (result (apply #'madolt-call-dolt "fetch" remote args)))
     (madolt-refresh)
     (madolt-remote--report "Fetch" remote result)))
@@ -115,12 +116,13 @@ ARGS are additional arguments from the transient."
    ("e" "elsewhere"   madolt-pull-from-remote)])
 
 (transient-define-suffix madolt-pull-from-default (&optional args)
-  "Pull from the default remote."
+  "Pull from a remote, prompting when multiple exist.
+With a single remote, uses it directly.  With multiple remotes,
+prompts via `completing-read' with the default pre-selected."
   :if (lambda () (madolt-remote--default))
   :description (lambda () (or (madolt-remote--default) "no remote"))
   (interactive (list (transient-args 'madolt-pull)))
-  (let* ((remote (or (madolt-remote--default)
-                     (user-error "No remotes configured")))
+  (let* ((remote (madolt-remote--read-remote "Pull from remote: "))
          (result (apply #'madolt-call-dolt "pull" remote args)))
     (madolt-refresh)
     (madolt-remote--report "Pull" remote result)))
@@ -148,12 +150,13 @@ ARGS are additional arguments from the transient."
    ("e" "elsewhere"   madolt-push-to-remote)])
 
 (transient-define-suffix madolt-push-to-default (&optional args)
-  "Push current branch to the default remote."
+  "Push current branch to a remote, prompting when multiple exist.
+With a single remote, uses it directly.  With multiple remotes,
+prompts via `completing-read' with the default pre-selected."
   :if (lambda () (madolt-remote--default))
   :description (lambda () (or (madolt-remote--default) "no remote"))
   (interactive (list (transient-args 'madolt-push)))
-  (let* ((remote (or (madolt-remote--default)
-                     (user-error "No remotes configured")))
+  (let* ((remote (madolt-remote--read-remote "Push to remote: "))
          (branch (madolt-current-branch))
          (result (apply #'madolt-call-dolt "push" remote branch args)))
     (madolt-refresh)
