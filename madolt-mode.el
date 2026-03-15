@@ -87,6 +87,14 @@ subprocess cache hit/miss statistics.  Toggle interactively with
   :group 'madolt
   :type 'boolean)
 
+(defcustom madolt-refresh-status-buffer t
+  "Whether to also refresh the status buffer when refreshing.
+When non-nil, refreshing a non-status madolt buffer (e.g. log,
+diff, refs) also refreshes the corresponding status buffer for
+the same database.  Mirrors `magit-refresh-status-buffer'."
+  :group 'madolt
+  :type 'boolean)
+
 (defun madolt-toggle-verbose-refresh ()
   "Toggle verbose refresh timing.
 When enabled, each buffer refresh logs per-section timing and
@@ -358,6 +366,15 @@ database root, activate MODE, and call `madolt-refresh'."
              (symbol-name mode))
             db-name)))
 
+(defun madolt-get-mode-buffer (mode &optional directory)
+  "Return the buffer for MODE and DIRECTORY, or nil.
+DIRECTORY defaults to the current database directory."
+  (let* ((dir (or directory
+                  madolt-buffer-database-dir
+                  (madolt-database-dir)))
+         (name (and dir (madolt--buffer-name mode dir))))
+    (and name (get-buffer name))))
+
 (defun madolt-display-buffer (buffer)
   "Display BUFFER in a window and select it.
 Delegates to `magit-display-buffer' when available, so that the
@@ -372,89 +389,104 @@ Falls back to `display-buffer' otherwise."
 ;;;; Refresh
 
 (defun madolt-refresh (&rest _args)
-  "Refresh the current madolt buffer.
+  "Refresh the current madolt buffer and the status buffer.
 Erase the buffer, re-run the mode-specific refresh function, and
-restore cursor position.  When `madolt-refresh-verbose' is non-nil,
-log per-section timing and cache statistics to *Messages*."
+restore cursor position.  When `madolt-refresh-status-buffer' is
+non-nil and the current buffer is not already a status buffer,
+also refresh the corresponding status buffer for the same database.
+When `madolt-refresh-verbose' is non-nil, log per-section timing
+and cache statistics to *Messages*."
   (interactive)
   (when (derived-mode-p 'madolt-mode)
-    (let* ((start (current-time))
-           (madolt--refresh-cache (or madolt--refresh-cache
-                                      (list (cons 0 0))))
-           (madolt-connection--refresh-errors nil)
-           (refresh-fn (madolt--refresh-function))
-           (section (magit-current-section))
-           (rel-pos (and section
-                         (magit-section-get-relative-position section))))
-      (message "Refreshing madolt...")
-      (when refresh-fn
-        ;; Set up SQL connection before erasing the buffer so that
-        ;; any prompt appears while old content is still visible.
-        ;; Only for status buffers — other buffers just use whatever
-        ;; connection exists.
-        (when (and (derived-mode-p 'madolt-status-mode)
-                   (fboundp 'madolt-connection-setup))
-          (madolt-connection-setup))
-        ;; Reset magit-section highlight state before erasing the
-        ;; buffer.  Without this, stale section objects from the
-        ;; previous render cause wrong-type-argument errors in
-        ;; magit-section-post-command-hook.  Mirrors what
-        ;; magit-refresh-buffer does in magit-mode.el.
-        (deactivate-mark)
-        (setq magit-section-pre-command-section nil)
-        (setq magit-section-highlight-overlays nil)
-        (setq magit-section-selection-overlays nil)
-        (setq magit-section-highlighted-sections nil)
-        (setq magit-section-focused-sections nil)
-        (let ((inhibit-read-only t))
-          (erase-buffer)
-          (save-excursion
-            (funcall refresh-fn)))
-        ;; Restore position: delegate to magit-section-goto-successor
-        ;; which tries --same (find identical section) then --related
-        ;; (opposite section, sibling, or parent).
-        (unless (and section rel-pos
-                     (apply #'magit-section-goto-successor
-                            section rel-pos))
-          (goto-char (point-min)))
-        ;; Apply section visibility: show/hide overlays based on
-        ;; the `hidden' slot (which was set from the visibility
-        ;; cache during section creation).  Bind
-        ;; `magit-section-cache-visibility' to nil so this pass
-        ;; doesn't overwrite the cache.  This mirrors what
-        ;; `magit-refresh-buffer' does in magit-mode.el.
-        (when magit-root-section
-          (let ((magit-section-cache-visibility nil))
-            (magit-section-show magit-root-section)))
-        ;; Update highlighting on the freshly built sections, then
-        ;; mark this buffer as refreshed so
-        ;; magit-section-post-command-hook skips its redundant
-        ;; highlight pass (which would operate on stale state).
-        ;; Guard on magit-root-section being set, which won't be
-        ;; the case if the refresh function errored before
-        ;; magit-insert-section could complete.
-        (when magit-root-section
-          (magit-section-update-highlight))
-        (set-buffer-modified-p nil)
-        (push (current-buffer) magit-section--refreshed-buffers)
-        (cond
-         (madolt-connection--refresh-errors
-          ;; Show a single summary of errors
-          (message "Refreshing madolt...done (%d error%s; E l to view log)"
-                   (length madolt-connection--refresh-errors)
-                   (if (= 1 (length madolt-connection--refresh-errors))
-                       "" "s")))
-         (madolt-refresh-verbose
-          (let* ((c (caar madolt--refresh-cache))
-                 (a (+ c (cdar madolt--refresh-cache))))
-            (message "Refreshing madolt...done (%.3fs, cached %s/%s (%.0f%%))"
-                     (float-time (time-since start))
-                     c a
-                     (if (> a 0)
-                         (* (/ c (* a 1.0)) 100)
-                       0))))
-         (t
-          (message "Refreshing madolt...done")))))))
+    (madolt--refresh-buffer-1)
+    ;; Also refresh the status buffer when called from a non-status
+    ;; buffer, mirroring magit-refresh's behavior.
+    (when-let ((buffer (and madolt-refresh-status-buffer
+                            (not (derived-mode-p 'madolt-status-mode))
+                            (madolt-get-mode-buffer 'madolt-status-mode))))
+      (with-current-buffer buffer
+        (madolt--refresh-buffer-1)))))
+
+(defun madolt--refresh-buffer-1 ()
+  "Internal: refresh the current madolt buffer.
+This is the workhorse called by `madolt-refresh' for each buffer."
+  (let* ((start (current-time))
+         (madolt--refresh-cache (or madolt--refresh-cache
+                                     (list (cons 0 0))))
+         (madolt-connection--refresh-errors nil)
+         (refresh-fn (madolt--refresh-function))
+         (section (magit-current-section))
+         (rel-pos (and section
+                        (magit-section-get-relative-position section))))
+    (message "Refreshing madolt...")
+    (when refresh-fn
+      ;; Set up SQL connection before erasing the buffer so that
+      ;; any prompt appears while old content is still visible.
+      ;; Only for status buffers — other buffers just use whatever
+      ;; connection exists.
+      (when (and (derived-mode-p 'madolt-status-mode)
+                 (fboundp 'madolt-connection-setup))
+        (madolt-connection-setup))
+      ;; Reset magit-section highlight state before erasing the
+      ;; buffer.  Without this, stale section objects from the
+      ;; previous render cause wrong-type-argument errors in
+      ;; magit-section-post-command-hook.  Mirrors what
+      ;; magit-refresh-buffer does in magit-mode.el.
+      (deactivate-mark)
+      (setq magit-section-pre-command-section nil)
+      (setq magit-section-highlight-overlays nil)
+      (setq magit-section-selection-overlays nil)
+      (setq magit-section-highlighted-sections nil)
+      (setq magit-section-focused-sections nil)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (save-excursion
+          (funcall refresh-fn)))
+      ;; Restore position: delegate to magit-section-goto-successor
+      ;; which tries --same (find identical section) then --related
+      ;; (opposite section, sibling, or parent).
+      (unless (and section rel-pos
+                    (apply #'magit-section-goto-successor
+                           section rel-pos))
+        (goto-char (point-min)))
+      ;; Apply section visibility: show/hide overlays based on
+      ;; the `hidden' slot (which was set from the visibility
+      ;; cache during section creation).  Bind
+      ;; `magit-section-cache-visibility' to nil so this pass
+      ;; doesn't overwrite the cache.  This mirrors what
+      ;; `magit-refresh-buffer' does in magit-mode.el.
+      (when magit-root-section
+        (let ((magit-section-cache-visibility nil))
+          (magit-section-show magit-root-section)))
+      ;; Update highlighting on the freshly built sections, then
+      ;; mark this buffer as refreshed so
+      ;; magit-section-post-command-hook skips its redundant
+      ;; highlight pass (which would operate on stale state).
+      ;; Guard on magit-root-section being set, which won't be
+      ;; the case if the refresh function errored before
+      ;; magit-insert-section could complete.
+      (when magit-root-section
+        (magit-section-update-highlight))
+      (set-buffer-modified-p nil)
+      (push (current-buffer) magit-section--refreshed-buffers)
+      (cond
+       (madolt-connection--refresh-errors
+        ;; Show a single summary of errors
+        (message "Refreshing madolt...done (%d error%s; E l to view log)"
+                 (length madolt-connection--refresh-errors)
+                 (if (= 1 (length madolt-connection--refresh-errors))
+                     "" "s")))
+       (madolt-refresh-verbose
+        (let* ((c (caar madolt--refresh-cache))
+               (a (+ c (cdar madolt--refresh-cache))))
+          (message "Refreshing madolt...done (%.3fs, cached %s/%s (%.0f%%))"
+                   (float-time (time-since start))
+                   c a
+                   (if (> a 0)
+                       (* (/ c (* a 1.0)) 100)
+                     0))))
+       (t
+        (message "Refreshing madolt...done"))))))
 
 (defun madolt-refresh-buffer (&rest _args)
   "Revert buffer function for madolt buffers.

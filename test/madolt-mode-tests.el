@@ -720,5 +720,103 @@
   (let ((name (madolt--buffer-name 'madolt-status-mode "/tmp/mydb/")))
     (should (string-match-p "madolt-status: mydb" name))))
 
+;;;; madolt-get-mode-buffer
+
+(ert-deftest test-madolt-get-mode-buffer-finds-existing ()
+  "madolt-get-mode-buffer returns a buffer when it exists."
+  (madolt-with-test-database
+    (let ((buf (madolt-setup-buffer 'madolt-status-mode)))
+      (unwind-protect
+          (should (eq (madolt-get-mode-buffer 'madolt-status-mode) buf))
+        (kill-buffer buf)))))
+
+(ert-deftest test-madolt-get-mode-buffer-returns-nil-when-missing ()
+  "madolt-get-mode-buffer returns nil when no such buffer exists."
+  (madolt-with-test-database
+    (should-not (madolt-get-mode-buffer 'madolt-log-mode))))
+
+;;;; Cross-buffer status refresh
+
+(ert-deftest test-madolt-refresh-also-refreshes-status-buffer ()
+  "Refreshing a non-status buffer also refreshes the status buffer."
+  (madolt-with-test-database
+    (let ((status-refresh-count 0)
+          (log-refresh-count 0))
+      (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+                 (lambda ()
+                   (cl-incf status-refresh-count)
+                   (magit-insert-section (root)
+                     (insert "status\n"))))
+                ((symbol-function 'madolt-log-refresh-buffer)
+                 (lambda ()
+                   (cl-incf log-refresh-count)
+                   (magit-insert-section (root)
+                     (insert "log\n")))))
+        (let ((status-buf (madolt-setup-buffer 'madolt-status-mode))
+              (log-buf (madolt-setup-buffer 'madolt-log-mode)))
+          (unwind-protect
+              (let ((count-after-setup status-refresh-count))
+                ;; Log buffer set up once
+                (should (= log-refresh-count 1))
+                ;; Refresh from the log buffer
+                (with-current-buffer log-buf
+                  (madolt-refresh))
+                ;; Log buffer refreshed again
+                (should (= log-refresh-count 2))
+                ;; Status buffer refreshed once more via cross-refresh
+                (should (= status-refresh-count (1+ count-after-setup))))
+            (kill-buffer log-buf)
+            (kill-buffer status-buf)))))))
+
+(ert-deftest test-madolt-refresh-status-buffer-not-double-refreshed ()
+  "Refreshing the status buffer should not refresh it twice."
+  (madolt-with-test-database
+    (let ((status-refresh-count 0))
+      (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+                 (lambda ()
+                   (cl-incf status-refresh-count)
+                   (magit-insert-section (root)
+                     (insert "status\n")))))
+        (let ((status-buf (madolt-setup-buffer 'madolt-status-mode)))
+          (unwind-protect
+              (progn
+                (should (= status-refresh-count 1))
+                ;; Refresh from the status buffer itself
+                (with-current-buffer status-buf
+                  (madolt-refresh))
+                ;; Should only be refreshed once more, not twice
+                (should (= status-refresh-count 2)))
+            (kill-buffer status-buf)))))))
+
+(ert-deftest test-madolt-refresh-status-buffer-opt-out ()
+  "Setting madolt-refresh-status-buffer to nil disables cross-refresh."
+  (madolt-with-test-database
+    (let ((status-refresh-count 0)
+          (log-refresh-count 0)
+          (madolt-refresh-status-buffer nil))
+      (cl-letf (((symbol-function 'madolt-status-refresh-buffer)
+                 (lambda ()
+                   (cl-incf status-refresh-count)
+                   (magit-insert-section (root)
+                     (insert "status\n"))))
+                ((symbol-function 'madolt-log-refresh-buffer)
+                 (lambda ()
+                   (cl-incf log-refresh-count)
+                   (magit-insert-section (root)
+                     (insert "log\n")))))
+        (let ((status-buf (madolt-setup-buffer 'madolt-status-mode))
+              (log-buf (madolt-setup-buffer 'madolt-log-mode)))
+          (unwind-protect
+              (let ((count-after-setup status-refresh-count))
+                (should (= log-refresh-count 1))
+                ;; Refresh from log buffer with opt-out
+                (with-current-buffer log-buf
+                  (madolt-refresh))
+                (should (= log-refresh-count 2))
+                ;; Status should NOT have been refreshed again
+                (should (= status-refresh-count count-after-setup)))
+            (kill-buffer log-buf)
+            (kill-buffer status-buf)))))))
+
 (provide 'madolt-mode-tests)
 ;;; madolt-mode-tests.el ends here
