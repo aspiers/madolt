@@ -31,6 +31,12 @@ For targeted changes, prefer running individual module tests (e.g.
 `make test-dolt`, `make test-log`, `make test-status`) which are much
 faster.
 
+**Never block waiting for test suites to finish.**  Launch tests in a
+PTY session with `notifyOnExit`, then **immediately** do interactive
+QA testing via tmux while tests run in the background.  This
+parallelizes the two required verification steps and avoids wasted
+idle time.
+
 The Makefile assumes `straight.el` packages under `~/.emacs.d/straight/build/`.
 Override with `STRAIGHT_DIR=/path/to/packages`.
 
