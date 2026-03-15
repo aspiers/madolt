@@ -27,8 +27,13 @@
 (when (fboundp 'tool-bar-mode) (tool-bar-mode -1))
 (when (fboundp 'scroll-bar-mode) (scroll-bar-mode -1))
 
-;; Use a dark theme that looks good in terminal
-(load-theme 'modus-vivendi t)
+;; Use catppuccin mocha theme (cloned by launch.sh)
+(let ((catppuccin-dir (getenv "CATPPUCCIN_DIR")))
+  (when (and catppuccin-dir (file-directory-p catppuccin-dir))
+    (add-to-list 'load-path catppuccin-dir)
+    (add-to-list 'custom-theme-load-path catppuccin-dir)
+    (setq catppuccin-flavor 'mocha)
+    (load-theme 'catppuccin t)))
 
 ;; Load madolt
 (require 'madolt)

@@ -121,8 +121,3 @@ Sleep 1.5s
 
 # Show the clean status (all changes committed)
 Sleep 2s
-
-# Exit Emacs
-Ctrl+X
-Ctrl+C
-Sleep 1s
