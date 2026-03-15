@@ -73,70 +73,35 @@ MESSAGE is the commit message (or nil).  FLAGS is a list of flags
 like \"--no-ff\".  Returns (EXIT-CODE . OUTPUT) like `madolt-call-dolt'.
 Disables autocommit before the merge to allow conflict resolution,
 then re-enables it after."
-  (condition-case err
-      (when (and (fboundp 'madolt-connection-ensure)
-                 (funcall 'madolt-connection-ensure))
-        (let ((query-fn (symbol-function 'madolt-connection-query)))
-          ;; Combine SET and MERGE into one batch to avoid SET producing
-          ;; no output (which causes the query to time out waiting for
-          ;; output that never comes in mysql batch mode).
-          (let* ((sql-args (list (format "'%s'" branch)))
-                 (_ (dolist (flag flags)
-                      (push (format "'%s'" flag) sql-args)))
-                 (_ (when message
-                      (push "'-m'" sql-args)
-                      (push (format "'%s'" message) sql-args)))
-                 (sql (format "CALL DOLT_MERGE(%s)"
-                              (mapconcat #'identity
-                                         (nreverse sql-args) ", ")))
-                 (full-sql (concat "SET @@autocommit = 0;\n" sql))
-                 ;; Merge can be slow on large databases
-                 (rows (funcall query-fn full-sql 60))
-                 (output (mapconcat
-                          (lambda (row) (string-join row "\t"))
-                          rows "\n"))
-                 ;; DOLT_MERGE returns: hash, fast_forward, conflicts, message
-                 ;; The hash column may be empty and trimmed by the parser,
-                 ;; so detect conflicts by checking for "conflict" in any
-                 ;; column value, or a non-zero numeric conflicts column.
-                 (conflict-msg
-                  (and rows
-                       (let ((row (car rows)))
-                         (or
-                          ;; Check for "conflict" keyword in message column
-                          (cl-some (lambda (col)
-                                     (and (string-match-p "conflict" col)
-                                          col))
-                                   row)
-                          ;; Check for numeric conflicts > 0
-                          (cl-some (lambda (col)
-                                     (and (string-match-p "\\`[0-9]+\\'" col)
-                                          (> (string-to-number col) 0)
-                                          (format "%s conflict(s)" col)))
-                                   row))))))
-            (if conflict-msg
-                ;; Report conflict; disconnect to reset session state
-                ;; (DOLT_MERGE('--abort') can be very slow on large databases,
-                ;; so we just disconnect instead, which rolls back the transaction)
-                (progn
-                  (when (fboundp 'madolt-connection-disconnect)
-                    (funcall 'madolt-connection-disconnect))
-                  (cons 1 (format "Merge conflict with %s: %s"
-                                  branch conflict-msg)))
-              ;; Commit and re-enable autocommit.
-              ;; COMMIT/SET produce no output in batch mode, so combine
-              ;; with a SELECT to get detectable output.
-              (funcall query-fn
-                       "COMMIT; SET @@autocommit = 1; SELECT 'ok'" 30)
-              (cons 0 (concat output "\n"))))))
-    (error
-     (when (fboundp 'madolt-connection-disconnect)
-       (funcall 'madolt-connection-disconnect))
-     (when (fboundp 'madolt-connection--log)
-       (funcall 'madolt-connection--log
-                "SQL merge failed; trying CLI"
-                (format "DOLT_MERGE: %s" (error-message-string err))))
-     nil)))
+  ;; Use `dolt sql -q' instead of the persistent connection because:
+  ;; (a) The persistent batch-mode connection can't reliably parse
+  ;;     multi-statement output (SET + CALL DOLT_MERGE).
+  ;; (b) With dolt_allow_commit_conflicts=1, conflict state persists
+  ;;     on disk so the resolution workflow works after disconnect.
+  ;; (c) `dolt merge' CLI refuses to run when a SQL server is active,
+  ;;     but `dolt sql -q' works.
+  (when (madolt-sql-server-info)
+    (let* ((sql-args (list (format "'%s'" branch)))
+           (_ (dolist (flag flags)
+                (push (format "'%s'" flag) sql-args)))
+           (_ (when message
+                (push "'-m'" sql-args)
+                (push (format "'%s'" message) sql-args)))
+           (sql (format "SET @@dolt_allow_commit_conflicts = 1; CALL DOLT_MERGE(%s)"
+                        (mapconcat #'identity
+                                   (nreverse sql-args) ", ")))
+           (result (madolt--run-cli (list "sql" "-q" sql "-r" "csv")))
+           (output (cdr result)))
+      ;; Disconnect to reset session state after merge
+      (when (fboundp 'madolt-connection-disconnect)
+        (madolt-connection-disconnect))
+      (if (not (zerop (car result)))
+          ;; dolt sql -q failed (shouldn't happen with allow_commit_conflicts)
+          nil
+        ;; Check output for conflicts
+        (if (and output (string-match-p "conflict" output))
+            (cons 1 (format "Merge conflict with %s" branch))
+          (cons 0 (or output "")))))))
 
 (defun madolt-merge--do-merge (message args)
   "Execute `dolt merge' with MESSAGE and ARGS.
@@ -221,7 +186,8 @@ skips the message buffer."
 (defun madolt-merge-continue-command ()
   "Continue the current merge after resolving conflicts.
 Stages all tables with `dolt add .' and commits.  If there are
-still unresolved conflicts, reports an error."
+still unresolved conflicts, reports an error.
+When the merge was started via SQL, finalizes the SQL transaction."
   (interactive)
   (unless (madolt-merge-in-progress-p)
     (user-error "No merge in progress"))

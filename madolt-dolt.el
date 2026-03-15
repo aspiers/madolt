@@ -613,14 +613,21 @@ Checks for staged, unstaged, untracked, or conflicting tables."
 
 (defun madolt-merge-in-progress-p ()
   "Return non-nil if a dolt merge is currently in progress.
-Detects both the unresolved-conflicts state (\"You have unmerged
-tables\") and the resolved-but-uncommitted state (\"still merging\").
-Uses raw `dolt status' output since the indicators appear on
-lines other than the first."
-  (let ((output (cdr (madolt--run "status"))))
-    (and output
-         (or (string-match-p "You have unmerged tables" output)
-             (string-match-p "still merging" output)))))
+Detects both the unresolved-conflicts state and the
+resolved-but-uncommitted state.
+Checks CLI output for \"You have unmerged tables\" / \"still
+merging\", and also checks the parsed status tables for any
+entries with conflict status (which covers SQL-routed output)."
+  (or
+   ;; Check parsed status for conflicts (works for both CLI and SQL)
+   (alist-get 'conflicts (madolt-status-tables))
+   ;; Check raw CLI output for merge-in-progress indicators
+   ;; that aren't captured in the parsed status (e.g. "still merging"
+   ;; state after all conflicts are resolved but before commit)
+   (let ((output (cdr (madolt--run "status"))))
+     (and output
+          (or (string-match-p "You have unmerged tables" output)
+              (string-match-p "still merging" output))))))
 
 ;;;; Rebase state
 
