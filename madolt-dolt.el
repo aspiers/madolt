@@ -923,13 +923,14 @@ When MESSAGE is non-nil, create an annotated tag."
  'branch-list
  (lambda (args)
    (and (equal (car args) "branch")
-        (not (member "-d" args))
-        (not (member "-m" args))
-        (not (member "-c" args))
-        (not (member "--show-current" args))
-        (not (member "-a" args))
-        (not (member "-r" args))
-        (not (member "-v" args))))
+        ;; Only match plain `dolt branch` (list names).
+        ;; Exclude any flags that change output format or semantics.
+        (not (cl-some (lambda (a)
+                        (or (member a '("-d" "-D" "-m" "-c"
+                                        "--show-current"
+                                        "-a" "-r" "-v"))
+                            (string-match-p "\\`-[a-zA-Z]*[avrDdmc]" a)))
+                      (cdr args)))))
  (lambda (_args) "SELECT CONCAT(IF(name = active_branch(), '* ', '  '), name) FROM dolt_branches ORDER BY name"))
 
 (madolt--register-sql-translation
