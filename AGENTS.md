@@ -149,6 +149,14 @@ sleep 0.3
 
 - **Window size**: tmux resizes to match the connecting client terminal, so `-x 120 -y 40` at creation doesn't persist. Use `tmux resize-window` to force a specific size.
 - **Prefer emacsclient**: For inspecting buffer contents and evaluating Elisp, `emacsclient --eval` is far more reliable than capturing tmux pane output. Use tmux `send-keys` only when testing actual keybindings.
+- **Never use emacsclient to switch buffers or frames** when testing
+  interactively via tmux.  `emacsclient --eval` runs in whatever
+  frame/window Emacs happens to select, which may NOT be the one
+  visible in the tmux pane.  Use `tmux send-keys` for all navigation
+  (buffer switching, quitting, etc.) during interactive testing.
+  Reserve `emacsclient` for read-only inspection (checking variable
+  values, buffer contents) where the target buffer is specified
+  explicitly via `with-current-buffer`.
 - **Graceful shutdown**: Send `C-x C-c` to quit Emacs, or use `emacsclient --eval '(kill-emacs)'`. Never kill sessions/windows/panes violently.
 - **PTY sessions**: Alternatively, use `pty_spawn` to run Emacs in a managed PTY session for automated testing within the agent environment. But this is far less preferable because it cannot easily be observed by the user during testing, so ask permission before using this fallback.
 
