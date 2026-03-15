@@ -259,12 +259,21 @@ Returns nil on error or empty result."
   (process-send-string madolt-connection--process
                        (concat sql "\n"))
   ;; Wait for complete output (mysql --batch ends output with newline)
-  (let ((timeout 10.0)
+  (let ((timeout 5.0)
         (start (float-time)))
     (while (and (< (- (float-time) start) timeout)
                 (process-live-p madolt-connection--process)
                 (not (madolt-connection--output-complete-p)))
-      (accept-process-output madolt-connection--process 0.05)))
+      (accept-process-output madolt-connection--process 0.05))
+    (unless (madolt-connection--output-complete-p)
+      ;; Connection is broken — disconnect so subsequent queries
+      ;; fall back to CLI immediately instead of timing out again.
+      (let ((output madolt-connection--pending-output))
+        (setq madolt-connection--pending-output "")
+        (madolt-connection-disconnect)
+        (message "SQL connection timed out; falling back to CLI")
+        (error "SQL query timed out: %s"
+               (truncate-string-to-width (string-trim output) 80)))))
   (let ((output madolt-connection--pending-output))
     (setq madolt-connection--pending-output "")
     (madolt-connection--parse-batch-output output)))
@@ -332,10 +341,14 @@ starts a server; it only connects to an already-running one."
             (madolt-connection--connect port db-name))))))
 
 (defun madolt-connection-active-p ()
-  "Return non-nil if the SQL connection is active and ready."
+  "Return non-nil if the SQL connection is active and for the current database."
   (and madolt-connection--ready
        madolt-connection--process
-       (process-live-p madolt-connection--process)))
+       (process-live-p madolt-connection--process)
+       ;; Connection must match the current database directory.
+       (let ((current-db (or (madolt-database-dir) default-directory)))
+         (equal (file-truename madolt-connection--db-dir)
+                (file-truename current-db)))))
 
 (defun madolt-connection-disconnect ()
   "Disconnect from the sql-server."
