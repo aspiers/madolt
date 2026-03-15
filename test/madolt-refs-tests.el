@@ -332,6 +332,85 @@
           (should (oref feature hidden))
           (should (oref feature washer)))))))
 
+(ert-deftest test-madolt-refs-cherry-commits-ahead-shows-plus ()
+  "Expanding a branch ahead of upstream should show + prefixed commits."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-branch-create "feature")
+    (madolt-branch-checkout "feature")
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "feature commit")
+    (madolt-branch-checkout "main")
+    (with-temp-buffer
+      (madolt-refs-mode)
+      (setq madolt-refs--upstream "main")
+      (let ((inhibit-read-only t))
+        (madolt-refs-refresh-buffer))
+      ;; Expand the feature branch section
+      (let ((feature (cl-find-if
+                      (lambda (s) (equal (oref s value) "feature"))
+                      (madolt-refs-test--sections-of-type 'branch))))
+        (should feature)
+        (magit-section-show feature)
+        (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+          ;; Should have + prefix for ahead commits
+          (should (string-match-p "[+] [0-9a-z]+ feature commit" text)))))))
+
+(ert-deftest test-madolt-refs-cherry-commits-behind-shows-minus ()
+  "Expanding a branch behind upstream should show - prefixed commits."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-branch-create "feature")
+    ;; Add a commit on main that feature doesn't have
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "main-only commit")
+    (with-temp-buffer
+      (madolt-refs-mode)
+      (setq madolt-refs--upstream "main")
+      (let ((inhibit-read-only t))
+        (madolt-refs-refresh-buffer))
+      ;; Expand the feature branch section
+      (let ((feature (cl-find-if
+                      (lambda (s) (equal (oref s value) "feature"))
+                      (madolt-refs-test--sections-of-type 'branch))))
+        (should feature)
+        (magit-section-show feature)
+        (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+          ;; Should have - prefix for behind commits
+          (should (string-match-p "[-] [0-9a-z]+ main-only commit" text)))))))
+
+(ert-deftest test-madolt-refs-cherry-commits-diverged-shows-both ()
+  "Expanding a diverged branch should show both + and - prefixed commits."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-branch-create "feature")
+    ;; Add commit on main
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "main-only commit")
+    ;; Add commit on feature
+    (madolt-branch-checkout "feature")
+    (madolt-test-create-table "t3" "id INT PRIMARY KEY")
+    (madolt-test-commit "feature-only commit")
+    (madolt-branch-checkout "main")
+    (with-temp-buffer
+      (madolt-refs-mode)
+      (setq madolt-refs--upstream "main")
+      (let ((inhibit-read-only t))
+        (madolt-refs-refresh-buffer))
+      ;; Expand the feature branch section
+      (let ((feature (cl-find-if
+                      (lambda (s) (equal (oref s value) "feature"))
+                      (madolt-refs-test--sections-of-type 'branch))))
+        (should feature)
+        (magit-section-show feature)
+        (let ((text (buffer-substring-no-properties (point-min) (point-max))))
+          ;; Should have + for ahead and - for behind
+          (should (string-match-p "[+] [0-9a-z]+ feature-only commit" text))
+          (should (string-match-p "[-] [0-9a-z]+ main-only commit" text)))))))
+
 ;;;; Visibility cache
 
 (ert-deftest test-madolt-refs-visibility-cache-preserved ()

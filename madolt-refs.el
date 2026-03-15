@@ -103,6 +103,16 @@ Added to `kill-buffer-hook' so the cache survives buffer kills."
   "Face for the symbolic ref HEAD."
   :group 'madolt-faces)
 
+(defface madolt-cherry-unmatched
+  '((t :inherit magit-cherry-unmatched))
+  "Face for + prefix on commits ahead of upstream."
+  :group 'madolt-faces)
+
+(defface madolt-cherry-equivalent
+  '((t :inherit magit-cherry-equivalent))
+  "Face for - prefix on commits behind upstream."
+  :group 'madolt-faces)
+
 ;;;; Customization
 
 (defcustom madolt-refs-sections-hook
@@ -460,29 +470,47 @@ Uses `madolt-refs--margin-config' to control style and width."
 
 ;;;; Cherry commits
 
+(defun madolt-refs--insert-cherry-commit (hash message prefix face)
+  "Insert a single cherry commit line.
+HASH is the full commit hash, MESSAGE is the commit message.
+PREFIX is \"+\" or \"-\", FACE is the face for the prefix."
+  (let ((short-hash (if (> (length hash) 7)
+                        (substring hash 0 7)
+                      hash)))
+    (magit-insert-section (commit hash)
+      (magit-insert-heading
+        (concat
+         "  "
+         (propertize prefix 'font-lock-face face)
+         " "
+         (propertize short-hash 'font-lock-face 'shadow)
+         " " message "\n")))))
+
 (defun madolt-refs--insert-cherry-commits (ref)
   "Insert cherry commits for REF as expandable sub-section body.
-Shows commits in REF that are not in the comparison upstream.
-Since dolt lacks `git cherry', uses `dolt log upstream..ref' instead."
+Shows commits ahead of upstream with a \"+\" prefix and commits
+behind upstream with a \"-\" prefix.  Since dolt lacks `git cherry',
+uses `dolt log' with range syntax instead."
   (magit-insert-section-body
     (let* ((upstream (or madolt-refs--upstream "HEAD"))
-           (range (format "%s..%s" upstream ref))
-           (entries (condition-case nil
-                        (madolt-log-entries 25 range)
-                      (error nil))))
-      (when entries
-        (dolist (entry entries)
-          (let* ((hash (plist-get entry :hash))
-                 (msg (or (plist-get entry :message) ""))
-                 (short-hash (if (> (length hash) 7)
-                                 (substring hash 0 7)
-                               hash)))
-            (magit-insert-section (commit hash)
-              (magit-insert-heading
-                (concat
-                 "  "
-                 (propertize short-hash 'font-lock-face 'shadow)
-                 " " msg "\n")))))))))
+           (ahead-range (format "%s..%s" upstream ref))
+           (behind-range (format "%s..%s" ref upstream))
+           (ahead (condition-case nil
+                      (madolt-log-entries 25 ahead-range)
+                    (error nil)))
+           (behind (condition-case nil
+                       (madolt-log-entries 25 behind-range)
+                     (error nil))))
+      (dolist (entry ahead)
+        (madolt-refs--insert-cherry-commit
+         (plist-get entry :hash)
+         (or (plist-get entry :message) "")
+         "+" 'madolt-cherry-unmatched))
+      (dolist (entry behind)
+        (madolt-refs--insert-cherry-commit
+         (plist-get entry :hash)
+         (or (plist-get entry :message) "")
+         "-" 'madolt-cherry-equivalent)))))
 
 ;;;; Section inserters
 
