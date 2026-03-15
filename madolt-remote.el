@@ -38,6 +38,18 @@
 (require 'transient)
 (require 'madolt-dolt)
 (require 'madolt-process)
+(require 'auth-source)
+
+;;;; Customization
+
+(defcustom madolt-remote-password-function #'madolt-remote--lookup-password
+  "Function to obtain the password for remote operations.
+Called with two arguments: REMOTE (name) and USER (string).
+Should return a password string, or nil to skip authentication.
+The default uses `auth-source' to look up credentials, falling
+back to `read-passwd'."
+  :group 'madolt
+  :type 'function)
 
 ;;;; Helpers
 
@@ -70,13 +82,79 @@ RESULT is (EXIT-CODE . OUTPUT-STRING)."
              operation remote
              (madolt--clean-output (cdr result)))))
 
+;;;; Remote authentication
+
+(defvar madolt-remote--password-cache (make-hash-table :test #'equal)
+  "In-memory cache of remote passwords, keyed by \"remote:user\".")
+
+(defun madolt-remote--lookup-password (remote user)
+  "Look up password for USER on REMOTE.
+Checks in order: (1) in-memory session cache, (2) `auth-source',
+(3) prompts with `read-passwd' and caches the result."
+  (let ((cache-key (format "%s:%s" remote user)))
+    (or (gethash cache-key madolt-remote--password-cache)
+        (let* ((url (cdr (assoc remote (madolt-remotes) #'string=)))
+               (host (and url (replace-regexp-in-string
+                               "\\`https?://" ""
+                               (replace-regexp-in-string "/.*" "" url))))
+               (found (and host
+                           (car (auth-source-search :host host :user user
+                                                    :max 1))))
+               (password
+                (if found
+                    (let ((secret (plist-get found :secret)))
+                      (if (functionp secret) (funcall secret) secret))
+                  (read-passwd (format "Password for %s on %s: "
+                                       user remote)))))
+          (puthash cache-key password madolt-remote--password-cache)
+          password))))
+
+(defun madolt-remote--extract-user (args)
+  "Extract --user value from ARGS, returning (USER . REMAINING-ARGS)."
+  (let ((user nil)
+        (remaining nil)
+        (rest args))
+    (while rest
+      (cond
+       ((string-match "\\`--user=\\(.+\\)" (car rest))
+        (setq user (match-string 1 (car rest))))
+       ((equal (car rest) "--user")
+        (setq user (cadr rest))
+        (setq rest (cdr rest)))
+       (t (push (car rest) remaining)))
+      (setq rest (cdr rest)))
+    (cons user (nreverse remaining))))
+
+(defun madolt-remote--call-with-auth (remote args dolt-args)
+  "Call dolt with DOLT-ARGS, handling --user auth from transient ARGS.
+Extracts --user from ARGS.  If present, looks up the password and
+binds DOLT_REMOTE_PASSWORD in the process environment.  Returns
+the result cons (EXIT-CODE . OUTPUT)."
+  (let* ((parsed (madolt-remote--extract-user args))
+         (user (car parsed))
+         (clean-args (cdr parsed))
+         (dolt-cmd (append dolt-args
+                           (when user (list "--user" user))
+                           clean-args)))
+    (if user
+        (let* ((password (funcall madolt-remote-password-function
+                                  remote user))
+               (process-environment
+                (cons (format "DOLT_REMOTE_PASSWORD=%s" (or password ""))
+                      process-environment)))
+          (apply #'madolt-call-dolt dolt-cmd))
+      (apply #'madolt-call-dolt dolt-cmd))))
+
 ;;;; Fetch transient
 
 ;;;###autoload (autoload 'madolt-fetch "madolt-remote" nil t)
 (transient-define-prefix madolt-fetch ()
   "Fetch from a remote repository."
+  :value '("--user=root")
   ["Arguments"
-   ("-p" "Prune deleted branches" "--prune")]
+   ("-p" "Prune deleted branches" "--prune")
+   ("-u" "User" "--user="
+    :class transient-option)]
   ["Fetch from"
    ("p" madolt-fetch-from-default)
    ("e" "elsewhere"   madolt-fetch-from-remote)])
@@ -89,7 +167,8 @@ prompts via `completing-read' with the default pre-selected."
   :description (lambda () (or (madolt-remote--default) "no remote"))
   (interactive (list (transient-args 'madolt-fetch)))
   (let* ((remote (madolt-remote--read-remote "Fetch from remote: "))
-         (result (apply #'madolt-call-dolt "fetch" remote args)))
+         (result (madolt-remote--call-with-auth
+                  remote args (list "fetch" remote))))
     (madolt-refresh)
     (madolt-remote--report "Fetch" remote result)))
 
@@ -99,7 +178,8 @@ ARGS are additional arguments from the transient."
   (interactive
    (list (madolt-remote--read-remote "Fetch from remote: " t)
          (transient-args 'madolt-fetch)))
-  (let ((result (apply #'madolt-call-dolt "fetch" remote args)))
+  (let ((result (madolt-remote--call-with-auth
+                 remote args (list "fetch" remote))))
     (madolt-refresh)
     (madolt-remote--report "Fetch" remote result)))
 
@@ -108,10 +188,13 @@ ARGS are additional arguments from the transient."
 ;;;###autoload (autoload 'madolt-pull "madolt-remote" nil t)
 (transient-define-prefix madolt-pull ()
   "Pull from a remote repository."
+  :value '("--user=root")
   ["Arguments"
    ("-f" "Fast-forward only" "--ff-only")
    ("-n" "No fast-forward"   "--no-ff")
-   ("-s" "Squash"            "--squash")]
+   ("-s" "Squash"            "--squash")
+   ("-u" "User" "--user="
+    :class transient-option)]
   ["Pull from"
    ("p" madolt-pull-from-default)
    ("e" "elsewhere"   madolt-pull-from-remote)])
@@ -124,7 +207,8 @@ prompts via `completing-read' with the default pre-selected."
   :description (lambda () (or (madolt-remote--default) "no remote"))
   (interactive (list (transient-args 'madolt-pull)))
   (let* ((remote (madolt-remote--read-remote "Pull from remote: "))
-         (result (apply #'madolt-call-dolt "pull" remote args)))
+         (result (madolt-remote--call-with-auth
+                  remote args (list "pull" remote))))
     (madolt-refresh)
     (madolt-remote--report "Pull" remote result)))
 
@@ -134,7 +218,8 @@ ARGS are additional arguments from the transient."
   (interactive
    (list (madolt-remote--read-remote "Pull from remote: " t)
          (transient-args 'madolt-pull)))
-  (let ((result (apply #'madolt-call-dolt "pull" remote args)))
+  (let ((result (madolt-remote--call-with-auth
+                 remote args (list "pull" remote))))
     (madolt-refresh)
     (madolt-remote--report "Pull" remote result)))
 
@@ -143,9 +228,12 @@ ARGS are additional arguments from the transient."
 ;;;###autoload (autoload 'madolt-push "madolt-remote" nil t)
 (transient-define-prefix madolt-push ()
   "Push to a remote repository."
+  :value '("--user=root")
   ["Arguments"
    ("-f" "Force"          "--force")
-   ("-u" "Set upstream"   "--set-upstream")]
+   ("-U" "Set upstream"   "--set-upstream")
+   ("-u" "User" "--user="
+    :class transient-option)]
   ["Push to"
    ("p" madolt-push-to-default)
    ("e" "elsewhere"   madolt-push-to-remote)])
@@ -159,7 +247,8 @@ prompts via `completing-read' with the default pre-selected."
   (interactive (list (transient-args 'madolt-push)))
   (let* ((remote (madolt-remote--read-remote "Push to remote: "))
          (branch (madolt-current-branch))
-         (result (apply #'madolt-call-dolt "push" remote branch args)))
+         (result (madolt-remote--call-with-auth
+                  remote args (list "push" remote branch))))
     (madolt-refresh)
     (madolt-remote--report "Push" remote result)))
 
@@ -170,7 +259,8 @@ ARGS are additional arguments from the transient."
    (list (madolt-remote--read-remote "Push to remote: " t)
          (transient-args 'madolt-push)))
   (let* ((branch (madolt-current-branch))
-         (result (apply #'madolt-call-dolt "push" remote branch args)))
+         (result (madolt-remote--call-with-auth
+                  remote args (list "push" remote branch))))
     (madolt-refresh)
     (madolt-remote--report "Push" remote result)))
 
