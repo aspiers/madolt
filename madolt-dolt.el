@@ -1068,7 +1068,7 @@ When MESSAGE is non-nil, create an annotated tag."
    (and (equal (car args) "remote")
         (member "-v" args)))
  (lambda (_args)
-   "SELECT CONCAT(name, '\t', url) FROM dolt_remotes ORDER BY name"))
+   "SELECT name, url FROM dolt_remotes ORDER BY name"))
 
 (madolt--register-sql-translation
  'tag-list

@@ -50,12 +50,13 @@ configured remote."
      ((member "origin" remotes) "origin")
      (remotes (car remotes)))))
 
-(defun madolt-remote--read-remote (prompt)
-  "Read a remote name with PROMPT, defaulting to the default remote."
+(defun madolt-remote--read-remote (prompt &optional force-prompt)
+  "Read a remote name with PROMPT, defaulting to the default remote.
+With a single remote, auto-selects it unless FORCE-PROMPT is non-nil."
   (let ((remotes (madolt-remote-names)))
     (if (null remotes)
         (user-error "No remotes configured")
-      (if (= (length remotes) 1)
+      (if (and (= (length remotes) 1) (not force-prompt))
           (car remotes)
         (completing-read prompt remotes nil t nil nil
                          (madolt-remote--default))))))
@@ -93,10 +94,10 @@ prompts via `completing-read' with the default pre-selected."
     (madolt-remote--report "Fetch" remote result)))
 
 (defun madolt-fetch-from-remote (remote &optional args)
-  "Fetch from REMOTE.
+  "Fetch from REMOTE, always prompting for which remote.
 ARGS are additional arguments from the transient."
   (interactive
-   (list (madolt-remote--read-remote "Fetch from remote: ")
+   (list (madolt-remote--read-remote "Fetch from remote: " t)
          (transient-args 'madolt-fetch)))
   (let ((result (apply #'madolt-call-dolt "fetch" remote args)))
     (madolt-refresh)
@@ -128,10 +129,10 @@ prompts via `completing-read' with the default pre-selected."
     (madolt-remote--report "Pull" remote result)))
 
 (defun madolt-pull-from-remote (remote &optional args)
-  "Pull from REMOTE.
+  "Pull from REMOTE, always prompting for which remote.
 ARGS are additional arguments from the transient."
   (interactive
-   (list (madolt-remote--read-remote "Pull from remote: ")
+   (list (madolt-remote--read-remote "Pull from remote: " t)
          (transient-args 'madolt-pull)))
   (let ((result (apply #'madolt-call-dolt "pull" remote args)))
     (madolt-refresh)
@@ -163,10 +164,10 @@ prompts via `completing-read' with the default pre-selected."
     (madolt-remote--report "Push" remote result)))
 
 (defun madolt-push-to-remote (remote &optional args)
-  "Push current branch to REMOTE.
+  "Push current branch to REMOTE, always prompting for which remote.
 ARGS are additional arguments from the transient."
   (interactive
-   (list (madolt-remote--read-remote "Push to remote: ")
+   (list (madolt-remote--read-remote "Push to remote: " t)
          (transient-args 'madolt-push)))
   (let* ((branch (madolt-current-branch))
          (result (apply #'madolt-call-dolt "push" remote branch args)))
