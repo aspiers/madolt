@@ -10,11 +10,18 @@ instructions, interactive QA testing guide, and technical notes.
 ## Build & Test
 
 ```bash
-make clean && make compile   # Always clean first to avoid stale .elc
+make clean && make compile   # Full rebuild — use before running tests
 make test                    # Run all 185 tests
 make test-dolt               # Run a single module's tests
 make lint                    # checkdoc
 ```
+
+**During development, `make clean && make compile` is overkill** when
+you've only changed a single file.  Instead, load the source `.el`
+file directly into the running Emacs via `emacsclient --eval
+'(load-file "path/to/file.el")'`.  This is much faster for iterating.
+Save `make clean && make compile` for when you need to run tests
+(which use compiled `.elc` files) or before committing.
 
 **`make test` is slow** (~8 minutes).  **NEVER run it in the foreground
 or with a synchronous tool call** — it WILL time out or block.  Always
@@ -309,7 +316,17 @@ bd close bd-42 --reason "Completed" --json
 3. **Work on it**: Implement, test, document
 4. **Discover new work?** Create linked issue:
    - `bd create "Found bug" --description="Details about what was found" -p 1 --deps discovered-from:<parent-id>`
-5. **Complete**: `bd close <id> --reason "Done"`
+5. **Complete**: Close beads, export, and include in the **same commit**
+   as the code change:
+   ```bash
+   bd close <id> --reason "Done"
+   bd export -o .beads/issues.jsonl
+   git add .beads/issues.jsonl <other-changed-files>
+   git commit -m "feat: description of the change"
+   ```
+   **NEVER** create separate "chore: export beads issues" commits.
+   The export should always be bundled with the code commit that
+   completed the work.
 
 ### Auto-Sync
 
