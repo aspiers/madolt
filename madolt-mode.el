@@ -353,8 +353,7 @@ log per-section timing and cache statistics to *Messages*."
            (section (magit-current-section))
            (rel-pos (and section
                          (magit-section-get-relative-position section))))
-      (when madolt-refresh-verbose
-        (message "Refreshing buffer `%s'..." (buffer-name)))
+      (message "Refreshing madolt...")
       (when refresh-fn
         ;; Set up SQL connection before erasing the buffer so that
         ;; any prompt appears while old content is still visible.
@@ -405,16 +404,16 @@ log per-section timing and cache statistics to *Messages*."
           (magit-section-update-highlight))
         (set-buffer-modified-p nil)
         (push (current-buffer) magit-section--refreshed-buffers)
-        (when madolt-refresh-verbose
-          (let* ((c (caar madolt--refresh-cache))
-                 (a (+ c (cdar madolt--refresh-cache))))
-            (message "Refreshing buffer `%s'...done (%.3fs, cached %s/%s (%.0f%%))"
-                     (buffer-name)
-                     (float-time (time-since start))
-                     c a
-                     (if (> a 0)
-                         (* (/ c (* a 1.0)) 100)
-                       0))))))))
+        (if madolt-refresh-verbose
+            (let* ((c (caar madolt--refresh-cache))
+                   (a (+ c (cdar madolt--refresh-cache))))
+              (message "Refreshing madolt...done (%.3fs, cached %s/%s (%.0f%%))"
+                       (float-time (time-since start))
+                       c a
+                       (if (> a 0)
+                           (* (/ c (* a 1.0)) 100)
+                         0)))
+          (message "Refreshing madolt...done"))))))
 
 (defun madolt-refresh-buffer (&rest _args)
   "Revert buffer function for madolt buffers.
