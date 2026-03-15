@@ -477,17 +477,10 @@ Parses the output of `dolt remote -v'."
 
 ;;;; Status queries
 
-(defun madolt-status-tables ()
-  "Parse `dolt status' and return an alist of change categories.
-Return value is:
-  ((staged    . ((TABLE . STATUS) ...))
-   (unstaged  . ((TABLE . STATUS) ...))
-   (untracked . ((TABLE . STATUS) ...))
-   (conflicts . ((TABLE . STATUS) ...)))
-where STATUS is a string like \"modified\", \"new table\", \"renamed\",
-\"deleted\", or \"both modified\"."
-  (let ((output (cdr (madolt--run "status")))  ; madolt--run is not cached (mutations use it)
-        (staged nil)
+(defun madolt--status-tables-from-cli (output)
+  "Parse CLI `dolt status' OUTPUT into change categories.
+See `madolt-status-tables' for return value format."
+  (let ((staged nil)
         (unstaged nil)
         (untracked nil)
         (conflicts nil)
@@ -515,6 +508,64 @@ where STATUS is a string like \"modified\", \"new table\", \"renamed\",
       (unstaged  . ,(nreverse unstaged))
       (untracked . ,(nreverse untracked))
       (conflicts . ,(nreverse conflicts)))))
+
+(defun madolt--status-tables-from-sql (output)
+  "Parse SQL `dolt_status' OUTPUT into change categories.
+OUTPUT is tab-separated rows: table_name<TAB>staged<TAB>status.
+The staged column is 0 or 1 (from tinyint).  Categorization:
+  staged=1            -> staged
+  staged=0, new table -> untracked
+  staged=0, conflict  -> conflicts
+  staged=0, otherwise -> unstaged
+See `madolt-status-tables' for return value format."
+  (let ((staged nil)
+        (unstaged nil)
+        (untracked nil)
+        (conflicts nil))
+    (dolist (line (split-string output "\n"))
+      (when (string-match "^\\([^\t]+\\)\t\\([01]\\)\t\\(.+\\)$" line)
+        (let ((table (match-string 1 line))
+              (is-staged (equal (match-string 2 line) "1"))
+              (status (match-string 3 line)))
+          (cond
+           (is-staged
+            (push (cons table status) staged))
+           ((string-match-p "conflict\\|both modified" status)
+            (push (cons table status) conflicts))
+           ((equal status "new table")
+            (push (cons table status) untracked))
+           (t
+            (push (cons table status) unstaged))))))
+    `((staged    . ,(nreverse staged))
+      (unstaged  . ,(nreverse unstaged))
+      (untracked . ,(nreverse untracked))
+      (conflicts . ,(nreverse conflicts)))))
+
+(defun madolt--status-output-sql-p (output)
+  "Return non-nil if OUTPUT looks like SQL dolt_status format.
+SQL output is tab-separated rows (table_name<TAB>0|1<TAB>status)
+rather than CLI-formatted sections."
+  (let ((first-line (car (split-string output "\n" t))))
+    (and first-line
+         (string-match-p "^[^\t]+\t[01]\t" first-line))))
+
+(defun madolt-status-tables ()
+  "Parse `dolt status' and return an alist of change categories.
+Return value is:
+  ((staged    . ((TABLE . STATUS) ...))
+   (unstaged  . ((TABLE . STATUS) ...))
+   (untracked . ((TABLE . STATUS) ...))
+   (conflicts . ((TABLE . STATUS) ...)))
+where STATUS is a string like \"modified\", \"new table\", \"renamed\",
+\"deleted\", or \"both modified\".
+
+Handles both CLI-formatted output (section headers with indented
+entries) and SQL-formatted output (tab-separated rows from
+dolt_status) transparently."
+  (let ((output (cdr (madolt--run "status"))))  ; madolt--run is not cached (mutations use it)
+    (if (madolt--status-output-sql-p output)
+        (madolt--status-tables-from-sql output)
+      (madolt--status-tables-from-cli output))))
 
 ;;;; Rebase state
 

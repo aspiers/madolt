@@ -270,6 +270,73 @@
       (should (assoc "t1" unstaged))
       (should (equal (cdr (assoc "t1" unstaged)) "deleted")))))
 
+;;;; SQL-format status parser
+
+(ert-deftest test-madolt-status-output-sql-p ()
+  "madolt--status-output-sql-p detects SQL vs CLI output."
+  (should (madolt--status-output-sql-p "users\t1\tmodified\n"))
+  (should (madolt--status-output-sql-p "t1\t0\tnew table\n"))
+  (should-not (madolt--status-output-sql-p "On branch main\n"))
+  (should-not (madolt--status-output-sql-p
+               "Changes to be committed:\n\tmodified:  users\n"))
+  (should-not (madolt--status-output-sql-p "")))
+
+(ert-deftest test-madolt-status-tables-from-sql-staged ()
+  "madolt--status-tables-from-sql parses staged entries."
+  (let ((result (madolt--status-tables-from-sql "users\t1\tmodified\n")))
+    (should (equal (alist-get 'staged result)
+                   '(("users" . "modified"))))
+    (should (null (alist-get 'unstaged result)))
+    (should (null (alist-get 'untracked result)))))
+
+(ert-deftest test-madolt-status-tables-from-sql-unstaged ()
+  "madolt--status-tables-from-sql parses unstaged entries."
+  (let ((result (madolt--status-tables-from-sql "users\t0\tmodified\n")))
+    (should (null (alist-get 'staged result)))
+    (should (equal (alist-get 'unstaged result)
+                   '(("users" . "modified"))))
+    (should (null (alist-get 'untracked result)))))
+
+(ert-deftest test-madolt-status-tables-from-sql-untracked ()
+  "madolt--status-tables-from-sql routes new tables to untracked."
+  (let ((result (madolt--status-tables-from-sql "orders\t0\tnew table\n")))
+    (should (null (alist-get 'staged result)))
+    (should (null (alist-get 'unstaged result)))
+    (should (equal (alist-get 'untracked result)
+                   '(("orders" . "new table"))))))
+
+(ert-deftest test-madolt-status-tables-from-sql-mixed ()
+  "madolt--status-tables-from-sql handles mixed staged/unstaged/untracked."
+  (let ((result (madolt--status-tables-from-sql
+                 "users\t1\tmodified\nproducts\t0\tmodified\ninventory\t0\tnew table\n")))
+    (should (equal (alist-get 'staged result)
+                   '(("users" . "modified"))))
+    (should (equal (alist-get 'unstaged result)
+                   '(("products" . "modified"))))
+    (should (equal (alist-get 'untracked result)
+                   '(("inventory" . "new table"))))))
+
+(ert-deftest test-madolt-status-tables-from-sql-empty ()
+  "madolt--status-tables-from-sql handles empty output (clean tree)."
+  (let ((result (madolt--status-tables-from-sql "")))
+    (should (null (alist-get 'staged result)))
+    (should (null (alist-get 'unstaged result)))
+    (should (null (alist-get 'untracked result)))
+    (should (null (alist-get 'conflicts result)))))
+
+(ert-deftest test-madolt-status-tables-from-sql-deleted ()
+  "madolt--status-tables-from-sql parses deleted tables."
+  (let ((result (madolt--status-tables-from-sql "t1\t0\tdeleted\n")))
+    (should (equal (alist-get 'unstaged result)
+                   '(("t1" . "deleted"))))))
+
+(ert-deftest test-madolt-status-tables-from-sql-staged-new ()
+  "madolt--status-tables-from-sql routes staged new tables to staged."
+  (let ((result (madolt--status-tables-from-sql "orders\t1\tnew table\n")))
+    (should (equal (alist-get 'staged result)
+                   '(("orders" . "new table"))))
+    (should (null (alist-get 'untracked result)))))
+
 ;;;; Diff queries
 
 (ert-deftest test-madolt-diff-json-returns-parsed ()
