@@ -146,7 +146,10 @@ ARGS should already include the branch to merge."
              output)
             ((string-match-p "\\(conflict\\|error\\|rolled back\\)" output)
              output)
-            ((equal head-before head-after)
+            ;; Skip HEAD check for --squash/--no-commit (they don't change HEAD)
+            ((and (equal head-before head-after)
+                  (not (member "--squash" flags))
+                  (not (member "--no-commit" flags)))
              "HEAD unchanged (merge may have failed silently)"))))
       (madolt-refresh)
       (if failure

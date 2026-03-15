@@ -96,7 +96,7 @@
 ;;;; Merge command — squash does not prompt for message
 
 (ert-deftest test-madolt-merge-squash-no-message-prompt ()
-  "Merging with --squash should not prompt for a merge message."
+  "Merging with --squash should not open a merge message buffer."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
@@ -104,13 +104,14 @@
     (madolt-test-create-table "t2" "id INT PRIMARY KEY")
     (madolt-test-commit "add t2")
     (madolt-branch-checkout "main")
-    (let ((read-string-called nil))
+    (let ((buffer-opened nil))
       (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
-                ((symbol-function 'read-string)
+                ((symbol-function 'madolt-commit--setup-buffer)
                  (lambda (&rest _)
-                   (setq read-string-called t) "")))
+                   (setq buffer-opened t))))
+        ;; --squash bypasses the buffer and calls do-merge directly
         (madolt-merge-command "feature" '("--squash")))
-      (should-not read-string-called))))
+      (should-not buffer-opened))))
 
 ;;;; Merge command — no-commit does not prompt for message
 
@@ -139,10 +140,16 @@
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
     (madolt-branch-create "feature")
-    (let (called-args)
+    (let (called-args
+          (madolt-use-sql-server nil)
+          (call-count 0))
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
-                ((symbol-function 'madolt-refresh) #'ignore))
+                ((symbol-function 'madolt-refresh) #'ignore)
+                ((symbol-function 'madolt-dolt-string)
+                 (lambda (&rest _)
+                   (cl-incf call-count)
+                   (format "hash%d msg" call-count))))
         (madolt-merge--do-merge "my merge" '("--no-ff" "feature"))
         (should (equal called-args
                        '("merge" "-m" "my merge" "--no-ff" "feature")))))))
@@ -155,10 +162,16 @@
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
     (madolt-branch-create "feature")
-    (let (called-args)
+    (let (called-args
+          (madolt-use-sql-server nil)
+          (call-count 0))
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
-                ((symbol-function 'madolt-refresh) #'ignore))
+                ((symbol-function 'madolt-refresh) #'ignore)
+                ((symbol-function 'madolt-dolt-string)
+                 (lambda (&rest _)
+                   (cl-incf call-count)
+                   (format "hash%d msg" call-count))))
         (madolt-merge--do-merge "" '("feature"))
         (should (equal called-args '("merge" "feature")))))))
 
@@ -189,16 +202,14 @@
     (madolt-branch-checkout "main")
     (madolt-test-update-row "t1" "val = 'main-change'" "id = 1")
     (madolt-test-commit "main change")
-    ;; Attempt merge — should fail with conflict
-    (let ((messages nil))
-      (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
-                ((symbol-function 'message)
-                 (lambda (fmt &rest args)
-                   (push (apply #'format fmt args) messages))))
-        (madolt-merge--do-merge "" '("feature")))
-      ;; Should have reported failure
-      (should (cl-some (lambda (msg) (string-match-p "\\(conflict\\|failed\\)" msg))
-                       messages)))))
+    ;; Attempt merge — should signal user-error with conflict info
+    (let ((error-msg nil))
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+        (condition-case err
+            (madolt-merge--do-merge "" '("feature"))
+          (user-error (setq error-msg (error-message-string err)))))
+      (should error-msg)
+      (should (string-match-p "\\(conflict\\|failed\\|CONFLICT\\)" error-msg)))))
 
 ;;;; Merge with --ff-only flag
 
@@ -208,10 +219,16 @@
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
     (madolt-branch-create "feature")
-    (let (called-args)
+    (let (called-args
+          (madolt-use-sql-server nil)
+          (call-count 0))
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
-                ((symbol-function 'madolt-refresh) #'ignore))
+                ((symbol-function 'madolt-refresh) #'ignore)
+                ((symbol-function 'madolt-dolt-string)
+                 (lambda (&rest _)
+                   (cl-incf call-count)
+                   (format "hash%d msg" call-count))))
         (madolt-merge--do-merge "" '("--ff-only" "feature"))
         (should (equal called-args '("merge" "--ff-only" "feature")))))))
 
