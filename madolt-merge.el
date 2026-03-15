@@ -63,20 +63,32 @@
 (defun madolt-merge--do-merge (message args)
   "Execute `dolt merge' with MESSAGE and ARGS.
 ARGS should already include the branch to merge."
-  (let* ((all-args (if (and message (not (string-empty-p message)))
+  (let* ((head-before (madolt-dolt-string "log" "-n" "1" "--oneline"))
+         (all-args (if (and message (not (string-empty-p message)))
                        (append (list "-m" message) args)
                      args))
          (result (apply #'madolt-call-dolt "merge" all-args))
+         (output (madolt--clean-output (cdr result)))
          ;; Extract the branch name (last non-flag arg)
          (branch (car (last (cl-remove-if
                              (lambda (a) (string-prefix-p "-" a))
-                             args)))))
+                             args))))
+         (head-after (madolt-dolt-string "log" "-n" "1" "--oneline")))
     (madolt-refresh)
-    (if (zerop (car result))
-        (message "Merged %s into %s" branch
-                 (madolt-current-branch))
-      (message "Merge failed: %s"
-               (madolt--clean-output (cdr result))))))
+    ;; Message after refresh so it's not overwritten by "Refreshing...done"
+    (cond
+     ;; Non-zero exit code (CLI failure)
+     ((not (zerop (car result)))
+      (message "Merge failed: %s" output))
+     ;; SQL path: error or conflict in output text
+     ((string-match-p "\\(conflict\\|error\\|rolled back\\)" output)
+      (message "Merge failed: %s" output))
+     ;; HEAD didn't change — merge silently did nothing
+     ((equal head-before head-after)
+      (message "Merge failed: HEAD unchanged (possible conflict with autocommit)"))
+     (t
+      (message "Merged %s into %s" branch
+               (madolt-current-branch))))))
 
 (defun madolt-merge-command (branch &optional args)
   "Merge BRANCH into the current branch.

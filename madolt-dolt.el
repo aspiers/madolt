@@ -1258,38 +1258,44 @@ When MESSAGE is non-nil, create an annotated tag."
 ;;; rows with exit code 0, so failures are silently swallowed.
 ;;; The CLI correctly returns non-zero exit codes for these operations.
 
+(defun madolt--merge-parse-args (args)
+  "Parse merge ARGS into (BRANCH MESSAGE FLAGS).
+ARGS is the full arg list starting with \"merge\".
+Returns a plist (:branch BRANCH :message MSG :flags FLAGS)."
+  (let ((rest (cdr args))  ; skip "merge"
+        branch message flags)
+    (while rest
+      (let ((arg (car rest)))
+        (cond
+         ((equal arg "-m")
+          (setq message (cadr rest))
+          (setq rest (cdr rest)))
+         ((string-match "\\`--message=\\(.+\\)" arg)
+          (setq message (match-string 1 arg)))
+         ((string-prefix-p "-" arg)
+          (push arg flags))
+         (t (setq branch arg))))
+      (setq rest (cdr rest)))
+    (list :branch branch :message message :flags (nreverse flags))))
+
 (madolt--register-sql-translation
  'merge
  (lambda (args)
    (and (equal (car args) "merge")
-        (>= (length args) 2)))
+        (>= (length args) 2)
+        ;; Don't translate --abort
+        (not (member "--abort" args))))
  (lambda (args)
-   (let* ((non-flag-args (cl-remove-if
-                          (lambda (a) (or (equal a "merge")
-                                         (string-prefix-p "-" a)))
-                          args))
-          (branch (car non-flag-args))
+   (let* ((parsed (madolt--merge-parse-args args))
+          (branch (plist-get parsed :branch))
+          (message (plist-get parsed :message))
+          (flags (plist-get parsed :flags))
           (sql-args (list (format "'%s'" branch))))
-     ;; Collect flags that DOLT_MERGE supports
-     (when (member "--squash" args)
-       (push "'--squash'" sql-args))
-     (when (member "--no-ff" args)
-       (push "'--no-ff'" sql-args))
-     (when (member "--no-commit" args)
-       (push "'--no-commit'" sql-args))
-     ;; Extract -m message
-     (let ((rest args))
-       (while rest
-         (cond
-          ((equal (car rest) "-m")
-           (when (cdr rest)
-             (push (format "'-m'" ) sql-args)
-             (push (format "'%s'" (cadr rest)) sql-args)
-             (setq rest (cdr rest))))
-          ((string-match "\\`--message=\\(.+\\)" (car rest))
-           (push "'-m'" sql-args)
-           (push (format "'%s'" (match-string 1 (car rest))) sql-args)))
-         (setq rest (cdr rest))))
+     (dolist (flag flags)
+       (push (format "'%s'" flag) sql-args))
+     (when message
+       (push "'-m'" sql-args)
+       (push (format "'%s'" message) sql-args))
      (format "CALL DOLT_MERGE(%s)"
              (mapconcat #'identity (nreverse sql-args) ", ")))))
 
