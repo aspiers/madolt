@@ -220,9 +220,15 @@ On failure, warns the user and falls back to CLI."
                    (rows (funcall 'madolt-connection-query sql))
                    (output (mapconcat
                             (lambda (row) (string-join row "\t"))
-                            rows "\n")))
-              (cons 0 (if (string-empty-p output) output
-                        (concat output "\n")))))
+                            rows "\n"))
+                   ;; Stored procedures return status=1 on failure.
+                   ;; Detect this: first column of first row is "1".
+                   (status-failed
+                    (and rows
+                         (equal "1" (caar rows)))))
+              (cons (if status-failed 1 0)
+                    (if (string-empty-p output) output
+                      (concat output "\n")))))
         (error
          ;; Disconnect so subsequent calls in this refresh go
          ;; straight to CLI instead of retrying a broken connection.

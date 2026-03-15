@@ -287,6 +287,12 @@ comprehensions).  Instead use multi-line Python scripts piped via
 heredoc, or use `jq` if available, or simply use `bd` without
 `--json` for human-readable output when displaying to the user.
 
+More broadly, **never pipe `bd` output through anything** unless
+absolutely necessary for programmatic use.  `bd` without `--json`
+produces perfectly readable human-friendly output.  Use raw `bd`
+commands (e.g. `bd ready`, `bd show <id>`, `bd list`) and read
+their output directly.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
