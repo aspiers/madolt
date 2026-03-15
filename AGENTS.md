@@ -236,11 +236,11 @@ These have registered SQL translations in `madolt-dolt.el`:
 | `dolt tag` (create/delete) | `CALL DOLT_TAG()` |
 | `dolt merge` | `CALL DOLT_MERGE()` |
 
-**Not** SQL-routed (must use CLI):
+**Not** SQL-routed (currently use CLI):
 
-| CLI command | Why CLI-only |
+| CLI command | Why CLI for now |
 |-------------|-------------|
-| `dolt fetch/pull/push` | `DOLT_FETCH/PULL/PUSH()` return errors as result rows with exit code 0, silently swallowing failures. CLI correctly returns non-zero exit codes. |
+| `dolt fetch/pull/push` | `DOLT_FETCH/PULL/PUSH()` return errors as result rows with exit code 0, silently swallowing failures. CLI correctly returns non-zero exit codes. SQL routing could be revisited if error detection is added. |
 
 ## Issue Tracking (bd/beads)
 
