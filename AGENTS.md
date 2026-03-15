@@ -167,6 +167,14 @@ sleep 0.3
   argument is the detail (logged only).  Never use `display-warning`
   for SQL connection issues.
 
+  More broadly, errors from **background data collection** (status
+  refresh, log refresh, refs refresh) should use this hidden log
+  buffer — the user didn't explicitly ask for those commands, so
+  noisy warnings are disruptive.  In contrast, errors from
+  **user-initiated actions** (staging, unstaging, committing, merging,
+  etc.) should appear in the process buffer (`$` to view) since the
+  user explicitly triggered them and needs to see the outcome.
+
 ## Technical Notes
 
 - **Dual backend: CLI + SQL** -- madolt defaults to CLI (`dolt`
