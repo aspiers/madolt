@@ -194,11 +194,12 @@ the output string for callers that inspect it."
 
 (defun madolt--run-sql (args)
   "Try to execute ARGS via SQL translation.
-Returns (0 . OUTPUT) on success, nil if no translation or connection."
+Returns (0 . OUTPUT) on success, nil if no translation or connection.
+On failure, warns the user and falls back to CLI."
   (when (and (bound-and-true-p madolt-use-sql-server)
              (fboundp 'madolt-connection-ensure))
     (when-let ((generator (madolt--find-sql-translation args)))
-      (condition-case nil
+      (condition-case err
           (when (funcall 'madolt-connection-ensure)
             (let* ((sql (funcall generator args))
                    (rows (funcall 'madolt-connection-query sql))
@@ -207,7 +208,14 @@ Returns (0 . OUTPUT) on success, nil if no translation or connection."
                             rows "\n")))
               (cons 0 (if (string-empty-p output) output
                         (concat output "\n")))))
-        (error nil)))))
+        (error
+         (when (fboundp 'madolt-connection--log)
+           (funcall 'madolt-connection--log
+                    "SQL error; falling back to CLI"
+                    (format "dolt %s: %s"
+                            (car args)
+                            (error-message-string err))))
+         nil)))))
 
 ;;;; Parallel prefetch
 

@@ -158,6 +158,15 @@ sleep 0.3
   conventions unless Dolt requires a different approach.  When in doubt,
   check how magit does it and follow that design.
 
+- **Two-tier error reporting for SQL connections** -- user-facing
+  messages should be concise and actionable (e.g. "SQL connection
+  failed; using CLI").  Detailed diagnostics (stack traces, query
+  text, connection parameters) go to the hidden ` *madolt-sql-log*`
+  buffer.  Use `madolt-connection--log` for this: its first argument
+  is the user message (shown in minibuffer), its optional second
+  argument is the detail (logged only).  Never use `display-warning`
+  for SQL connection issues.
+
 ## Technical Notes
 
 - **Dual backend: CLI + SQL** -- madolt defaults to CLI (`dolt`

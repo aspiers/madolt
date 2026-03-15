@@ -94,6 +94,20 @@ Empty string means no password."
   :group 'madolt-connection
   :type 'string)
 
+(defun madolt-connection--log (user-message &optional detail)
+  "Show USER-MESSAGE in the minibuffer and log DETAIL to the SQL log buffer.
+USER-MESSAGE is a concise string shown to the user.
+DETAIL, if provided, is the full diagnostic information appended
+to the log buffer for debugging."
+  (message "%s" user-message)
+  (let ((buf (get-buffer-create " *madolt-sql-log*")))
+    (with-current-buffer buf
+      (goto-char (point-max))
+      (insert (format-time-string "[%H:%M:%S] ")
+              user-message
+              (if detail (concat "\n  " detail) "")
+              "\n"))))
+
 (defvar madolt-connection--declined (make-hash-table :test 'equal)
   "Hash table of database directories where the user declined sql-server.
 Keyed by `file-truename' of the database directory.  Suppresses
@@ -215,7 +229,7 @@ Displays an error message if the server fails to start."
           (progn
             (message "Started dolt sql-server on port %d" port)
             port)
-        ;; Server failed — extract error message for the user.
+        ;; Server failed.
         (let ((err (with-current-buffer buf
                      (string-trim
                       (buffer-substring-no-properties
@@ -223,10 +237,11 @@ Displays an error message if the server fails to start."
           (when (process-live-p process)
             (delete-process process))
           (setf (madolt-connection-server-process conn) nil)
-          (message "Failed to start dolt sql-server: %s"
-                   (if (string-empty-p err)
-                       "server exited with no output"
-                     (car (split-string err "\n"))))
+          (madolt-connection--log
+           "Failed to start sql-server"
+           (if (string-empty-p err)
+               "server exited with no output"
+             err))
           nil)))))
 
 (defun madolt-connection--find-free-port ()
@@ -279,7 +294,22 @@ Returns non-nil on success."
         (setf (madolt-connection-process conn) process)
         (setf (madolt-connection-port conn) port)
         (setf (madolt-connection-ready conn) t)
-        t))))
+        ;; Validate the connection with a test query.  If it fails
+        ;; (e.g. auth error, wrong database), disconnect immediately
+        ;; rather than leaving a broken connection that times out
+        ;; on every subsequent query.
+        (condition-case err
+            (progn
+              (madolt-connection-query "SELECT 1")
+              t)
+          (error
+           (madolt-connection--log
+            "SQL connection failed; using CLI"
+            (format "connect %s:%d: %s"
+                    madolt-sql-server-host port
+                    (error-message-string err)))
+           (madolt-connection-disconnect)
+           nil))))))
 
 (defun madolt-connection--sentinel (process event)
   "Handle PROCESS state change EVENT."
@@ -300,7 +330,7 @@ the query output and surfaced as Emacs warnings instead."
       (dolist (line lines)
         (cond
          ((string-match-p "\\`\\(WARNING\\|ERROR\\) " line)
-          (display-warning 'madolt-connection line :warning))
+          (madolt-connection--log "mysql warning" line))
          (t (push line clean))))
       (let ((filtered (string-join (nreverse clean) "\n")))
         (setf (madolt-connection-pending-output conn)
@@ -331,7 +361,9 @@ Returns nil on error or empty result."
         ;; fall back to CLI immediately instead of timing out again.
         (setf (madolt-connection-pending-output conn) "")
         (madolt-connection-disconnect)
-        (message "SQL connection timed out; falling back to CLI")
+        (madolt-connection--log
+         "SQL query timed out; falling back to CLI"
+         (format "query: %s" sql))
         (error "SQL query timed out")))
     (let ((output (madolt-connection-pending-output conn)))
       (setf (madolt-connection-pending-output conn) "")
