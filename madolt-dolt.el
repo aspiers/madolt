@@ -176,17 +176,20 @@ the output string for callers that inspect it."
                  (stderr (with-temp-buffer
                            (insert-file-contents stderr-file)
                            (string-trim (buffer-string)))))
-            ;; Surface non-empty stderr as a warning
+            ;; Log non-empty stderr to the SQL log buffer.
             (when (and (not (string-empty-p stderr))
                        ;; Suppress noisy "Successful" messages from
                        ;; dolt add/reset/commit on stderr
                        (not (string-prefix-p "Successful" stderr)))
-              (display-warning
-               'madolt
-               (format "dolt %s: %s"
-                       (car args)
-                       (car (split-string stderr "\n")))
-               (if (zerop exit) :warning :error)))
+              (if (fboundp 'madolt-connection--log)
+                  (funcall 'madolt-connection--log
+                           (format "dolt %s: %s"
+                                   (car args)
+                                   (car (split-string stderr "\n")))
+                           stderr)
+                (message "dolt %s: %s"
+                         (car args)
+                         (car (split-string stderr "\n")))))
             (if (zerop exit)
                 (cons exit stdout)
               (cons exit (concat stdout stderr)))))
@@ -285,55 +288,53 @@ code; use `madolt--run' for detailed error output."
               (cl-incf (cdar madolt--refresh-cache))))
           (kill-buffer buf))))))
 
+(defun madolt--warn-failure (args result)
+  "Log a dolt command failure for ARGS with RESULT to the SQL log.
+Shows a concise message to the user; full output goes to the log buffer."
+  (let ((cmd (car args))
+        (output (string-trim (cdr result)))
+        (exit (car result)))
+    (if (fboundp 'madolt-connection--log)
+        (funcall 'madolt-connection--log
+                 (format "dolt %s failed (exit %d)" cmd exit)
+                 output)
+      (message "dolt %s failed (exit %d): %s"
+               cmd exit (car (split-string output "\n"))))))
+
 (defun madolt-dolt-string (&rest args)
   "Execute dolt with ARGS, returning the first line of output.
-Return nil and display a warning if the command fails."
+Return nil and log a warning if the command fails."
   (setq args (madolt--flatten-args args))
   (madolt--with-refresh-cache (cons default-directory args)
     (let ((result (apply #'madolt--run args)))
       (if (zerop (car result))
           (and (not (string-empty-p (cdr result)))
                (car (split-string (cdr result) "\n" t)))
-        (display-warning
-         'madolt
-         (format "dolt %s failed (exit %d): %s"
-                 (car args) (car result)
-                 (car (split-string (string-trim (cdr result)) "\n")))
-         :error)
+        (madolt--warn-failure args result)
         nil))))
 
 (defun madolt-dolt-lines (&rest args)
   "Execute dolt with ARGS, returning output as a list of lines.
-Empty lines are omitted.  Return nil and display a warning if
+Empty lines are omitted.  Return nil and log a warning if
 the command fails."
   (setq args (madolt--flatten-args args))
   (madolt--with-refresh-cache (cons default-directory args)
     (let ((result (apply #'madolt--run args)))
       (if (zerop (car result))
           (split-string (cdr result) "\n" t)
-        (display-warning
-         'madolt
-         (format "dolt %s failed (exit %d): %s"
-                 (car args) (car result)
-                 (car (split-string (string-trim (cdr result)) "\n")))
-         :error)
+        (madolt--warn-failure args result)
         nil))))
 
 (defun madolt-dolt-json (&rest args)
   "Execute dolt with ARGS, returning parsed JSON output.
-Return nil and display a warning if the command fails or the
+Return nil and log a warning if the command fails or the
 output cannot be parsed as JSON."
   (setq args (madolt--flatten-args args))
   (madolt--with-refresh-cache (cons default-directory args)
     (let ((result (apply #'madolt--run args)))
       (if (not (zerop (car result)))
           (progn
-            (display-warning
-             'madolt
-             (format "dolt %s failed (exit %d): %s"
-                     (car args) (car result)
-                     (car (split-string (string-trim (cdr result)) "\n")))
-             :error)
+            (madolt--warn-failure args result)
             nil)
         (and (not (string-empty-p (cdr result)))
              (condition-case err
@@ -341,24 +342,21 @@ output cannot be parsed as JSON."
                                     :object-type 'alist
                                     :array-type 'list)
                (json-parse-error
-                (display-warning
-                 'madolt
-                 (format "dolt %s: JSON parse error: %s"
-                         (car args) (error-message-string err))
-                 :error)
+                (if (fboundp 'madolt-connection--log)
+                    (funcall 'madolt-connection--log
+                             (format "dolt %s: JSON parse error"
+                                     (car args))
+                             (error-message-string err))
+                  (message "dolt %s: JSON parse error: %s"
+                           (car args) (error-message-string err)))
                 nil)))))))
 
 (defun madolt-dolt-insert (&rest args)
   "Execute dolt with ARGS, inserting output at point.
-Return the exit code.  Display a warning on failure."
+Return the exit code.  Log a warning on failure."
   (let ((result (apply #'madolt--run args)))
     (unless (zerop (car result))
-      (display-warning
-       'madolt
-       (format "dolt %s failed (exit %d): %s"
-               (car args) (car result)
-               (car (split-string (string-trim (cdr result)) "\n")))
-       :error))
+      (madolt--warn-failure args result))
     (insert (cdr result))
     (car result)))
 
