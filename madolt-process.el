@@ -162,10 +162,11 @@ OUTPUT is the query output."
                                   'font-lock-face 'madolt-process-heading))
                     (when has-output
                       (magit-insert-section-body
-                        (insert output)
-                        (unless (string-suffix-p "\n" output)
-                          (insert "\n"))
-                        (insert "\n"))))))
+                        (let ((indented
+                               (replace-regexp-in-string
+                                "^" "  " (string-trim-right output))))
+                          (insert indented))
+                        (insert "\n\n"))))))
             ;; Collapse all previously visible sections so only
             ;; the newest command is expanded.
             (when-let ((root (or madolt-process--root-section
