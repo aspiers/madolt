@@ -92,11 +92,11 @@ Empty string means no password."
   :group 'madolt-connection
   :type 'string)
 
-(defvar-local madolt-connection--declined nil
-  "Non-nil if the user declined to start a sql-server in this buffer.
+(defvar madolt-connection--declined nil
+  "Non-nil if the user declined to start a sql-server.
 Set when the user answers \"no\" to the prompt or explicitly stops
-the server.  Suppresses further prompts until the buffer is killed
-or the user explicitly starts a server via `madolt-server-start'.")
+the server.  Suppresses further prompts until the user explicitly
+starts a server via `madolt-server-start'.")
 
 ;;;; Connection state
 
