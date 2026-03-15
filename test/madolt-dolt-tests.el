@@ -847,5 +847,69 @@ The dolt_log system table lacks a parent_hashes column, so
 --parents output cannot be reproduced via SQL."
   (should-not (madolt--find-sql-translation '("log" "--parents" "-n" "10"))))
 
+;;;; Reset SQL translations
+
+(ert-deftest test-madolt-sql-translation-reset-hard ()
+  "Hard reset should generate DOLT_RESET with --hard flag."
+  (let ((gen (madolt--find-sql-translation '("reset" "--hard" "HEAD"))))
+    (should gen)
+    (should (equal (funcall gen '("reset" "--hard" "HEAD"))
+                   "CALL DOLT_RESET('--hard', 'HEAD')"))))
+
+(ert-deftest test-madolt-sql-translation-reset-hard-no-revision ()
+  "Hard reset without revision should generate DOLT_RESET with --hard only."
+  (let ((gen (madolt--find-sql-translation '("reset" "--hard"))))
+    (should gen)
+    (should (equal (funcall gen '("reset" "--hard"))
+                   "CALL DOLT_RESET('--hard')"))))
+
+(ert-deftest test-madolt-sql-translation-reset-soft ()
+  "Soft reset should generate DOLT_RESET with --soft flag."
+  (let ((gen (madolt--find-sql-translation '("reset" "--soft" "HEAD~1"))))
+    (should gen)
+    (should (equal (funcall gen '("reset" "--soft" "HEAD~1"))
+                   "CALL DOLT_RESET('--soft', 'HEAD~1')"))))
+
+(ert-deftest test-madolt-sql-translation-reset-soft-no-revision ()
+  "Soft reset without revision should generate DOLT_RESET with --soft only."
+  (let ((gen (madolt--find-sql-translation '("reset" "--soft"))))
+    (should gen)
+    (should (equal (funcall gen '("reset" "--soft"))
+                   "CALL DOLT_RESET('--soft')"))))
+
+(ert-deftest test-madolt-sql-translation-reset-tables-excludes-hard ()
+  "The reset-tables translation should NOT match --hard."
+  ;; --hard has its own dedicated translation; the reset-tables
+  ;; translation must not match it.
+  (let ((hard-gen (madolt--find-sql-translation '("reset" "--hard" "HEAD")))
+        (tables-gen (madolt--find-sql-translation '("reset" "."))))
+    ;; Both should find *some* generator
+    (should hard-gen)
+    (should tables-gen)
+    ;; But they should be different generators
+    (should-not (eq hard-gen tables-gen))))
+
+(ert-deftest test-madolt-sql-translation-reset-tables-excludes-soft ()
+  "The reset-tables translation should NOT match --soft."
+  (let ((soft-gen (madolt--find-sql-translation '("reset" "--soft" "HEAD")))
+        (tables-gen (madolt--find-sql-translation '("reset" "."))))
+    (should soft-gen)
+    (should tables-gen)
+    (should-not (eq soft-gen tables-gen))))
+
+(ert-deftest test-madolt-sql-translation-reset-mixed ()
+  "Plain reset (mixed) should still produce DOLT_RESET(\\='.')."
+  (let ((gen (madolt--find-sql-translation '("reset" "."))))
+    (should gen)
+    (should (equal (funcall gen '("reset" "."))
+                   "CALL DOLT_RESET('.')"))))
+
+(ert-deftest test-madolt-sql-translation-reset-specific-tables ()
+  "Reset with specific table names should list them."
+  (let ((gen (madolt--find-sql-translation '("reset" "users" "orders"))))
+    (should gen)
+    (should (equal (funcall gen '("reset" "users" "orders"))
+                   "CALL DOLT_RESET('users', 'orders')"))))
+
 (provide 'madolt-dolt-tests)
 ;;; madolt-dolt-tests.el ends here

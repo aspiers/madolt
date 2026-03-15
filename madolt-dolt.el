@@ -1173,10 +1173,40 @@ When MESSAGE is non-nil, create an annotated tag."
                (mapconcat (lambda (tbl) (format "'%s'" tbl)) tables ", "))))))
 
 (madolt--register-sql-translation
+ 'reset-hard
+ (lambda (args)
+   (and (equal (car args) "reset")
+        (member "--hard" args)))
+ (lambda (args)
+   (let ((revision (car (cl-remove-if (lambda (a) (or (equal a "reset")
+                                                      (string-prefix-p "-" a)))
+                                      args))))
+     (if revision
+         (format "CALL DOLT_RESET('--hard', '%s')"
+                 (replace-regexp-in-string "'" "''" revision))
+       "CALL DOLT_RESET('--hard')"))))
+
+(madolt--register-sql-translation
+ 'reset-soft
+ (lambda (args)
+   (and (equal (car args) "reset")
+        (member "--soft" args)))
+ (lambda (args)
+   (let ((revision (car (cl-remove-if (lambda (a) (or (equal a "reset")
+                                                      (string-prefix-p "-" a)))
+                                      args))))
+     (if revision
+         (format "CALL DOLT_RESET('--soft', '%s')"
+                 (replace-regexp-in-string "'" "''" revision))
+       "CALL DOLT_RESET('--soft')"))))
+
+(madolt--register-sql-translation
  'reset-tables
  (lambda (args)
    (and (equal (car args) "reset")
-        (not (member "--help" args))))
+        (not (member "--help" args))
+        (not (member "--hard" args))
+        (not (member "--soft" args))))
  (lambda (args)
    (let ((tables (cl-remove-if (lambda (a) (or (equal a "reset")
                                                (string-prefix-p "-" a)))
