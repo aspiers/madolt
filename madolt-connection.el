@@ -36,6 +36,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'madolt-dolt)
 (require 'transient)
 
@@ -114,29 +115,31 @@ a server via `madolt-server-start'.")
 
 ;;;; Connection state
 
-(defvar madolt-connection--process nil
-  "The mysql client process for the current SQL connection.")
+(cl-defstruct (madolt-connection (:constructor madolt-connection--make))
+  "Per-database SQL connection state."
+  (process nil :documentation "The mysql client process.")
+  (server-process nil :documentation "The dolt sql-server process if started by madolt.")
+  (port nil :documentation "Actual port of the connected sql-server.")
+  (pending-output "" :documentation "Accumulated output for the current query.")
+  (ready nil :documentation "Non-nil when the connection is ready for queries."))
 
-(defvar madolt-connection--server-process nil
-  "The dolt sql-server process if started by madolt.")
+(defvar madolt-connection--connections (make-hash-table :test 'equal)
+  "Hash table mapping database directory keys to `madolt-connection' structs.")
 
-(defvar madolt-connection--db-dir nil
-  "Database directory for the current connection.")
+(defun madolt-connection--get ()
+  "Return the connection struct for the current database, or nil."
+  (gethash (madolt-connection--db-key) madolt-connection--connections))
 
-(defvar madolt-connection--port nil
-  "Actual port of the connected sql-server.")
+(defun madolt-connection--get-or-create ()
+  "Return the connection struct for the current database, creating if needed."
+  (let ((key (madolt-connection--db-key)))
+    (or (gethash key madolt-connection--connections)
+        (puthash key (madolt-connection--make) madolt-connection--connections))))
 
+;; Legacy variable aliases for code that hasn't been updated yet.
+;; These will be removed once all code uses the struct accessors.
 (defvar madolt-connection--output-buffer " *madolt-sql-output*"
   "Buffer name for accumulating SQL query output.")
-
-(defvar madolt-connection--pending-callback nil
-  "Callback for the current pending query.")
-
-(defvar madolt-connection--pending-output ""
-  "Accumulated output for the current query.")
-
-(defvar madolt-connection--ready nil
-  "Non-nil when the connection is ready for queries.")
 
 ;;;; Server detection and startup
 
@@ -175,6 +178,7 @@ this database."
 Returns the port number on success, nil on failure.
 Displays an error message if the server fails to start."
   (let* ((port (madolt-connection--find-free-port))
+         (conn (madolt-connection--get-or-create))
          (buf (get-buffer-create " *madolt-sql-server*"))
          (process (start-process
                    "madolt-sql-server"
@@ -188,7 +192,7 @@ Displays an error message if the server fails to start."
       (erase-buffer))
     (when process
       (set-process-query-on-exit-flag process nil)
-      (setq madolt-connection--server-process process)
+      (setf (madolt-connection-server-process conn) process)
       ;; Wait briefly for server to start
       (let ((tries 0))
         (while (and (< tries 30)
@@ -207,7 +211,7 @@ Displays an error message if the server fails to start."
                        (point-min) (point-max))))))
           (when (process-live-p process)
             (delete-process process))
-          (setq madolt-connection--server-process nil)
+          (setf (madolt-connection-server-process conn) nil)
           (message "Failed to start dolt sql-server: %s"
                    (if (string-empty-p err)
                        "server exited with no output"
@@ -243,43 +247,54 @@ Displays an error message if the server fails to start."
 (defun madolt-connection--connect (port database)
   "Connect to dolt sql-server at PORT for DATABASE.
 Returns non-nil on success."
-  (when madolt-connection--process
-    (madolt-connection-disconnect))
-  (let* ((args (madolt-connection--mysql-args port database))
-         (process (apply #'start-process
-                         "madolt-mysql"
-                         (get-buffer-create madolt-connection--output-buffer)
-                         "mysql"
-                         args)))
-    (when process
-      (set-process-query-on-exit-flag process nil)
-      (set-process-sentinel process #'madolt-connection--sentinel)
-      (set-process-filter process #'madolt-connection--filter)
-      (setq madolt-connection--process process)
-      (setq madolt-connection--port port)
-      (setq madolt-connection--ready t)
-      t)))
+  (let ((conn (madolt-connection--get-or-create)))
+    (when (madolt-connection-process conn)
+      (madolt-connection-disconnect))
+    (let* ((key (madolt-connection--db-key))
+           (args (madolt-connection--mysql-args port database))
+           (process (apply #'start-process
+                           "madolt-mysql"
+                           (get-buffer-create
+                            madolt-connection--output-buffer)
+                           "mysql"
+                           args)))
+      (when process
+        (set-process-query-on-exit-flag process nil)
+        ;; Store db-key on the process so filter/sentinel can find
+        ;; the right connection struct.
+        (process-put process :madolt-db-key key)
+        (set-process-sentinel process #'madolt-connection--sentinel)
+        (set-process-filter process #'madolt-connection--filter)
+        (setf (madolt-connection-process conn) process)
+        (setf (madolt-connection-port conn) port)
+        (setf (madolt-connection-ready conn) t)
+        t))))
 
-(defun madolt-connection--sentinel (_process event)
-  "Handle _PROCESS state change EVENT."
+(defun madolt-connection--sentinel (process event)
+  "Handle PROCESS state change EVENT."
   (when (string-match-p "\\(finished\\|exited\\|killed\\)" event)
-    (setq madolt-connection--ready nil)
-    (setq madolt-connection--process nil)))
+    (when-let ((key (process-get process :madolt-db-key))
+               (conn (gethash key madolt-connection--connections)))
+      (setf (madolt-connection-ready conn) nil)
+      (setf (madolt-connection-process conn) nil))))
 
-(defun madolt-connection--filter (_process output)
-  "Accumulate OUTPUT from _PROCESS, stripping warning lines.
+(defun madolt-connection--filter (process output)
+  "Accumulate OUTPUT from PROCESS, stripping warning lines.
 Lines starting with \"WARNING:\" or \"ERROR \" are removed from
 the query output and surfaced as Emacs warnings instead."
-  (let ((lines (split-string output "\n"))
-        (clean nil))
-    (dolist (line lines)
-      (cond
-       ((string-match-p "\\`\\(WARNING\\|ERROR\\) " line)
-        (display-warning 'madolt-connection line :warning))
-       (t (push line clean))))
-    (let ((filtered (string-join (nreverse clean) "\n")))
-      (setq madolt-connection--pending-output
-            (concat madolt-connection--pending-output filtered)))))
+  (when-let ((key (process-get process :madolt-db-key))
+             (conn (gethash key madolt-connection--connections)))
+    (let ((lines (split-string output "\n"))
+          (clean nil))
+      (dolist (line lines)
+        (cond
+         ((string-match-p "\\`\\(WARNING\\|ERROR\\) " line)
+          (display-warning 'madolt-connection line :warning))
+         (t (push line clean))))
+      (let ((filtered (string-join (nreverse clean) "\n")))
+        (setf (madolt-connection-pending-output conn)
+              (concat (madolt-connection-pending-output conn)
+                      filtered))))))
 
 ;;;; Query execution
 
@@ -289,35 +304,34 @@ Returns a list of rows, where each row is a list of strings.
 Returns nil on error or empty result."
   (unless (madolt-connection-active-p)
     (error "No active SQL connection"))
-  (setq madolt-connection--pending-output "")
-  (process-send-string madolt-connection--process
-                       (concat sql ";\n"))
-  ;; Wait for complete output (mysql --batch ends output with newline)
-  (let ((timeout 5.0)
-        (start (float-time)))
-    (while (and (< (- (float-time) start) timeout)
-                (process-live-p madolt-connection--process)
-                (not (madolt-connection--output-complete-p)))
-      (accept-process-output madolt-connection--process 0.05))
-    (unless (madolt-connection--output-complete-p)
-      ;; Connection is broken — disconnect so subsequent queries
-      ;; fall back to CLI immediately instead of timing out again.
-      (let ((output madolt-connection--pending-output))
-        (setq madolt-connection--pending-output "")
+  (let ((conn (madolt-connection--get)))
+    (setf (madolt-connection-pending-output conn) "")
+    (process-send-string (madolt-connection-process conn)
+                         (concat sql ";\n"))
+    ;; Wait for complete output (mysql --batch ends output with newline)
+    (let ((timeout 5.0)
+          (start (float-time)))
+      (while (and (< (- (float-time) start) timeout)
+                  (process-live-p (madolt-connection-process conn))
+                  (not (madolt-connection--output-complete-p conn)))
+        (accept-process-output (madolt-connection-process conn) 0.05))
+      (unless (madolt-connection--output-complete-p conn)
+        ;; Connection is broken — disconnect so subsequent queries
+        ;; fall back to CLI immediately instead of timing out again.
+        (setf (madolt-connection-pending-output conn) "")
         (madolt-connection-disconnect)
         (message "SQL connection timed out; falling back to CLI")
-        (error "SQL query timed out: %s"
-               (truncate-string-to-width (string-trim output) 80)))))
-  (let ((output madolt-connection--pending-output))
-    (setq madolt-connection--pending-output "")
-    (madolt-connection--parse-batch-output output)))
+        (error "SQL query timed out")))
+    (let ((output (madolt-connection-pending-output conn)))
+      (setf (madolt-connection-pending-output conn) "")
+      (madolt-connection--parse-batch-output output))))
 
-(defun madolt-connection--output-complete-p ()
-  "Check if the pending output contain a complete result."
+(defun madolt-connection--output-complete-p (conn)
+  "Check if CONN has complete output from the current query."
   ;; In batch mode, mysql output ends with a newline after the last row.
-  ;; We detect completion by checking for a trailing newline after content.
-  (and (not (string-empty-p madolt-connection--pending-output))
-       (string-suffix-p "\n" madolt-connection--pending-output)))
+  (let ((output (madolt-connection-pending-output conn)))
+    (and (not (string-empty-p output))
+         (string-suffix-p "\n" output))))
 
 (defun madolt-connection--parse-batch-output (output)
   "Parse mysql batch OUTPUT into a list of rows.
@@ -336,6 +350,12 @@ Wraps SQL to use dolt's JSON output format via FORMAT='json'."
 
 ;;;; Connection lifecycle
 
+(defun madolt-connection--db-name ()
+  "Return the database name for the current directory."
+  (file-name-nondirectory
+   (directory-file-name
+    (or (madolt-database-dir) default-directory))))
+
 (defun madolt-connection-setup ()
   "Set up the SQL connection, possibly prompting to start a server.
 Call this once at the start of a refresh cycle (e.g. from
@@ -351,12 +371,7 @@ prompts."
            (port (or (plist-get info :port)
                      (madolt-connection--maybe-start-server))))
       (when port
-        (let ((db-name (file-name-nondirectory
-                        (directory-file-name
-                         (or (madolt-database-dir) default-directory)))))
-          (setq madolt-connection--db-dir
-                (or (madolt-database-dir) default-directory))
-          (madolt-connection--connect port db-name))))))
+        (madolt-connection--connect port (madolt-connection--db-name))))))
 
 (defun madolt-connection-ensure ()
   "Ensure an SQL connection is active, establishing one if needed.
@@ -367,57 +382,50 @@ starts a server; it only connects to an already-running one."
       (let* ((info (madolt-connection--detect-server))
              (port (plist-get info :port)))
         (when port
-          (let ((db-name (file-name-nondirectory
-                          (directory-file-name
-                           (or (madolt-database-dir) default-directory)))))
-            (setq madolt-connection--db-dir
-                  (or (madolt-database-dir) default-directory))
-            (madolt-connection--connect port db-name))))))
+          (madolt-connection--connect port (madolt-connection--db-name))))))
 
 (defun madolt-connection-active-p ()
-  "Return non-nil if the SQL connection is active and for the current database."
-  (and madolt-connection--ready
-       madolt-connection--process
-       (process-live-p madolt-connection--process)
-       ;; Connection must match the current database directory.
-       (let ((current-db (or (madolt-database-dir) default-directory)))
-         (equal (file-truename madolt-connection--db-dir)
-                (file-truename current-db)))))
+  "Return non-nil if the SQL connection is active for the current database."
+  (when-let ((conn (madolt-connection--get)))
+    (and (madolt-connection-ready conn)
+         (madolt-connection-process conn)
+         (process-live-p (madolt-connection-process conn)))))
 
 (defun madolt-connection-disconnect ()
-  "Disconnect from the sql-server."
-  (when madolt-connection--process
-    (when (process-live-p madolt-connection--process)
-      (process-send-string madolt-connection--process "quit\n")
-      (sit-for 0.1)
-      (when (process-live-p madolt-connection--process)
-        (delete-process madolt-connection--process)))
-    (setq madolt-connection--process nil)
-    (setq madolt-connection--ready nil)))
+  "Disconnect the mysql client for the current database."
+  (when-let ((conn (madolt-connection--get)))
+    (let ((proc (madolt-connection-process conn)))
+      (when proc
+        (when (process-live-p proc)
+          (process-send-string proc "quit\n")
+          (sit-for 0.1)
+          (when (process-live-p proc)
+            (delete-process proc)))
+        (setf (madolt-connection-process conn) nil)
+        (setf (madolt-connection-ready conn) nil)))))
 
 (defun madolt-connection-shutdown ()
-  "Shut down the SQL connection and any server started by madolt."
+  "Shut down the SQL connection and server for the current database."
   (madolt-connection-disconnect)
-  (when (and madolt-connection--server-process
-             (process-live-p madolt-connection--server-process))
-    ;; Send SIGTERM first for graceful shutdown, then wait briefly
-    ;; for the process to exit and clean up its info file.
-    (signal-process madolt-connection--server-process 'SIGTERM)
-    (let ((tries 0))
-      (while (and (< tries 20)
-                  (process-live-p madolt-connection--server-process))
-        (sleep-for 0.1)
-        (cl-incf tries)))
-    ;; Force kill if it didn't exit gracefully
-    (when (process-live-p madolt-connection--server-process)
-      (delete-process madolt-connection--server-process))
-    ;; Remove stale sql-server.info if dolt didn't clean it up
-    (let ((info-file (expand-file-name
-                      ".dolt/sql-server.info"
-                      (or madolt-connection--db-dir default-directory))))
-      (when (file-exists-p info-file)
-        (delete-file info-file)))
-    (setq madolt-connection--server-process nil)))
+  (when-let ((conn (madolt-connection--get)))
+    (let ((server (madolt-connection-server-process conn)))
+      (when (and server (process-live-p server))
+        ;; Send SIGTERM first for graceful shutdown.
+        (signal-process server 'SIGTERM)
+        (let ((tries 0))
+          (while (and (< tries 20) (process-live-p server))
+            (sleep-for 0.1)
+            (cl-incf tries)))
+        ;; Force kill if it didn't exit gracefully.
+        (when (process-live-p server)
+          (delete-process server))
+        ;; Remove stale sql-server.info if dolt didn't clean it up.
+        (let ((db-dir (or (madolt-database-dir) default-directory)))
+          (let ((info-file (expand-file-name
+                            ".dolt/sql-server.info" db-dir)))
+            (when (file-exists-p info-file)
+              (delete-file info-file)))))
+      (setf (madolt-connection-server-process conn) nil))))
 
 ;;;; Cleanup hook
 
@@ -430,7 +438,16 @@ Added to `kill-buffer-hook' for graceful cleanup."
                           (with-current-buffer buf
                             (derived-mode-p 'madolt-mode))))
                    (buffer-list))
-    (madolt-connection-shutdown)))
+    ;; Shut down all connections.
+    (maphash (lambda (_key conn)
+               (let ((proc (madolt-connection-process conn)))
+                 (when (and proc (process-live-p proc))
+                   (delete-process proc)))
+               (let ((server (madolt-connection-server-process conn)))
+                 (when (and server (process-live-p server))
+                   (delete-process server))))
+             madolt-connection--connections)
+    (clrhash madolt-connection--connections)))
 
 ;;;; Interactive commands
 
@@ -440,30 +457,19 @@ Added to `kill-buffer-hook' for graceful cleanup."
   (interactive)
   (madolt-connection--set-declined nil)
   (when (madolt-connection-active-p)
-    (user-error "Already connected to sql-server on port %d"
-                madolt-connection--port))
+    (let ((conn (madolt-connection--get)))
+      (user-error "Already connected to sql-server on port %d"
+                  (madolt-connection-port conn))))
   (let* ((info (madolt-connection--detect-server))
          (port (plist-get info :port)))
     (if port
-        ;; Server already running, just connect
-        (let ((db-name (file-name-nondirectory
-                        (directory-file-name
-                         (or (madolt-database-dir) default-directory)))))
-          (setq madolt-connection--db-dir
-                (or (madolt-database-dir) default-directory))
-          (if (madolt-connection--connect port db-name)
-              (message "Connected to existing sql-server on port %d" port)
-            (message "Failed to connect to sql-server on port %d" port)))
-      ;; No server running, start one
+        (if (madolt-connection--connect port (madolt-connection--db-name))
+            (message "Connected to existing sql-server on port %d" port)
+          (message "Failed to connect to sql-server on port %d" port))
       (let ((new-port (madolt-connection--start-server)))
         (if new-port
-            (let ((db-name (file-name-nondirectory
-                            (directory-file-name
-                             (or (madolt-database-dir)
-                                 default-directory)))))
-              (setq madolt-connection--db-dir
-                    (or (madolt-database-dir) default-directory))
-              (madolt-connection--connect new-port db-name))
+            (madolt-connection--connect
+             new-port (madolt-connection--db-name))
           (message "Failed to start sql-server")))))
   (when (derived-mode-p 'madolt-mode)
     (madolt-refresh)))
@@ -472,28 +478,32 @@ Added to `kill-buffer-hook' for graceful cleanup."
 (defun madolt-server-stop ()
   "Stop the sql-server and disconnect."
   (interactive)
-  (if (or madolt-connection--process
-          madolt-connection--server-process)
-      (progn
-        (madolt-connection-shutdown)
-        (madolt-connection--set-declined t)
-        (message "SQL server stopped")
-        (when (derived-mode-p 'madolt-mode)
-          (madolt-refresh)))
-    (message "No sql-server connection to stop")))
+  (let ((conn (madolt-connection--get)))
+    (if (and conn
+             (or (madolt-connection-process conn)
+                 (madolt-connection-server-process conn)))
+        (progn
+          (madolt-connection-shutdown)
+          (madolt-connection--set-declined t)
+          (message "SQL server stopped")
+          (when (derived-mode-p 'madolt-mode)
+            (madolt-refresh)))
+      (message "No sql-server connection to stop"))))
 
 ;;;###autoload
 (defun madolt-server-status ()
   "Display the sql-server connection status."
   (interactive)
-  (let ((info (madolt-connection--detect-server)))
+  (let ((conn (madolt-connection--get))
+        (info (madolt-connection--detect-server)))
     (cond
      ((madolt-connection-active-p)
       (message "Connected to sql-server on port %d (pid %s)"
-               madolt-connection--port
-               (if madolt-connection--server-process
+               (madolt-connection-port conn)
+               (if (madolt-connection-server-process conn)
                    (format "%d, started by madolt"
-                           (process-id madolt-connection--server-process))
+                           (process-id
+                            (madolt-connection-server-process conn)))
                  (format "%d" (plist-get info :pid)))))
      (info
       (message "sql-server running on port %d (pid %d) but not connected"
