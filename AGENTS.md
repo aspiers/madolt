@@ -161,7 +161,7 @@ sleep 0.3
 - **Two-tier error reporting for SQL connections** -- user-facing
   messages should be concise and actionable (e.g. "SQL connection
   failed; using CLI").  Detailed diagnostics (stack traces, query
-  text, connection parameters) go to the hidden `*madolt-sql-log*`
+  text, connection parameters) go to the hidden ` *madolt-sql-log*`
   buffer.  Use `madolt-connection--log` for this: its first argument
   is the user message (shown in minibuffer), its optional second
   argument is the detail (logged only).  Never use `display-warning`

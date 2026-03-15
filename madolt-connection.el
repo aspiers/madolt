@@ -99,19 +99,27 @@ Empty string means no password."
 Bound dynamically by `madolt-refresh' to collect errors without
 showing each one individually.  A summary is shown after refresh.")
 
+(defun madolt-connection--log-buffer-name ()
+  "Return the SQL log buffer name for the current database."
+  (let ((db (file-name-nondirectory
+             (directory-file-name
+              (or (madolt-database-dir) default-directory)))))
+    (format " *madolt-sql-log: %s*" db)))
+
 (defun madolt-connection--log (user-message &optional detail)
-  "Log USER-MESSAGE and optional DETAIL to the SQL log buffer.
+  "Log USER-MESSAGE and optional DETAIL to the per-database SQL log buffer.
 During a refresh cycle (when `madolt-connection--refresh-errors'
 is bound), the message is accumulated for a single summary at
 the end rather than shown immediately.  Outside refresh, the
 message is shown in the minibuffer."
-  (let ((buf (get-buffer-create "*madolt-sql-log*")))
+  (let ((buf (get-buffer-create (madolt-connection--log-buffer-name))))
     (with-current-buffer buf
-      (goto-char (point-max))
-      (insert (format-time-string "[%H:%M:%S] ")
-              user-message
-              (if detail (concat "\n  " detail) "")
-              "\n")))
+      (let ((inhibit-read-only t))
+        (goto-char (point-max))
+        (insert (format-time-string "[%H:%M:%S] ")
+                user-message
+                (if detail (concat "\n  " detail) "")
+                "\n"))))
   (if (boundp 'madolt-connection--refresh-errors)
       (cl-pushnew user-message madolt-connection--refresh-errors
                   :test #'equal)
@@ -596,6 +604,23 @@ If it was started externally, prompt for confirmation first."
      (t
       (message "No sql-server running")))))
 
+(define-derived-mode madolt-sql-log-mode special-mode "Madolt SQL Log"
+  "Mode for the madolt SQL connection log buffer.")
+
+;;;###autoload
+(defun madolt-server-log ()
+  "Display the SQL connection log for the current database."
+  (interactive)
+  (let ((buf (get-buffer (madolt-connection--log-buffer-name))))
+    (if buf
+        (progn
+          (pop-to-buffer buf)
+          (unless (derived-mode-p 'madolt-sql-log-mode)
+            (madolt-sql-log-mode))
+          (goto-char (point-max))
+          (forward-line -1))
+      (message "No SQL log entries yet"))))
+
 ;;;; Transient menu
 
 (defun madolt-server--current-port ()
@@ -648,7 +673,8 @@ If a server is running on a different port, prompt to restart."
   ["SQL Server"
    [("s" "Start / connect" madolt-server-start)
     ("k" "Stop"            madolt-server-stop)
-    ("i" "Status"          madolt-server-status)]
+    ("i" "Status"          madolt-server-status)
+    ("l" "View log"        madolt-server-log)]
    [("-p" "Port" madolt-server-port-infix)]])
 
 (provide 'madolt-connection)
