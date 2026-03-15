@@ -270,6 +270,14 @@ bd close <id>         # Complete work
 bd export -o .beads/issues.jsonl  # Export issues for git
 ```
 
+## Parsing `bd` JSON Output
+
+**Do NOT use inline Python one-liners to parse `bd --json` output.**
+They are fragile and error-prone (e.g. scoping issues in list
+comprehensions).  Instead use multi-line Python scripts piped via
+heredoc, or use `jq` if available, or simply use `bd` without
+`--json` for human-readable output when displaying to the user.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.

@@ -87,22 +87,33 @@ then re-enables it after."
                           (lambda (row) (string-join row "\t"))
                           rows "\n"))
                  ;; DOLT_MERGE returns: hash, fast_forward, conflicts, message
-                 ;; But column count varies; detect conflicts by checking
-                 ;; for "conflict" in any column value
-                 (has-conflicts
+                 ;; The hash column may be empty and trimmed by the parser,
+                 ;; so detect conflicts by checking for "conflict" in any
+                 ;; column value, or a non-zero numeric conflicts column.
+                 (conflict-msg
                   (and rows
-                       (cl-some (lambda (col)
-                                  (string-match-p "conflict" col))
-                                (car rows)))))
-            (if has-conflicts
+                       (let ((row (car rows)))
+                         (or
+                          ;; Check for "conflict" keyword in message column
+                          (cl-some (lambda (col)
+                                     (and (string-match-p "conflict" col)
+                                          col))
+                                   row)
+                          ;; Check for numeric conflicts > 0
+                          (cl-some (lambda (col)
+                                     (and (string-match-p "\\`[0-9]+\\'" col)
+                                          (> (string-to-number col) 0)
+                                          (format "%s conflict(s)" col)))
+                                   row))))))
+            (if conflict-msg
                 ;; Report conflict; disconnect to reset session state
                 ;; (DOLT_MERGE('--abort') can be very slow on large databases,
                 ;; so we just disconnect instead, which rolls back the transaction)
                 (progn
                   (when (fboundp 'madolt-connection-disconnect)
                     (funcall 'madolt-connection-disconnect))
-                  (cons 1 (format "Merge conflict: %s"
-                                  (string-join (car rows) " "))))
+                  (cons 1 (format "Merge conflict with %s: %s"
+                                  branch conflict-msg)))
               ;; Commit and re-enable autocommit
               (funcall query-fn "COMMIT" 30)
               (funcall query-fn "SET @@autocommit = 1" 10)
