@@ -606,5 +606,79 @@ indicator to show misleading ellipsis characters."
         (should (= (length longer-sections) 1))
         (should (string-match-p "3 of 6 shown" (buffer-string)))))))
 
+;;;; Multi-line field value formatting
+
+(ert-deftest test-madolt-diff-format-field-value-single-line ()
+  "Single-line values are returned inline with face."
+  (let ((result (madolt-diff--format-field-value "hello" 'madolt-diff-added "      ")))
+    (should (equal (substring-no-properties result) "hello"))
+    (should (eq (get-text-property 0 'font-lock-face result) 'madolt-diff-added))))
+
+(ert-deftest test-madolt-diff-format-field-value-multi-line ()
+  "Multi-line values produce newline followed by indented lines."
+  (let ((result (madolt-diff--format-field-value "line1\nline2\nline3"
+                                                  'madolt-diff-added "      ")))
+    (should (string-prefix-p "\n" result))
+    (should (string-match-p "^      line1$" (substring-no-properties result)))
+    (should (string-match-p "^      line2$" (substring-no-properties result)))
+    (should (string-match-p "^      line3$" (substring-no-properties result)))))
+
+(ert-deftest test-madolt-diff-format-field-value-numeric ()
+  "Numeric values are formatted as strings."
+  (let ((result (madolt-diff--format-field-value 42 'madolt-diff-context "    ")))
+    (should (equal (substring-no-properties result) "42"))))
+
+(ert-deftest test-madolt-diff-insert-row-details-multiline-added ()
+  "Added row with multi-line value should indent each line."
+  (with-temp-buffer
+    (let ((madolt-diff--indent "  "))
+      (madolt-diff--insert-row-details
+       `((to_row . ((id . 1) (bio . "line1\nline2"))))
+       'added)
+      (let ((content (buffer-string)))
+        ;; Field name on its own logical line
+        (should (string-match-p "bio:" content))
+        ;; Each value line indented further than the field
+        (should (string-match-p "^        line1$" content))
+        (should (string-match-p "^        line2$" content))))))
+
+(ert-deftest test-madolt-diff-insert-row-details-singleline-added ()
+  "Added row with single-line value keeps value inline."
+  (with-temp-buffer
+    (let ((madolt-diff--indent "  "))
+      (madolt-diff--insert-row-details
+       `((to_row . ((id . 1) (name . "Alice"))))
+       'added)
+      (let ((content (buffer-string)))
+        ;; Value appears on same line as field name
+        (should (string-match-p "name:  Alice" content))))))
+
+(ert-deftest test-madolt-diff-modified-details-multiline-changed ()
+  "Modified row with multi-line changed value renders old/new blocks."
+  (with-temp-buffer
+    (let ((madolt-diff--indent "  "))
+      (madolt-diff--insert-modified-details
+       '((id . 1) (bio . "old line1\nold line2"))
+       '((id . 1) (bio . "new line1\nnew line2")))
+      (let ((content (buffer-string)))
+        ;; Should show old lines
+        (should (string-match-p "old line1" content))
+        (should (string-match-p "old line2" content))
+        ;; Arrow separator
+        (should (string-match-p "→" content))
+        ;; Should show new lines
+        (should (string-match-p "new line1" content))
+        (should (string-match-p "new line2" content))))))
+
+(ert-deftest test-madolt-diff-modified-details-singleline-unchanged ()
+  "Modified row with single-line unchanged value keeps inline format."
+  (with-temp-buffer
+    (let ((madolt-diff--indent "  "))
+      (madolt-diff--insert-modified-details
+       '((id . 1) (name . "Alice"))
+       '((id . 1) (name . "Alice")))
+      (let ((content (buffer-string)))
+        (should (string-match-p "name:  Alice" content))))))
+
 (provide 'madolt-diff-tests)
 ;;; madolt-diff-tests.el ends here

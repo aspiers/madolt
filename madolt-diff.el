@@ -647,6 +647,23 @@ Uses `madolt-diff--current-table' to look up primary key columns."
       value
     (concat (substring value 0 (max 0 (1- max-len))) "…")))
 
+(defun madolt-diff--format-field-value (value face value-indent)
+  "Format VALUE with FACE for a detail field line.
+For single-line values, return the propertized value for inline
+display after the field name.  For multi-line values, return a
+newline followed by each line indented to VALUE-INDENT and
+propertized with FACE."
+  (let ((str (format "%s" value)))
+    (if (not (string-match-p "\n" str))
+        (propertize str 'font-lock-face face)
+      (let ((lines (split-string str "\n")))
+        (concat "\n"
+                (mapconcat
+                 (lambda (line)
+                   (concat value-indent
+                           (propertize line 'font-lock-face face)))
+                 lines "\n"))))))
+
 (defun madolt-diff--vec-sum (vec)
   "Return sum of all elements in vector VEC."
   (let ((sum 0))
@@ -778,7 +795,8 @@ added/removed colours, column names are bold, values are plain."
   "Insert expanded detail lines for ROW-CHANGE of CHANGE-TYPE."
   (let ((from-row (alist-get 'from_row row-change))
         (to-row (alist-get 'to_row row-change))
-        (detail-indent (concat madolt-diff--indent "    ")))
+        (detail-indent (concat madolt-diff--indent "    "))
+        (value-indent (concat madolt-diff--indent "      ")))
     (pcase change-type
       ('added
        (dolist (pair to-row)
@@ -786,16 +804,16 @@ added/removed colours, column names are bold, values are plain."
                          detail-indent
                          (propertize (symbol-name (car pair))
                                      'font-lock-face 'madolt-diff-column-name)
-                         (propertize (format "%s" (cdr pair))
-                                     'font-lock-face 'madolt-diff-added)))))
+                         (madolt-diff--format-field-value
+                          (cdr pair) 'madolt-diff-added value-indent)))))
       ('deleted
        (dolist (pair from-row)
          (insert (format "%s%s:  %s\n"
                          detail-indent
                          (propertize (symbol-name (car pair))
                                      'font-lock-face 'madolt-diff-column-name)
-                         (propertize (format "%s" (cdr pair))
-                                     'font-lock-face 'madolt-diff-removed)))))
+                         (madolt-diff--format-field-value
+                          (cdr pair) 'madolt-diff-removed value-indent)))))
       ('modified
        (madolt-diff--insert-modified-details from-row to-row)))))
 
@@ -803,7 +821,8 @@ added/removed colours, column names are bold, values are plain."
   "Insert cell-by-cell comparison for modified FROM-ROW vs TO-ROW."
   ;; Gather all keys preserving order from from-row, then add new keys
   (let ((keys (mapcar #'car from-row))
-        (detail-indent (concat madolt-diff--indent "    ")))
+        (detail-indent (concat madolt-diff--indent "    "))
+        (value-indent (concat madolt-diff--indent "      ")))
     (dolist (pair to-row)
       (unless (memq (car pair) keys)
         (push (car pair) keys)))
@@ -817,17 +836,34 @@ added/removed colours, column names are bold, values are plain."
                             detail-indent
                             (propertize (symbol-name key)
                                         'font-lock-face 'madolt-diff-column-name)
-                            (propertize (format "%s" old-val)
-                                        'font-lock-face 'madolt-diff-context)))
+                            (madolt-diff--format-field-value
+                             old-val 'madolt-diff-context value-indent)))
           ;; Changed cell
-          (insert (format "%s%s:  %s → %s\n"
-                          detail-indent
-                          (propertize (symbol-name key)
-                                      'font-lock-face 'madolt-diff-changed-cell)
-                          (propertize (format "%s" (or old-val "∅"))
-                                      'font-lock-face 'madolt-diff-old)
-                          (propertize (format "%s" (or new-val "∅"))
-                                      'font-lock-face 'madolt-diff-new))))))))
+          (let* ((old-str (format "%s" (or old-val "∅")))
+                 (new-str (format "%s" (or new-val "∅")))
+                 (multiline (or (string-match-p "\n" old-str)
+                                (string-match-p "\n" new-str))))
+            (if (not multiline)
+                (insert (format "%s%s:  %s → %s\n"
+                                detail-indent
+                                (propertize (symbol-name key)
+                                            'font-lock-face 'madolt-diff-changed-cell)
+                                (propertize old-str 'font-lock-face 'madolt-diff-old)
+                                (propertize new-str 'font-lock-face 'madolt-diff-new)))
+              ;; Multi-line changed cell: show old and new on separate
+              ;; indented blocks with a separator
+              (insert (format "%s%s:\n" detail-indent
+                              (propertize (symbol-name key)
+                                          'font-lock-face 'madolt-diff-changed-cell)))
+              (dolist (line (split-string old-str "\n"))
+                (insert (format "%s%s\n" value-indent
+                                (propertize line 'font-lock-face 'madolt-diff-old))))
+              (insert (format "%s%s\n" value-indent
+                              (propertize "→" 'font-lock-face 'madolt-diff-changed-cell)))
+              (dolist (line (split-string new-str "\n"))
+                (insert (format "%s%s\n" value-indent
+                                (propertize line 'font-lock-face 'madolt-diff-new)))))))))
+    ))
 
 ;;;; Raw mode
 
