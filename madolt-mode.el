@@ -71,6 +71,7 @@
 (declare-function madolt-show-refs "madolt-refs" ())
 (declare-function madolt-server "madolt-connection" ())
 (declare-function madolt-connection-setup "madolt-connection" ())
+(defvar madolt-connection--refresh-errors)
 (declare-function madolt-dispatch "madolt" ())
 (declare-function madolt-status-jump "madolt-status" ())
 (declare-function madolt-visit-thing "madolt-status" ())
@@ -349,6 +350,7 @@ log per-section timing and cache statistics to *Messages*."
     (let* ((start (current-time))
            (madolt--refresh-cache (or madolt--refresh-cache
                                       (list (cons 0 0))))
+           (madolt-connection--refresh-errors nil)
            (refresh-fn (madolt--refresh-function))
            (section (magit-current-section))
            (rel-pos (and section
@@ -404,16 +406,24 @@ log per-section timing and cache statistics to *Messages*."
           (magit-section-update-highlight))
         (set-buffer-modified-p nil)
         (push (current-buffer) magit-section--refreshed-buffers)
-        (if madolt-refresh-verbose
-            (let* ((c (caar madolt--refresh-cache))
-                   (a (+ c (cdar madolt--refresh-cache))))
-              (message "Refreshing madolt...done (%.3fs, cached %s/%s (%.0f%%))"
-                       (float-time (time-since start))
-                       c a
-                       (if (> a 0)
-                           (* (/ c (* a 1.0)) 100)
-                         0)))
-          (message "Refreshing madolt...done"))))))
+        (cond
+         (madolt-connection--refresh-errors
+          ;; Show a single summary of errors
+          (message "Refreshing madolt...done (%d error%s; see ` *madolt-sql-log*')"
+                   (length madolt-connection--refresh-errors)
+                   (if (= 1 (length madolt-connection--refresh-errors))
+                       "" "s")))
+         (madolt-refresh-verbose
+          (let* ((c (caar madolt--refresh-cache))
+                 (a (+ c (cdar madolt--refresh-cache))))
+            (message "Refreshing madolt...done (%.3fs, cached %s/%s (%.0f%%))"
+                     (float-time (time-since start))
+                     c a
+                     (if (> a 0)
+                         (* (/ c (* a 1.0)) 100)
+                       0))))
+         (t
+          (message "Refreshing madolt...done")))))))
 
 (defun madolt-refresh-buffer (&rest _args)
   "Revert buffer function for madolt buffers.

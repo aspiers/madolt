@@ -94,19 +94,28 @@ Empty string means no password."
   :group 'madolt-connection
   :type 'string)
 
+(defvar madolt-connection--refresh-errors nil
+  "List of error messages accumulated during the current refresh.
+Bound dynamically by `madolt-refresh' to collect errors without
+showing each one individually.  A summary is shown after refresh.")
+
 (defun madolt-connection--log (user-message &optional detail)
-  "Show USER-MESSAGE in the minibuffer and log DETAIL to the SQL log buffer.
-USER-MESSAGE is a concise string shown to the user.
-DETAIL, if provided, is the full diagnostic information appended
-to the log buffer for debugging."
-  (message "%s" user-message)
+  "Log USER-MESSAGE and optional DETAIL to the SQL log buffer.
+During a refresh cycle (when `madolt-connection--refresh-errors'
+is bound), the message is accumulated for a single summary at
+the end rather than shown immediately.  Outside refresh, the
+message is shown in the minibuffer."
   (let ((buf (get-buffer-create " *madolt-sql-log*")))
     (with-current-buffer buf
       (goto-char (point-max))
       (insert (format-time-string "[%H:%M:%S] ")
               user-message
               (if detail (concat "\n  " detail) "")
-              "\n"))))
+              "\n")))
+  (if (boundp 'madolt-connection--refresh-errors)
+      (cl-pushnew user-message madolt-connection--refresh-errors
+                  :test #'equal)
+    (message "%s" user-message)))
 
 (defvar madolt-connection--declined (make-hash-table :test 'equal)
   "Hash table of database directories where the user declined sql-server.

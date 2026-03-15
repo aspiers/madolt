@@ -212,9 +212,15 @@ On failure, warns the user and falls back to CLI."
               (cons 0 (if (string-empty-p output) output
                         (concat output "\n")))))
         (error
+         ;; Disconnect so subsequent calls in this refresh go
+         ;; straight to CLI instead of retrying a broken connection.
+         (when (fboundp 'madolt-connection-disconnect)
+           (funcall 'madolt-connection-disconnect))
+         (when (fboundp 'madolt-connection--set-declined)
+           (funcall 'madolt-connection--set-declined t))
          (when (fboundp 'madolt-connection--log)
            (funcall 'madolt-connection--log
-                    "SQL error; falling back to CLI"
+                    "SQL connection failed; using CLI"
                     (format "dolt %s: %s"
                             (car args)
                             (error-message-string err))))
