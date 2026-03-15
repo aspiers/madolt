@@ -498,7 +498,8 @@ Added to `kill-buffer-hook' for graceful cleanup."
         (info (madolt-connection--detect-server)))
     (cond
      ((madolt-connection-active-p)
-      (message "Connected to sql-server on port %d (pid %s)"
+      (message "Connected to sql-server on %s:%d (pid %s)"
+               madolt-sql-server-host
                (madolt-connection-port conn)
                (if (madolt-connection-server-process conn)
                    (format "%d, started by madolt"
@@ -506,7 +507,8 @@ Added to `kill-buffer-hook' for graceful cleanup."
                             (madolt-connection-server-process conn)))
                  (format "%d" (plist-get info :pid)))))
      (info
-      (message "sql-server running on port %d (pid %d) but not connected"
+      (message "sql-server running on %s:%d (pid %d) but not connected"
+               madolt-sql-server-host
                (plist-get info :port) (plist-get info :pid)))
      (t
       (message "No sql-server running")))))
