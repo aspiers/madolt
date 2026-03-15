@@ -105,7 +105,7 @@ During a refresh cycle (when `madolt-connection--refresh-errors'
 is bound), the message is accumulated for a single summary at
 the end rather than shown immediately.  Outside refresh, the
 message is shown in the minibuffer."
-  (let ((buf (get-buffer-create " *madolt-sql-log*")))
+  (let ((buf (get-buffer-create "*madolt-sql-log*")))
     (with-current-buffer buf
       (goto-char (point-max))
       (insert (format-time-string "[%H:%M:%S] ")

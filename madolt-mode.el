@@ -409,7 +409,7 @@ log per-section timing and cache statistics to *Messages*."
         (cond
          (madolt-connection--refresh-errors
           ;; Show a single summary of errors
-          (message "Refreshing madolt...done (%d error%s; see ` *madolt-sql-log*')"
+          (message "Refreshing madolt...done (%d error%s; see *madolt-sql-log*)"
                    (length madolt-connection--refresh-errors)
                    (if (= 1 (length madolt-connection--refresh-errors))
                        "" "s")))
