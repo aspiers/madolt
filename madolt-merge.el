@@ -74,6 +74,10 @@ ARGS should already include the branch to merge."
                              (lambda (a) (string-prefix-p "-" a))
                              args))))
          (head-after (madolt-dolt-string "log" "-n" "1" "--oneline")))
+    ;; Reset SQL connection after merge to avoid stale session state
+    ;; (DOLT_MERGE can leave the connection in a bad state on conflict)
+    (when (fboundp 'madolt-connection-disconnect)
+      (madolt-connection-disconnect))
     (madolt-refresh)
     ;; Message after refresh so it's not overwritten by "Refreshing...done"
     (cond

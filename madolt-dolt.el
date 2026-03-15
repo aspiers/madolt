@@ -450,9 +450,24 @@ This checks the current database directory and its parents."
                        parent))))))
 
 (defun madolt-current-branch ()
-  "Return the name of the current Dolt branch as a string."
+  "Return the name of the current Dolt branch as a string.
+If the SQL path returns a suspicious value (e.g. a number from
+a corrupted session), disconnects and retries via CLI."
   (let ((branch (madolt-dolt-string "branch" "--show-current")))
-    (and branch (string-trim branch))))
+    (when branch
+      (setq branch (string-trim branch))
+      ;; Detect corrupted SQL session state: active_branch() may
+      ;; return a column value from a prior stored procedure call
+      ;; (e.g. fast_forward=1 from DOLT_MERGE).
+      (when (and (string-match-p "\\`[0-9]+\\'" branch)
+                 (bound-and-true-p madolt-use-sql-server)
+                 (fboundp 'madolt-connection-disconnect))
+        (funcall 'madolt-connection-disconnect)
+        (setq branch (string-trim
+                      (or (cdr (madolt--run-cli
+                                (list "branch" "--show-current")))
+                          "")))))
+    branch))
 
 (defun madolt-remotes ()
   "Return an alist of (NAME . URL) for configured remotes.
