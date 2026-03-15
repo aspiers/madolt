@@ -364,6 +364,9 @@ TIMEOUT is the maximum seconds to wait (default 5)."
   (unless (madolt-connection-active-p)
     (error "No active SQL connection"))
   (let ((conn (madolt-connection--get)))
+    ;; Drain any late-arriving output from a previous query
+    (setf (madolt-connection-pending-output conn) "")
+    (accept-process-output (madolt-connection-process conn) 0.01)
     (setf (madolt-connection-pending-output conn) "")
     (process-send-string (madolt-connection-process conn)
                          (concat sql ";\n"))
@@ -396,9 +399,11 @@ TIMEOUT is the maximum seconds to wait (default 5)."
 
 (defun madolt-connection--parse-batch-output (output)
   "Parse mysql batch OUTPUT into a list of rows.
-Each row is a list of column values as strings."
-  (when (and output (not (string-empty-p (string-trim output))))
-    (let ((lines (split-string (string-trim output) "\n" t)))
+Each row is a list of column values as strings.
+Only trailing newlines are stripped; leading whitespace is preserved
+to avoid losing empty column values (e.g. empty hash from DOLT_MERGE)."
+  (when (and output (not (string-empty-p (string-trim-right output))))
+    (let ((lines (split-string (string-trim-right output) "\n" t)))
       (mapcar (lambda (line)
                 (split-string line "\t"))
               lines))))
