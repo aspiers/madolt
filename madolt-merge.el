@@ -211,9 +211,17 @@ When the merge was started via SQL, finalizes the SQL transaction."
       (message "Commit failed: %s" (string-trim (cdr result))))))
 
 (defun madolt-merge-abort-command ()
-  "Abort the current merge."
+  "Abort the current merge.
+Uses `dolt sql -q' when a SQL server is running, since
+`dolt merge --abort' CLI refuses to run alongside a server."
   (interactive)
-  (let ((result (madolt-call-dolt "merge" "--abort")))
+  (let ((result (if (madolt-sql-server-info)
+                    (madolt--run-cli
+                     (list "sql" "-q" "CALL DOLT_MERGE('--abort')"))
+                  (madolt-call-dolt "merge" "--abort"))))
+    ;; Disconnect SQL to reset session state after abort
+    (when (fboundp 'madolt-connection-disconnect)
+      (madolt-connection-disconnect))
     (madolt-refresh)
     (if (zerop (car result))
         (message "Merge aborted")
