@@ -59,8 +59,8 @@ ARGS are additional arguments from the transient."
   (interactive
    (list (completing-read
           (format "Merge into %s: " (madolt-current-branch))
-          (remove (madolt-current-branch) (madolt-branch-names))
-          nil t)
+          (remove (madolt-current-branch) (madolt-all-ref-names))
+          nil nil)
          (transient-args 'madolt-merge)))
   (let* ((msg-arg (and (not (member "--squash" args))
                        (not (member "--no-commit" args))

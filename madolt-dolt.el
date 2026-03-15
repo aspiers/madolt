@@ -758,6 +758,25 @@ TABLES is a list of table name strings."
               (string-trim (replace-regexp-in-string "^\\*\\s-*" "" line)))
             lines)))
 
+(defun madolt-all-ref-names ()
+  "Return a list of all ref names (local branches, remote branches, tags)."
+  (let ((branches (madolt-dolt-lines "branch" "-a"))
+        (tags (mapcar (lambda (line)
+                        (string-trim
+                         (replace-regexp-in-string "^\\*\\s-*" "" line)))
+                      (madolt-dolt-lines "tag"))))
+    (append
+     (mapcar (lambda (line)
+               (let ((name (string-trim
+                            (replace-regexp-in-string "^\\*\\s-*" "" line))))
+                 ;; Remote branches show as "remotes/origin/main"
+                 ;; — strip the "remotes/" prefix for usability.
+                 (if (string-prefix-p "remotes/" name)
+                     (substring name (length "remotes/"))
+                   name)))
+             branches)
+     tags)))
+
 (defun madolt-branch-list-verbose ()
   "Return a list of branch plists from `dolt branch -av'.
 Each plist has keys :name :hash :message :current :remote.
