@@ -62,7 +62,8 @@ ARGS are additional arguments from the transient."
           (remove (madolt-current-branch) (madolt-all-ref-names))
           nil nil)
          (transient-args 'madolt-merge)))
-  (let* ((msg-arg (and (not (member "--squash" args))
+  (let* ((current (madolt-current-branch))
+         (msg-arg (and (not (member "--squash" args))
                        (not (member "--no-commit" args))
                        (read-string "Merge message (empty for default): ")))
          (all-args (append args
@@ -72,8 +73,9 @@ ARGS are additional arguments from the transient."
          (result (apply #'madolt-call-dolt "merge" all-args)))
     (madolt-refresh)
     (if (zerop (car result))
-        (message "Merged %s into %s" branch (madolt-current-branch))
-      (message "Merge failed: %s" (string-trim (cdr result))))))
+        (message "Merged %s into %s" branch current)
+      (message "Merge failed: %s"
+               (madolt--clean-output (cdr result))))))
 
 (defun madolt-merge-abort-command ()
   "Abort the current merge."

@@ -1264,8 +1264,34 @@ When MESSAGE is non-nil, create an annotated tag."
    (and (equal (car args) "merge")
         (>= (length args) 2)))
  (lambda (args)
-   (let ((branch (nth 1 args)))
-     (format "CALL DOLT_MERGE('%s')" branch))))
+   (let* ((non-flag-args (cl-remove-if
+                          (lambda (a) (or (equal a "merge")
+                                         (string-prefix-p "-" a)))
+                          args))
+          (branch (car non-flag-args))
+          (sql-args (list (format "'%s'" branch))))
+     ;; Collect flags that DOLT_MERGE supports
+     (when (member "--squash" args)
+       (push "'--squash'" sql-args))
+     (when (member "--no-ff" args)
+       (push "'--no-ff'" sql-args))
+     (when (member "--no-commit" args)
+       (push "'--no-commit'" sql-args))
+     ;; Extract -m message
+     (let ((rest args))
+       (while rest
+         (cond
+          ((equal (car rest) "-m")
+           (when (cdr rest)
+             (push (format "'-m'" ) sql-args)
+             (push (format "'%s'" (cadr rest)) sql-args)
+             (setq rest (cdr rest))))
+          ((string-match "\\`--message=\\(.+\\)" (car rest))
+           (push "'-m'" sql-args)
+           (push (format "'%s'" (match-string 1 (car rest))) sql-args)))
+         (setq rest (cdr rest))))
+     (format "CALL DOLT_MERGE(%s)"
+             (mapconcat #'identity (nreverse sql-args) ", ")))))
 
 (provide 'madolt-dolt)
 ;;; madolt-dolt.el ends here
