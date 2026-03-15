@@ -600,6 +600,15 @@ dolt_status) transparently."
         (madolt--status-tables-from-sql output)
       (madolt--status-tables-from-cli output))))
 
+(defun madolt-anything-modified-p ()
+  "Return non-nil if there are any uncommitted changes.
+Checks for staged, unstaged, untracked, or conflicting tables."
+  (let ((status (madolt-status-tables)))
+    (or (cdr (assq 'staged status))
+        (cdr (assq 'unstaged status))
+        (cdr (assq 'untracked status))
+        (cdr (assq 'conflicts status)))))
+
 ;;;; Rebase state
 
 (defun madolt-rebase-in-progress-p ()

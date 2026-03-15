@@ -49,6 +49,7 @@
    ("b" "Checkout"              madolt-branch-checkout-command)
    ("c" "Create & checkout"     madolt-branch-checkout-create-command)
    ("n" "Create (no checkout)"  madolt-branch-create-command)
+   ("x" "Reset"                 madolt-branch-reset-command)
    ("k" "Delete"                madolt-branch-delete-command)
    ("m" "Rename"                madolt-branch-rename-command)])
 
@@ -103,6 +104,48 @@ Optional START-POINT specifies the starting commit or branch."
       (madolt-run-dolt "branch" name start-point)
     (madolt-run-dolt "branch" name))
   (message "Created branch %s" name))
+
+(defun madolt-branch-reset-command (branch to)
+  "Reset BRANCH to the revision TO.
+When BRANCH is the current branch, perform a hard reset.  If
+there are uncommitted changes, ask for confirmation since they
+will be lost.  When BRANCH is not the current branch, move it
+to TO using `dolt branch -f'."
+  (interactive
+   (let* ((at-point (madolt-branch-at-point))
+          (branch (completing-read "Reset branch: "
+                                   (madolt-branch-names)
+                                   nil t nil nil
+                                   (or at-point
+                                       (madolt-current-branch))))
+          (default (madolt-branch-or-commit-at-point))
+          (to (completing-read
+               (format "Reset %s to%s: " branch
+                       (if default (format " (default %s)" default) ""))
+               (madolt-all-ref-names)
+               nil nil nil nil default)))
+     (list branch to)))
+  (when (string-empty-p to)
+    (user-error "Must specify a target revision"))
+  (let ((current (madolt-current-branch)))
+    (if (equal branch current)
+        ;; Current branch: hard reset
+        (progn
+          (when (madolt-anything-modified-p)
+            (unless (yes-or-no-p
+                     "Uncommitted changes will be lost.  Proceed? ")
+              (user-error "Aborted")))
+          (let ((result (madolt-call-dolt "reset" "--hard" to)))
+            (madolt-refresh)
+            (if (zerop (car result))
+                (message "Reset %s to %s" branch to)
+              (message "Reset failed: %s" (string-trim (cdr result))))))
+      ;; Non-current branch: move it with dolt branch -f
+      (let ((result (madolt-call-dolt "branch" "-f" branch to)))
+        (madolt-refresh)
+        (if (zerop (car result))
+            (message "Reset %s to %s" branch to)
+          (message "Reset failed: %s" (string-trim (cdr result))))))))
 
 (defun madolt-branch-delete-command (name)
   "Delete branch NAME after confirmation."

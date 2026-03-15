@@ -191,5 +191,69 @@
     (should-not (member "before" (madolt-branch-names)))
     (should (member "after" (madolt-branch-names)))))
 
+;;;; Branch reset
+
+(ert-deftest test-madolt-branch-has-reset-suffix ()
+  "madolt-branch should have an 'x' suffix for reset."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-branch)))
+    (should (assoc "x" suffixes))
+    (should (eq (cdr (assoc "x" suffixes))
+                'madolt-branch-reset-command))))
+
+(ert-deftest test-madolt-branch-reset-current-branch ()
+  "Resetting the current branch does a hard reset."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "first")
+    (let ((first-hash (madolt-dolt-string "log" "-n" "1" "--oneline")))
+      (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+      (madolt-test-commit "second")
+      ;; t2 should exist
+      (should (madolt-dolt-success-p "sql" "-q"
+                                     "SELECT 1 FROM t2 LIMIT 1"))
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-branch-reset-command "main" "HEAD~1"))
+      ;; t2 should be gone after hard reset
+      (should-not (madolt-dolt-success-p "sql" "-q"
+                                         "SELECT 1 FROM t2 LIMIT 1")))))
+
+(ert-deftest test-madolt-branch-reset-other-branch ()
+  "Resetting a non-current branch moves it with dolt branch -f."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "first")
+    (madolt-branch-create "feature")
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "second")
+    ;; feature is still at "first", main is at "second"
+    ;; Reset feature to HEAD (which is main's HEAD = "second")
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-branch-reset-command "feature" "HEAD"))
+    ;; Checkout feature — t2 should now exist
+    (madolt-branch-checkout "feature")
+    (should (madolt-dolt-success-p "sql" "-q"
+                                   "SELECT 1 FROM t2 LIMIT 1"))))
+
+(ert-deftest test-madolt-branch-reset-empty-target-errors ()
+  "Resetting with empty target should error."
+  (madolt-with-test-database
+    (should-error (madolt-branch-reset-command "main" "")
+                  :type 'user-error)))
+
+(ert-deftest test-madolt-anything-modified-p-clean ()
+  "madolt-anything-modified-p returns nil when working tree is clean."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (should-not (madolt-anything-modified-p))))
+
+(ert-deftest test-madolt-anything-modified-p-dirty ()
+  "madolt-anything-modified-p returns non-nil with uncommitted changes."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (should (madolt-anything-modified-p))))
+
 (provide 'madolt-branch-tests)
 ;;; madolt-branch-tests.el ends here
