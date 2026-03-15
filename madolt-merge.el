@@ -60,39 +60,101 @@
              (directory-file-name (or (madolt-database-dir) "")))))
     (format "madolt-merge: %s" db)))
 
+(defun madolt-merge--via-sql (branch message flags)
+  "Execute merge of BRANCH via SQL with autocommit disabled.
+MESSAGE is the commit message (or nil).  FLAGS is a list of flags
+like \"--no-ff\".  Returns (EXIT-CODE . OUTPUT) like `madolt-call-dolt'.
+Disables autocommit before the merge to allow conflict resolution,
+then re-enables it after."
+  (condition-case err
+      (when (and (fboundp 'madolt-connection-ensure)
+                 (funcall 'madolt-connection-ensure))
+        (let ((query-fn (symbol-function 'madolt-connection-query)))
+          ;; Disable autocommit so conflicts don't cause rollback
+          (funcall query-fn "SET @@autocommit = 0")
+          (let* ((sql-args (list (format "'%s'" branch)))
+                 (_ (dolist (flag flags)
+                      (push (format "'%s'" flag) sql-args)))
+                 (_ (when message
+                      (push "'-m'" sql-args)
+                      (push (format "'%s'" message) sql-args)))
+                 (sql (format "CALL DOLT_MERGE(%s)"
+                              (mapconcat #'identity
+                                         (nreverse sql-args) ", ")))
+                 ;; Merge can be very slow for large databases
+                 (rows (funcall query-fn sql 300))
+                 (output (mapconcat
+                          (lambda (row) (string-join row "\t"))
+                          rows "\n"))
+                 ;; DOLT_MERGE returns: hash, fast_forward, conflicts, message
+                 ;; But column count varies; detect conflicts by checking
+                 ;; for "conflict" in any column value
+                 (has-conflicts
+                  (and rows
+                       (cl-some (lambda (col)
+                                  (string-match-p "conflict" col))
+                                (car rows)))))
+            (if has-conflicts
+                ;; Abort the merge and report conflict
+                (progn
+                  (funcall query-fn "CALL DOLT_MERGE('--abort')" 60)
+                  (funcall query-fn "SET @@autocommit = 1" 10)
+                  (cons 1 (format "Merge conflict: %s"
+                                  (string-join (car rows) " "))))
+              ;; Commit and re-enable autocommit
+              (funcall query-fn "COMMIT" 30)
+              (funcall query-fn "SET @@autocommit = 1" 10)
+              (cons 0 (concat output "\n"))))))
+    (error
+     (when (fboundp 'madolt-connection-disconnect)
+       (funcall 'madolt-connection-disconnect))
+     (when (fboundp 'madolt-connection--log)
+       (funcall 'madolt-connection--log
+                "SQL merge failed; trying CLI"
+                (format "DOLT_MERGE: %s" (error-message-string err))))
+     nil)))
+
 (defun madolt-merge--do-merge (message args)
   "Execute `dolt merge' with MESSAGE and ARGS.
 ARGS should already include the branch to merge."
   (let* ((head-before (madolt-dolt-string "log" "-n" "1" "--oneline"))
-         (all-args (if (and message (not (string-empty-p message)))
-                       (append (list "-m" message) args)
-                     args))
-         (result (apply #'madolt-call-dolt "merge" all-args))
-         (output (madolt--clean-output (cdr result)))
          ;; Extract the branch name (last non-flag arg)
          (branch (car (last (cl-remove-if
                              (lambda (a) (string-prefix-p "-" a))
                              args))))
+         (flags (cl-remove-if-not
+                 (lambda (a) (string-prefix-p "-" a))
+                 args))
+         ;; Try SQL first (with autocommit handling), fall back to CLI
+         (result (or (and (bound-and-true-p madolt-use-sql-server)
+                          (madolt-merge--via-sql branch message flags))
+                     (let ((all-args
+                            (append
+                             (when (and message
+                                        (not (string-empty-p message)))
+                               (list "-m" message))
+                             args)))
+                       (apply #'madolt-call-dolt "merge" all-args))))
+         (output (madolt--clean-output (cdr result)))
          (head-after (madolt-dolt-string "log" "-n" "1" "--oneline")))
     ;; Reset SQL connection after merge to avoid stale session state
-    ;; (DOLT_MERGE can leave the connection in a bad state on conflict)
     (when (fboundp 'madolt-connection-disconnect)
       (madolt-connection-disconnect))
-    ;; Detect failure BEFORE refresh so refresh doesn't overwrite the message
     (let ((failure
            (cond
-            ;; Non-zero exit code (CLI failure)
             ((not (zerop (car result)))
              output)
-            ;; SQL path: error or conflict in output text
             ((string-match-p "\\(conflict\\|error\\|rolled back\\)" output)
              output)
-            ;; HEAD didn't change — merge silently did nothing
             ((equal head-before head-after)
-             "HEAD unchanged (possible conflict with autocommit)"))))
+             "HEAD unchanged (merge may have failed silently)"))))
       (madolt-refresh)
       (if failure
-          (user-error "Merge failed: %s" failure)
+          (progn
+            ;; Log to process buffer so `$` shows the error
+            (madolt--process-insert-section
+             (list "merge" branch) 1 failure)
+            (user-error "Merge failed: %s" failure))
         (message "Merged %s into %s" branch
                  (madolt-current-branch))))))
 

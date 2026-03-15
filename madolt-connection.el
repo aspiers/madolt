@@ -356,10 +356,11 @@ the query output and surfaced as Emacs warnings instead."
 
 ;;;; Query execution
 
-(defun madolt-connection-query (sql)
+(defun madolt-connection-query (sql &optional timeout)
   "Execute SQL query synchronously and return results.
 Returns a list of rows, where each row is a list of strings.
-Returns nil on error or empty result."
+Returns nil on error or empty result.
+TIMEOUT is the maximum seconds to wait (default 5)."
   (unless (madolt-connection-active-p)
     (error "No active SQL connection"))
   (let ((conn (madolt-connection--get)))
@@ -367,7 +368,7 @@ Returns nil on error or empty result."
     (process-send-string (madolt-connection-process conn)
                          (concat sql ";\n"))
     ;; Wait for complete output (mysql --batch ends output with newline)
-    (let ((timeout 5.0)
+    (let ((timeout (or timeout 5.0))
           (start (float-time)))
       (while (and (< (- (float-time) start) timeout)
                   (process-live-p (madolt-connection-process conn))
