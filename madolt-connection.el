@@ -92,11 +92,25 @@ Empty string means no password."
   :group 'madolt-connection
   :type 'string)
 
-(defvar madolt-connection--declined nil
-  "Non-nil if the user declined to start a sql-server.
-Set when the user answers \"no\" to the prompt or explicitly stops
-the server.  Suppresses further prompts until the user explicitly
-starts a server via `madolt-server-start'.")
+(defvar madolt-connection--declined (make-hash-table :test 'equal)
+  "Hash table of database directories where the user declined sql-server.
+Keyed by `file-truename' of the database directory.  Suppresses
+further prompts for that database until the user explicitly starts
+a server via `madolt-server-start'.")
+
+(defun madolt-connection--db-key ()
+  "Return a canonical key for the current database directory."
+  (file-truename (or (madolt-database-dir) default-directory)))
+
+(defun madolt-connection--declined-p ()
+  "Return non-nil if the user declined sql-server for the current database."
+  (gethash (madolt-connection--db-key) madolt-connection--declined))
+
+(defun madolt-connection--set-declined (value)
+  "Set the declined state for the current database to VALUE."
+  (if value
+      (puthash (madolt-connection--db-key) t madolt-connection--declined)
+    (remhash (madolt-connection--db-key) madolt-connection--declined)))
 
 ;;;; Connection state
 
@@ -134,15 +148,25 @@ Returns a plist (:pid PID :port PORT) or nil."
 (defun madolt-connection--maybe-start-server ()
   "Possibly start a dolt sql-server based on `madolt-use-sql-server'.
 Returns the port number if a server was started, nil otherwise.
-When the user declines the prompt, set `madolt-connection--declined'
-in the current buffer to suppress further prompts."
+When the user declines the prompt, record the decision in
+`madolt-connection--declined' to suppress further prompts for
+this database."
   (pcase madolt-use-sql-server
     ((or 't 'auto-start)
      (madolt-connection--start-server))
     ('prompt
      (if (y-or-n-p "No dolt sql-server detected.  Start one? ")
          (madolt-connection--start-server)
-       (setq madolt-connection--declined t)
+       (madolt-connection--set-declined t)
+       (let ((server-key (where-is-internal 'madolt-server nil t)))
+         (run-at-time
+          0 nil
+          (lambda (k)
+            (message "Will use dolt CLI.  Start a server any time with %s."
+                     (if k
+                         (concat (key-description k) " s")
+                       "M-x madolt-server-start")))
+          server-key))
        nil))
     (_ nil)))
 
@@ -243,9 +267,19 @@ Returns non-nil on success."
     (setq madolt-connection--process nil)))
 
 (defun madolt-connection--filter (_process output)
-  "Accumulate OUTPUT from _PROCESS."
-  (setq madolt-connection--pending-output
-        (concat madolt-connection--pending-output output)))
+  "Accumulate OUTPUT from _PROCESS, stripping warning lines.
+Lines starting with \"WARNING:\" or \"ERROR \" are removed from
+the query output and surfaced as Emacs warnings instead."
+  (let ((lines (split-string output "\n"))
+        (clean nil))
+    (dolist (line lines)
+      (cond
+       ((string-match-p "\\`\\(WARNING\\|ERROR\\) " line)
+        (display-warning 'madolt-connection line :warning))
+       (t (push line clean))))
+    (let ((filtered (string-join (nreverse clean) "\n")))
+      (setq madolt-connection--pending-output
+            (concat madolt-connection--pending-output filtered)))))
 
 ;;;; Query execution
 
@@ -257,7 +291,7 @@ Returns nil on error or empty result."
     (error "No active SQL connection"))
   (setq madolt-connection--pending-output "")
   (process-send-string madolt-connection--process
-                       (concat sql "\n"))
+                       (concat sql ";\n"))
   ;; Wait for complete output (mysql --batch ends output with newline)
   (let ((timeout 5.0)
         (start (float-time)))
@@ -311,7 +345,7 @@ user prompting, and auto-starting based on
 refresh should use `madolt-connection-ensure' which never
 prompts."
   (when (and madolt-use-sql-server
-             (not madolt-connection--declined)
+             (not (madolt-connection--declined-p))
              (not (madolt-connection-active-p)))
     (let* ((info (madolt-connection--detect-server))
            (port (or (plist-get info :port)
@@ -404,7 +438,7 @@ Added to `kill-buffer-hook' for graceful cleanup."
 (defun madolt-server-start ()
   "Start a dolt sql-server and connect to it."
   (interactive)
-  (setq madolt-connection--declined nil)
+  (madolt-connection--set-declined nil)
   (when (madolt-connection-active-p)
     (user-error "Already connected to sql-server on port %d"
                 madolt-connection--port))
@@ -442,7 +476,7 @@ Added to `kill-buffer-hook' for graceful cleanup."
           madolt-connection--server-process)
       (progn
         (madolt-connection-shutdown)
-        (setq madolt-connection--declined t)
+        (madolt-connection--set-declined t)
         (message "SQL server stopped")
         (when (derived-mode-p 'madolt-mode)
           (madolt-refresh)))

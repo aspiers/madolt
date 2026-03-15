@@ -357,9 +357,11 @@ log per-section timing and cache statistics to *Messages*."
         (message "Refreshing buffer `%s'..." (buffer-name)))
       (when refresh-fn
         ;; Set up SQL connection before erasing the buffer so that
-        ;; any prompt (y-or-n-p) appears while the old content is
-        ;; still visible.
-        (when (fboundp 'madolt-connection-setup)
+        ;; any prompt appears while old content is still visible.
+        ;; Only for status buffers — other buffers just use whatever
+        ;; connection exists.
+        (when (and (derived-mode-p 'madolt-status-mode)
+                   (fboundp 'madolt-connection-setup))
           (madolt-connection-setup))
         ;; Reset magit-section highlight state before erasing the
         ;; buffer.  Without this, stale section objects from the
