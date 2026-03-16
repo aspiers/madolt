@@ -57,7 +57,7 @@
   "Soft reset HEAD to REVISION.
 Moves HEAD without changing the working set or staging area."
   (interactive
-   (list (madolt-reset--read-revision "Soft reset to")))
+   (list (madolt-reset--read-revision "Soft reset %s to")))
   (let ((result (madolt-call-dolt "reset" "--soft" revision)))
     (madolt-refresh)
     (if (zerop (car result))
@@ -69,7 +69,7 @@ Moves HEAD without changing the working set or staging area."
 Resets HEAD, staging area, and working set.  Uncommitted changes
 are permanently lost."
   (interactive
-   (list (madolt-reset--read-revision "Hard reset to")))
+   (list (madolt-reset--read-revision "Hard reset %s to")))
   (unless (yes-or-no-p
            (format "Hard reset to %s?  All uncommitted changes will be lost?"
                    revision))
@@ -94,8 +94,14 @@ without changing the working set."
 ;;;; Helpers
 
 (defun madolt-reset--read-revision (prompt)
-  "Read a revision (branch or commit) with PROMPT."
-  (let ((default (or (madolt-branch-or-commit-at-point) "HEAD")))
+  "Read a revision (branch or commit) with PROMPT.
+PROMPT may contain a single %s which will be replaced with the
+current branch name."
+  (let* ((branch (madolt-current-branch))
+         (prompt (if (and branch (string-match-p "%s" prompt))
+                     (format prompt branch)
+                   prompt))
+         (default (or (madolt-branch-or-commit-at-point) "HEAD")))
     (completing-read (format "%s (default %s): " prompt default)
                      (madolt-all-ref-names)
                      nil nil nil nil default)))
