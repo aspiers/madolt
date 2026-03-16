@@ -186,20 +186,35 @@ ROOT defaults to `magit-root-section'."
 
 (defun madolt-show-more ()
   "Show more entries in the current section.
-When point is on a \"show more\" button, activate it.
-Otherwise search for a `longer' section in the current buffer
-and activate that."
+When point is on or inside a `longer' section, activate its button.
+Otherwise walk up from the current section through parents to find
+the nearest `longer' child and activate it."
   (interactive)
   (let ((section (magit-current-section)))
     (if (and section (eq (oref section type) 'longer))
-        ;; On a show-more button — push its text button
-        (push-button)
-      ;; Find the longer section and activate it
-      (if-let ((longer (madolt--find-longer-section)))
-          (progn
-            (goto-char (oref longer start))
-            (push-button))
-        (user-error "Nothing to expand")))))
+        (madolt--activate-longer-section section)
+      ;; Walk up from the current section through parents, searching
+      ;; each subtree for a `longer' child.
+      (let ((longer nil)
+            (s section))
+        (while (and s (not longer))
+          (setq longer (madolt--find-longer-section s))
+          (setq s (and s (oref s parent))))
+        (if longer
+            (madolt--activate-longer-section longer)
+          (user-error "Nothing to expand"))))))
+
+(defun madolt--activate-longer-section (section)
+  "Activate the text button inside a `longer' SECTION.
+Finds the button within the section's text range and invokes it."
+  (let* ((start (oref section start))
+         (end (oref section end))
+         (button (next-button start t)))
+    (if (and button (< (button-start button) end))
+        (progn
+          (goto-char (button-start button))
+          (push-button))
+      (user-error "Show more button not found"))))
 
 (defun madolt-maybe-show-more (section)
   "Auto-expand when cursor lands on a show-more button SECTION.
