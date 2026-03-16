@@ -629,5 +629,39 @@
       (let ((contents (buffer-string)))
         (should (string-match-p "(no changes)" contents))))))
 
+;;;; Reword
+
+(ert-deftest test-madolt-commit-has-reword-suffix ()
+  "madolt-commit should have a 'w' suffix for reword."
+  (let* ((layout (get 'madolt-commit 'transient--layout))
+         (groups (aref layout 2))
+         (all-keys nil))
+    (dolist (group groups)
+      (dolist (suffix (aref group 2))
+        (when (listp suffix)
+          (let ((key (plist-get (cdr suffix) :key)))
+            (when key (push key all-keys))))))
+    (should (member "w" all-keys))))
+
+(ert-deftest test-madolt-commit-reword-sets-up-buffer ()
+  "madolt-commit-reword should open buffer with old message and --amend."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "Original message")
+    (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+      (madolt-commit-reword))
+    (let ((buf (get-buffer (madolt-commit--buffer-name))))
+      (should buf)
+      (unwind-protect
+          (with-current-buffer buf
+            ;; Buffer should have the old message
+            (should (string-match-p "Original message" (buffer-string)))
+            ;; Args should include --amend
+            (should (member "--amend" madolt-commit--args))
+            ;; Args should NOT include transient args like --all
+            (should-not (member "--all" madolt-commit--args))
+            (should-not (member "--ALL" madolt-commit--args)))
+        (kill-buffer buf)))))
+
 (provide 'madolt-commit-tests)
 ;;; madolt-commit-tests.el ends here

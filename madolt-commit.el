@@ -151,7 +151,8 @@ from the final message.
    ("=A" "Override author"                       "--author=")]
   ["Create"
    ("c" "Commit"  madolt-commit-create)
-   ("a" "Amend"   madolt-commit-amend)]
+   ("a" "Amend"   madolt-commit-amend)
+   ("w" "Reword"  madolt-commit-reword)]
   ["Edit"
    ("m" "Message" madolt-commit-message)])
 
@@ -192,6 +193,15 @@ ARGS are additional arguments from the transient."
   (let* ((last-entry (car (madolt-log-entries 1)))
          (old-message (and last-entry (plist-get last-entry :message))))
     (madolt-commit--setup-buffer old-message (or args nil) t)))
+
+(defun madolt-commit-reword ()
+  "Reword the last commit message without changing its content.
+Like amend but ignores transient arguments to avoid accidentally
+staging additional changes."
+  (interactive)
+  (let* ((last-entry (car (madolt-log-entries 1)))
+         (old-message (and last-entry (plist-get last-entry :message))))
+    (madolt-commit--setup-buffer old-message nil t)))
 
 ;;;; Commit commands — minibuffer (quick)
 
