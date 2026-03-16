@@ -125,6 +125,8 @@ On the section heading itself, unstages all tables."
 
 (defun madolt-discard ()
   "Discard change to the table at point.
+For unstaged changes, reverts to the last committed state.
+For staged changes, first unstages then reverts (like magit).
 Prompts for confirmation because discard is destructive and
 irreversible."
   (interactive)
@@ -136,12 +138,26 @@ irreversible."
      ((and table (eq parent-type 'unstaged))
       (when (y-or-n-p (format "Discard changes to %s? " table))
         (madolt-run-dolt "checkout" table)))
+     ;; Table under staged — unstage then discard
+     ((and table (eq parent-type 'staged))
+      (when (y-or-n-p (format "Discard staged changes to %s? " table))
+        (madolt-call-dolt "reset" table)
+        (madolt-run-dolt "checkout" table)))
      ;; Unstaged section heading — discard all
      ((eq section-type 'unstaged)
       (when (y-or-n-p "Discard ALL unstaged changes? ")
         (let ((section (magit-current-section)))
           (dolist (child (oref section children))
             (when (eq (oref child type) 'table)
+              (madolt-call-dolt "checkout" (oref child value))))
+          (madolt-refresh))))
+     ;; Staged section heading — unstage all then discard all
+     ((eq section-type 'staged)
+      (when (y-or-n-p "Discard ALL staged changes? ")
+        (let ((section (magit-current-section)))
+          (dolist (child (oref section children))
+            (when (eq (oref child type) 'table)
+              (madolt-call-dolt "reset" (oref child value))
               (madolt-call-dolt "checkout" (oref child value))))
           (madolt-refresh))))
      ;; Row-level section: Dolt doesn't support partial discard

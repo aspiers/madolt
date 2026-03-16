@@ -357,5 +357,40 @@ The buffer is current during BODY and killed afterward."
   "The mode map should bind \\='x\\=' to madolt-clean."
   (should (eq (keymap-lookup madolt-mode-map "x") #'madolt-clean)))
 
+;;;; Discard staged changes
+
+(ert-deftest test-madolt-discard-staged-table ()
+  "Discard on a staged table should unstage and revert it."
+  (madolt-with-test-database
+    (madolt-test-setup-populated-db)
+    (madolt-with-status-buffer
+      ;; users is staged; navigate to it
+      (let ((section (madolt-test--goto-section 'table "users")))
+        (should section)
+        (should (eq (oref (oref section parent) type) 'staged))
+        ;; Confirm the discard
+        (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+          (madolt-discard)))
+      ;; users should no longer appear in staged or unstaged
+      (let ((tables (madolt-test--dolt-status-tables)))
+        (should-not (assoc "users" (alist-get 'staged tables)))
+        (should-not (assoc "users" (alist-get 'unstaged tables)))))))
+
+(ert-deftest test-madolt-discard-staged-prompts ()
+  "Discard on a staged table should prompt for confirmation."
+  (madolt-with-test-database
+    (madolt-test-setup-populated-db)
+    (madolt-with-status-buffer
+      (let ((prompted nil))
+        (madolt-test--goto-section 'table "users")
+        ;; Decline the prompt
+        (cl-letf (((symbol-function 'y-or-n-p)
+                   (lambda (&rest _) (setq prompted t) nil)))
+          (madolt-discard))
+        (should prompted)
+        ;; users should still be staged
+        (let ((tables (madolt-test--dolt-status-tables)))
+          (should (assoc "users" (alist-get 'staged tables))))))))
+
 (provide 'madolt-apply-tests)
 ;;; madolt-apply-tests.el ends here
