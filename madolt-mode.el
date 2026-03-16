@@ -137,7 +137,11 @@ navigation, expand/collapse, visibility levels, and highlighting."
 ;;;; Sub-modes
 
 (define-derived-mode madolt-status-mode madolt-mode "Madolt Status"
-  "Mode for madolt status buffers.")
+  "Mode for madolt status buffers.
+Row-diff sections default to hidden (level 3: one-line summary).
+TAB expands to level 4 showing per-field details."
+  (setq-local magit-section-initial-visibility-alist
+              '((row-diff . hide))))
 
 (define-derived-mode madolt-diff-mode madolt-mode "Madolt Diff"
   "Mode for madolt diff buffers.")

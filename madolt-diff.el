@@ -783,13 +783,16 @@ many characters, using \"…\" for truncation."
 (defun madolt-diff--insert-row-diff (row-change)
   "Insert a row-diff section for ROW-CHANGE.
 The summary line has per-component faces: +/-/~ prefix uses
-added/removed colours, column names are bold, values are plain."
+added/removed colours, column names are bold, values are plain.
+The per-field detail lines are in the section body so they are
+hidden at level 3 and shown at level 4."
   (let* ((change-type (madolt-diff--row-change-type row-change))
          (summary (madolt-diff--row-summary row-change change-type)))
     (magit-insert-section (row-diff row-change)
       (magit-insert-heading
         (concat madolt-diff--indent summary))
-      (madolt-diff--insert-row-details row-change change-type))))
+      (magit-insert-section-body
+        (madolt-diff--insert-row-details row-change change-type)))))
 
 (defun madolt-diff--insert-row-details (row-change change-type)
   "Insert expanded detail lines for ROW-CHANGE of CHANGE-TYPE."
