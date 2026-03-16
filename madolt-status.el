@@ -289,9 +289,9 @@ launches parallel prefetch for:
                 (concat " "
                         (propertize (substring hash 0 (min 8 (length hash)))
                                     'font-lock-face 'madolt-hash)
-                        " "
-                        (or message ""))
-              "")
+                         " "
+                         (madolt-commit-summary message))
+               "")
             "\n")
     ;; Merge state line
     (when (madolt-merge-in-progress-p)
@@ -422,11 +422,11 @@ If ENTRIES is nil, nothing is inserted."
         (let* ((hash (plist-get entry :hash))
                (message (plist-get entry :message))
                (short-hash (substring hash 0 (min 8 (length hash)))))
-          (magit-insert-section (commit hash)
+           (magit-insert-section (commit hash)
             (insert "  "
                     (propertize short-hash 'font-lock-face 'madolt-hash)
                     "  "
-                    (or message "")
+                    (madolt-commit-summary message)
                     "\n"))))
       (insert "\n"))))
 
@@ -471,7 +471,7 @@ matching magit's or-recent pattern."
                 (insert "  "
                         (propertize short-hash 'font-lock-face 'madolt-hash)
                         "  "
-                        (or message "")
+                        (madolt-commit-summary message)
                         "\n"))))
           (insert "\n"))))))
 

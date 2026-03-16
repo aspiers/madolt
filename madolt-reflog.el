@@ -144,7 +144,7 @@ refreshing.  Use \\`g' to refresh manually."
 ENTRY is a plist with keys :hash :refs :message."
   (let* ((hash (plist-get entry :hash))
          (refs (plist-get entry :refs))
-         (message (plist-get entry :message))
+         (message (madolt-commit-summary (plist-get entry :message)))
          (short-hash (substring hash 0 (min 8 (length hash)))))
     (magit-insert-section (reflog-entry hash)
       (magit-insert-heading

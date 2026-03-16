@@ -513,9 +513,9 @@ the commit section (e.g. \"|\\\\\" after a merge commit)."
               (concat " " (madolt-format-ref-labels
                            refs madolt-log--remote-names))
             "")
-         " "
-         (or message "")
-         "\n"))
+          " "
+          (madolt-commit-summary message)
+          "\n"))
       (madolt-log--insert-margin author date)
       ;; Washer for TAB expansion: show structured diff
       (magit-insert-section-body

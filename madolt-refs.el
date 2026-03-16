@@ -505,12 +505,12 @@ uses `dolt log' with range syntax instead."
       (dolist (entry ahead)
         (madolt-refs--insert-cherry-commit
          (plist-get entry :hash)
-         (or (plist-get entry :message) "")
+         (madolt-commit-summary (plist-get entry :message))
          "+" 'madolt-cherry-unmatched))
       (dolist (entry behind)
         (madolt-refs--insert-cherry-commit
          (plist-get entry :hash)
-         (or (plist-get entry :message) "")
+         (madolt-commit-summary (plist-get entry :message))
          "-" 'madolt-cherry-equivalent)))))
 
 ;;;; Section inserters
@@ -594,7 +594,7 @@ Uses `madolt-refs--local-branches' and `madolt-refs--remote-branches'."
         (dolist (data branch-data)
           (let* ((branch (plist-get data :branch))
                  (name (plist-get branch :name))
-                 (message (plist-get branch :message))
+                 (message (madolt-commit-summary (plist-get branch :message)))
                  (current (plist-get branch :current))
                  (face (if current 'madolt-branch-current 'madolt-branch-local))
                  (upstream (plist-get data :upstream))
@@ -651,7 +651,7 @@ Uses `madolt-refs--remote-branches' and `madolt-refs--remotes-alist'."
                 (format "Remote %s" remote)))
             (dolist (branch rbranches)
               (let* ((name (plist-get branch :name))
-                     (message (plist-get branch :message))
+                     (message (madolt-commit-summary (plist-get branch :message)))
                      (full-name (format "%s/%s" remote name))
                      (display-name (if madolt-refs-show-remote-prefix
                                        full-name
@@ -682,7 +682,7 @@ Uses `madolt-refs--tags'."
         (magit-insert-heading "Tags")
         (dolist (tag tags)
           (let* ((name (plist-get tag :name))
-                 (message (plist-get tag :message))
+                 (message (madolt-commit-summary (plist-get tag :message)))
                  (padding (make-string
                            (max 0 (- col-width (length name))) ?\s)))
             (magit-insert-section (tag name)

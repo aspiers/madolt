@@ -911,5 +911,24 @@ The dolt_log system table lacks a parent_hashes column, so
     (should (equal (funcall gen '("reset" "users" "orders"))
                    "CALL DOLT_RESET('users', 'orders')"))))
 
+;;;; Commit summary
+
+(ert-deftest test-madolt-commit-summary-single-line ()
+  "Single-line message returns as-is."
+  (should (equal "Fix the bug" (madolt-commit-summary "Fix the bug"))))
+
+(ert-deftest test-madolt-commit-summary-multi-line ()
+  "Multi-line message returns only the first line."
+  (should (equal "Summary line"
+                 (madolt-commit-summary "Summary line\n\nDetails here.\nMore details."))))
+
+(ert-deftest test-madolt-commit-summary-nil ()
+  "Nil message returns empty string."
+  (should (equal "" (madolt-commit-summary nil))))
+
+(ert-deftest test-madolt-commit-summary-empty ()
+  "Empty string returns empty string."
+  (should (equal "" (madolt-commit-summary ""))))
+
 (provide 'madolt-dolt-tests)
 ;;; madolt-dolt-tests.el ends here

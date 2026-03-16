@@ -670,6 +670,15 @@ ARGS are additional arguments passed to `dolt diff'."
 ARGS are additional arguments passed to `dolt diff'."
   (cdr (apply #'madolt--run "diff" args)))
 
+;;;; Commit message helpers
+
+(defun madolt-commit-summary (message)
+  "Return the first line (summary) of a commit MESSAGE.
+Multi-line commit messages should only show the subject line in
+log, status, and refs buffers.  Returns an empty string for nil."
+  (if (null message) ""
+    (car (split-string message "\n"))))
+
 ;;;; Log queries
 
 (defun madolt-log-entries (&optional n rev extra-args)
