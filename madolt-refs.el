@@ -610,12 +610,14 @@ Uses `madolt-refs--local-branches' and `madolt-refs--remote-branches'."
                 (concat
                  (madolt-refs--format-focus-column current name)
                  (propertize name 'font-lock-face face)
-                 (when (or u:ahead u:behind upstream message)
+                 (when (or u:ahead u:behind upstream
+                          (not (string-empty-p message)))
                    (concat u:ahead padding u:behind
                            (when upstream
                              (propertize upstream
                                          'font-lock-face 'shadow))
-                           (when message (concat " " message))))
+                           (when (not (string-empty-p message))
+                             (concat " " message))))
                  "\n"))
               (madolt-refs--maybe-format-margin
                (plist-get branch :hash))
@@ -665,7 +667,8 @@ Uses `madolt-refs--remote-branches' and `madolt-refs--remotes-alist'."
                      "  "
                      (propertize display-name
                                  'font-lock-face 'madolt-branch-remote)
-                     (when message (concat padding " " message))
+                     (when (not (string-empty-p message))
+                       (concat padding " " message))
                      "\n"))
                   (madolt-refs--maybe-format-margin
                    (plist-get branch :hash)))))
@@ -690,10 +693,11 @@ Uses `madolt-refs--tags'."
                 (concat
                  "  "
                  (propertize name 'font-lock-face 'madolt-tag)
-                 (when message (concat padding " " message))
-                 "\n"))
-              (madolt-refs--maybe-format-margin
-               (plist-get tag :hash)))))
+                  (when (not (string-empty-p message))
+                    (concat padding " " message))
+                  "\n"))
+               (madolt-refs--maybe-format-margin
+                (plist-get tag :hash)))))
         (insert "\n"))))))
 
 (provide 'madolt-refs)
