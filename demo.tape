@@ -34,38 +34,48 @@ Wait+Screen@30s /Recent commits/
 Show
 
 # === Scene 1: Status buffer overview ===
-# Full status: Head, Path, Remote, Untracked, Unstaged, Staged, Recent commits
-Sleep 2s
+# Head, Path, Remote, Untracked, Unstaged, Staged, Recent commits
+Sleep 3s
 
 # === Scene 2: Show the help/dispatch menu ===
 Type "?"
 Sleep 4s
-# Dismiss the transient (C-g, not q which would quit the buffer)
+# Dismiss the transient
 Ctrl+G
 Sleep 1s
 
-# === Scene 3: Navigate to unstaged table and view inline diff ===
+# === Scene 3: Navigate to unstaged table and expand inline diff ===
 Down 9
 Sleep 500ms
 
-# Expand inline diff for departments (Tab shows row-level changes)
+# TAB expands to show row-level changes (level 3 summary)
 Tab
 Sleep 3s
 
-# === Scene 4: Stage the unstaged table ===
-Type "s"
-Sleep 2s
+# === Scene 4: Expand a row to see per-field detail (level 4) ===
+Down 2
+Sleep 500ms
+Tab
+Sleep 3s
 
-# Buffer refreshed: departments moved to Staged changes.
-# Navigate to projects entry under Untracked.
-Down 6
+# Collapse back
+Tab
 Sleep 500ms
 
-# === Scene 5: Stage the untracked table ===
+# === Scene 5: Stage the unstaged table ===
+# Navigate back up to the table heading
+Up 2
+Sleep 300ms
 Type "s"
 Sleep 2s
 
-# === Scene 6: Commit all staged changes ===
+# Navigate to the untracked table and stage it too
+Down 6
+Sleep 500ms
+Type "s"
+Sleep 2s
+
+# === Scene 6: Commit staged changes ===
 # Press 'c' for commit transient — linger to show options
 Type "c"
 Sleep 2.5s
@@ -87,23 +97,21 @@ Ctrl+C
 Sleep 2s
 
 # === Scene 7: View the commit log ===
-# Press 'l' for log transient — linger to show options
+# Press 'l' for log transient
 Type "l"
-Sleep 3s
+Sleep 2.5s
 
 # Press 'l' for current branch log
 Type "l"
 Sleep 2s
 
-# Move to first commit
+# Move to first commit and expand it
 Down
 Sleep 500ms
-
-# Expand commit to see list of changed tables
 Tab
 Sleep 1.5s
 
-# Move down to first table entry and expand its diff
+# Move down to a table entry and expand its diff
 Down
 Sleep 500ms
 Tab
@@ -115,9 +123,41 @@ Sleep 500ms
 Down 3
 Sleep 1.5s
 
-# === Scene 8: Return to status buffer ===
+# === Scene 8: Return to status and view refs ===
 Type "q"
-Sleep 1.5s
+Sleep 1s
 
-# Show the clean status (all changes committed)
+# Press 'y' for refs buffer
+Type "y"
+Sleep 3s
+
+# Expand the feature branch to show cherry commits
+Down 2
+Sleep 500ms
+Tab
 Sleep 2s
+
+# Return from refs buffer
+Type "q"
+Sleep 1s
+
+# === Scene 9: Create and checkout a new branch ===
+# Press 'b' for branch transient
+Type "b"
+Sleep 2s
+
+# Press 'c' to create and checkout
+Type "c"
+Sleep 500ms
+
+# Type branch name
+Type "feature/demo"
+Enter
+Sleep 500ms
+
+# Accept default start point (HEAD)
+Enter
+Sleep 2s
+
+# Show the clean status with new branch in Head line
+Sleep 3s

@@ -10,8 +10,7 @@ cd "$DEMO_DIR"
 
 dolt init
 
-# Create initial tables and commit
-# employees: 9 columns to showcase wide-table width allocation
+# === Commit 1: Initial schema ===
 dolt sql -q "CREATE TABLE employees (
   id INT PRIMARY KEY,
   name VARCHAR(100),
@@ -28,7 +27,6 @@ dolt sql -q "INSERT INTO employees VALUES
   (2, 'Bob Martinez',    'bob@example.com',    'Marketing',   'Marketing Manager',  72000.00, '2023-01-10', 'New York',      '555-0102'),
   (3, 'Carol Williams',  'carol@example.com',  'Engineering', 'Staff Engineer',    105000.00, '2021-06-01', 'San Francisco', '555-0103')"
 
-# departments: 7 columns
 dolt sql -q "CREATE TABLE departments (
   id INT PRIMARY KEY,
   name VARCHAR(50),
@@ -46,30 +44,23 @@ dolt sql -q "INSERT INTO departments VALUES
 dolt add .
 dolt commit -m "Initial schema with employees and departments"
 
-# Second commit - add more data
+# === Commit 2: Add more employees ===
 dolt sql -q "INSERT INTO employees VALUES
   (4, 'Diana Lopez',   'diana@example.com', 'Sales',       'Account Executive', 68000.00, '2024-02-20', 'Chicago',       '555-0104'),
   (5, 'Erik Johnson',  'erik@example.com',  'Engineering', 'Principal Engineer',110000.00, '2020-11-05', 'San Francisco', '555-0105')"
 dolt add .
 dolt commit -m "Add new hires Diana and Erik"
 
-# Third commit
+# === Commit 3: Budget update ===
 dolt sql -q "UPDATE departments SET budget = 550000.00 WHERE name = 'Engineering'"
 dolt add .
 dolt commit -m "Increase Engineering budget"
 
-# Now create the interesting working state for the demo:
+# === Create a tag on this commit ===
+dolt tag v0.1 -m "First milestone"
 
-# 1. Stage a modification to employees (salary raise + title change)
-dolt sql -q "UPDATE employees SET salary = 100000.00, title = 'Staff Engineer' WHERE name = 'Alice Chen'"
-dolt sql -q "UPDATE employees SET salary = 115000.00 WHERE name = 'Carol Williams'"
-dolt add employees
-
-# 2. Make unstaged changes to departments
-dolt sql -q "UPDATE departments SET budget = 250000.00, head_count = 8 WHERE name = 'Marketing'"
-dolt sql -q "INSERT INTO departments VALUES (4, 'Research', 300000.00, 3, 'Boston', 4, '2025-01-15')"
-
-# 3. Create an untracked table (9 columns)
+# === Create a feature branch with work ===
+dolt checkout -b feature/projects
 dolt sql -q "CREATE TABLE projects (
   id INT PRIMARY KEY,
   name VARCHAR(100),
@@ -85,8 +76,24 @@ dolt sql -q "INSERT INTO projects VALUES
   (1, 'Database Migration', 3, 'active',   '2025-01-10', '2025-06-30', 150000.00, 'high',   'Infrastructure'),
   (2, 'New Website',        2, 'planning', '2025-03-01', '2025-09-15',  80000.00, 'medium', 'Marketing'),
   (3, 'API Redesign',       5, 'active',   '2025-02-01', '2025-08-01', 120000.00, 'high',   'Engineering')"
+dolt add .
+dolt commit -m "Add projects table with initial project data"
 
-# 4. Configure a remote
+# === Switch back to main for the demo ===
+dolt checkout main
+
+# === Create working state for the demo: ===
+
+# 1. Stage a modification to employees (salary raise + title change)
+dolt sql -q "UPDATE employees SET salary = 100000.00, title = 'Staff Engineer' WHERE name = 'Alice Chen'"
+dolt sql -q "UPDATE employees SET salary = 115000.00 WHERE name = 'Carol Williams'"
+dolt add employees
+
+# 2. Make unstaged changes to departments
+dolt sql -q "UPDATE departments SET budget = 250000.00, head_count = 8 WHERE name = 'Marketing'"
+dolt sql -q "INSERT INTO departments VALUES (4, 'Research', 300000.00, 3, 'Boston', 4, '2025-01-15')"
+
+# 3. Configure a remote
 dolt remote add origin aspiers/madolt-demo-db
 
 echo "Demo repo ready at $DEMO_DIR"
