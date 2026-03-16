@@ -403,10 +403,10 @@ Then modifies id=1 email, adds id=3, deletes id=2.  Nothing is staged."
       (let ((row-sections (madolt-test--sections-of-type 'row-diff)))
         (should (>= (length row-sections) 3))))))
 
-(ert-deftest test-madolt-diff-insert-table-row-details-visible ()
-  "Row-diff sections should start expanded (details visible).
-Previously they started hidden which caused magit's visibility
-indicator to show misleading ellipsis characters."
+(ert-deftest test-madolt-diff-insert-table-row-details-hidden ()
+  "Row-diff sections should start collapsed (details hidden).
+Level 3 shows one-line summaries; TAB expands to level 4 with
+per-field details."
   (madolt-with-test-database
     (madolt-test-setup-diff-db)
     (with-temp-buffer
@@ -416,9 +416,9 @@ indicator to show misleading ellipsis characters."
           (madolt-diff-insert-table "items")))
       (let ((row-sections (madolt-test--sections-of-type 'row-diff)))
         (should (>= (length row-sections) 1))
-        ;; Each row-diff section should be initially visible
+        ;; Each row-diff section should be initially hidden
         (dolist (sec row-sections)
-          (should-not (oref sec hidden)))))))
+          (should (oref sec hidden)))))))
 
 (ert-deftest test-madolt-diff-insert-table-no-changes ()
   "madolt-diff-insert-table should handle a table with no changes."

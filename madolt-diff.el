@@ -788,7 +788,7 @@ The per-field detail lines are in the section body so they are
 hidden at level 3 and shown at level 4."
   (let* ((change-type (madolt-diff--row-change-type row-change))
          (summary (madolt-diff--row-summary row-change change-type)))
-    (magit-insert-section (row-diff row-change)
+    (magit-insert-section (row-diff row-change t)
       (magit-insert-heading
         (concat madolt-diff--indent summary))
       (magit-insert-section-body
