@@ -818,17 +818,26 @@ The initial commit (from dolt init) should have nil :parents."
   (should (eq (keymap-lookup madolt-mode-map "DEL")
               'madolt-diff-show-or-scroll-down)))
 
-(ert-deftest test-madolt-show-or-scroll-errors-without-commit ()
-  "show-or-scroll should error when not on a commit section."
-  (with-temp-buffer
-    (madolt-log-mode)
-    (let ((inhibit-read-only t))
-      (magit-insert-section (log)
-        (magit-insert-heading "Log:")
-        (insert "no commits\n")))
-    (goto-char (point-min))
-    (should-error (madolt-diff-show-or-scroll-up)
-                  :type 'user-error)))
+(ert-deftest test-madolt-show-or-scroll-falls-back-to-head ()
+  "show-or-scroll falls back to HEAD when not on a commit section."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "Fallback test")
+    (let ((buf nil))
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+        (with-temp-buffer
+          (let ((default-directory default-directory))
+            (madolt-log-mode)
+            (let ((inhibit-read-only t))
+              (magit-insert-section (log)
+                (magit-insert-heading "Log:")
+                (insert "no commits\n")))
+            (goto-char (point-min))
+            ;; Should fall back to HEAD, not error
+            (madolt-diff-show-or-scroll-up)
+            (setq buf (madolt--revision-buffer-for-hash
+                       (plist-get (car (madolt-log-entries 1)) :hash))))))
+      (when buf (kill-buffer buf)))))
 
 (ert-deftest test-madolt-show-or-scroll-shows-commit ()
   "SPC on a commit should display revision buffer without selecting."

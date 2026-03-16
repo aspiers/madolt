@@ -749,23 +749,25 @@ Mimics `magit-diff-show-or-scroll-down'."
 FN is the scroll function (`scroll-up' or `scroll-down').
 If the commit's revision buffer is already visible in the frame,
 scroll it with FN.  At buffer boundaries, wrap around.
-Otherwise, show the commit in another window without selecting."
-  (let ((section (magit-current-section)))
-    (unless (and section (eq (oref section type) 'commit))
+Otherwise, show the commit in another window without selecting.
+When not on a commit section, fall back to HEAD."
+  (let* ((hash (or (madolt-commit-at-point)
+                   (let ((entry (car (madolt-log-entries 1))))
+                     (and entry (plist-get entry :hash)))))
+         (buf (and hash (madolt--revision-buffer-for-hash hash))))
+    (unless hash
       (user-error "No commit at point"))
-    (let* ((hash (oref section value))
-           (buf (madolt--revision-buffer-for-hash hash)))
-      (if buf
-          ;; Already visible — scroll it
-          (with-selected-window (get-buffer-window buf)
-            (condition-case nil
-                (funcall fn)
-              (error
-               (pcase fn
-                 ('scroll-up   (goto-char (point-min)))
-                 ('scroll-down (goto-char (point-max)))))))
-        ;; Not visible — show without selecting
-        (madolt-show-commit hash t)))))
+    (if buf
+        ;; Already visible — scroll it
+        (with-selected-window (get-buffer-window buf)
+          (condition-case nil
+              (funcall fn)
+            (error
+             (pcase fn
+               ('scroll-up   (goto-char (point-min)))
+               ('scroll-down (goto-char (point-max)))))))
+      ;; Not visible — show without selecting
+      (madolt-show-commit hash t))))
 
 ;;;; Navigate to parent commit
 
