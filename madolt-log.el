@@ -860,7 +860,9 @@ If not found, signal an error."
         ;; Full commit message (may be multi-line)
         (let ((message (or (plist-get entry :message) "")))
           (dolist (line (split-string message "\n"))
-            (insert "    " line "\n"))
+            (if (string-empty-p line)
+                (insert "\n")
+              (insert "    " line "\n")))
           (insert "\n")))
       ;; Diff with stat summary
       (let* ((diff-args (if parent
