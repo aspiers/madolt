@@ -1170,5 +1170,86 @@ The initial commit (from dolt init) should have nil :parents."
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-log-refresh)))
     (should (assoc "d" suffixes))))
 
+;;;; Navigate to parent commit
+
+(ert-deftest test-madolt-log-goto-parent-keybinding ()
+  "C-c C-n is bound to madolt-log-goto-parent in madolt-log-mode-map."
+  (should (eq (keymap-lookup madolt-log-mode-map "C-c C-n")
+              #'madolt-log-goto-parent)))
+
+(ert-deftest test-madolt-log-goto-parent-moves-to-parent ()
+  "madolt-log-goto-parent navigates point to the parent commit."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "first commit")
+    (madolt-test-sql "INSERT INTO t1 VALUES (1)")
+    (madolt-test-commit "second commit")
+    ;; Get the hashes
+    (let* ((entries (madolt-log-entries 10))
+           (child-hash (plist-get (car entries) :hash))
+           (parent-hash (plist-get (cadr entries) :hash)))
+      ;; Set up a log buffer with both commits
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+        (let ((buf (get-buffer-create "test-log"))
+              child-start)
+          (unwind-protect
+              (with-current-buffer buf
+                (madolt-log-mode)
+                (let ((inhibit-read-only t))
+                  (erase-buffer)
+                  (magit-insert-section (root)
+                    (magit-insert-section (commit child-hash)
+                      (setq child-start (point))
+                      (magit-insert-heading
+                        (format "  %s second commit\n" (substring child-hash 0 8))))
+                    (magit-insert-section (commit parent-hash)
+                      (magit-insert-heading
+                        (format "  %s first commit\n" (substring parent-hash 0 8))))))
+                ;; Position on the child commit
+                (goto-char child-start)
+                (should (eq (oref (magit-current-section) type) 'commit))
+                (should (equal (oref (magit-current-section) value) child-hash))
+                ;; Navigate to parent
+                (madolt-log-goto-parent)
+                ;; Should now be on the parent commit
+                (should (eq (oref (magit-current-section) type) 'commit))
+                (should (equal (oref (magit-current-section) value) parent-hash)))
+            (kill-buffer buf)))))))
+
+(ert-deftest test-madolt-log-goto-parent-errors-on-initial ()
+  "madolt-log-goto-parent errors when commit has no parent."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "initial")
+    (let* ((entries (madolt-log-entries 10))
+           (hash (plist-get (car entries) :hash)))
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
+        (let ((buf (get-buffer-create "test-log"))
+              commit-start)
+          (unwind-protect
+              (with-current-buffer buf
+                (madolt-log-mode)
+                (let ((inhibit-read-only t))
+                  (erase-buffer)
+                  (magit-insert-section (root)
+                    (magit-insert-section (commit hash)
+                      (setq commit-start (point))
+                      (magit-insert-heading
+                        (format "  %s initial\n" (substring hash 0 8))))))
+                (goto-char commit-start)
+                (should (eq (oref (magit-current-section) type) 'commit))
+                (should-error (madolt-log-goto-parent) :type 'user-error))
+            (kill-buffer buf)))))))
+
+(ert-deftest test-madolt-log-goto-parent-errors-on-no-commit ()
+  "madolt-log-goto-parent errors when point is not on a commit."
+  (with-temp-buffer
+    (madolt-log-mode)
+    (let ((inhibit-read-only t))
+      (magit-insert-section (root)
+        (insert "some text\n")))
+    (goto-char (point-min))
+    (should-error (madolt-log-goto-parent) :type 'user-error)))
+
 (provide 'madolt-log-tests)
 ;;; madolt-log-tests.el ends here

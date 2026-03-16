@@ -767,6 +767,43 @@ Otherwise, show the commit in another window without selecting."
         ;; Not visible — show without selecting
         (madolt-show-commit hash t)))))
 
+;;;; Navigate to parent commit
+
+(defun madolt-log-goto-parent ()
+  "Navigate to the parent of the commit at point.
+In a log buffer, move point to the parent commit section.
+If the parent is not visible in the buffer, show more commits
+and try again.  Signals an error if point is not on a commit
+or the commit has no parent (initial commit)."
+  (interactive)
+  (let ((section (magit-current-section)))
+    (unless (and section (eq (oref section type) 'commit))
+      (user-error "No commit at point"))
+    (let* ((hash (oref section value))
+           (parent (madolt-log--parent-hash hash)))
+      (unless parent
+        (user-error "This commit has no parent (initial commit)"))
+      (madolt-log--goto-commit parent))))
+
+(defun madolt-log--goto-commit (hash)
+  "Move point to the commit section with HASH in the current buffer.
+If not found, signal an error."
+  (let ((found nil))
+    (save-excursion
+      (goto-char (point-min))
+      (while (and (not found) (not (eobp)))
+        (let ((section (magit-section-at)))
+          (when (and section
+                     (eq (oref section type) 'commit)
+                     (equal (oref section value) hash))
+            (setq found (oref section start))))
+        (forward-line 1)))
+    (if found
+        (goto-char found)
+      (user-error "Parent commit %s not visible in buffer" (substring hash 0 8)))))
+
+(keymap-set madolt-log-mode-map "C-c C-n" #'madolt-log-goto-parent)
+
 ;;;; Revision mode
 
 (define-derived-mode madolt-revision-mode madolt-diff-mode "Madolt Rev"
