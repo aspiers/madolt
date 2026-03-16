@@ -643,9 +643,9 @@ If a server is running on a different port, prompt to restart."
         (new-port (if (stringp port) (string-to-number port) port)))
     (cond
      ;; No active connection — just update the setting
-     ((not (and conn (madolt-connection-active-p)))
-      (setq madolt-sql-server-port new-port)
-      (message "Server port set to %d" new-port))
+      ((not (and conn (madolt-connection-active-p)))
+       (setq madolt-sql-server-port new-port)
+       (message "Server port set to %s" (if (= new-port 0) "auto" (number-to-string new-port))))
      ;; Same port — nothing to do
      ((= new-port (madolt-connection-port conn))
       (message "Already using port %d" new-port))
@@ -663,15 +663,37 @@ If a server is running on a different port, prompt to restart."
      (t
       (message "Keeping port %d" (madolt-connection-port conn))))))
 
+(defclass madolt-server-port-variable (transient-lisp-variable) ()
+  "Transient variable for the SQL server port.
+Displays \"auto\" when the port is 0 (auto-detect), and accepts
+\"auto\" as input to reset to auto-detect mode.")
+
+(cl-defmethod transient-format-value ((obj madolt-server-port-variable))
+  "Format port value, showing \"auto\" for 0."
+  (let ((val (oref obj value)))
+    (propertize (if (or (null val) (eq val 0))
+                    "auto"
+                  (format "%d" val))
+                'face 'transient-value)))
+
 (transient-define-infix madolt-server-port-infix ()
   "Set the sql-server port."
-  :class 'transient-lisp-variable
+  :class 'madolt-server-port-variable
   :variable 'madolt-sql-server-port
   :reader (lambda (_prompt _initial-input _history)
             (let* ((current (madolt-server--current-port))
-                   (input (read-number "Port: " current)))
-              (madolt-server--set-port input)
-              input)))
+                   (default-str (if (= current 0) "auto" (number-to-string current)))
+                   (input (read-string (format "Port (default %s): " default-str)
+                                       nil nil default-str)))
+              (let ((port (if (or (string= input "auto")
+                                  (string= input "0")
+                                  (string-empty-p input))
+                              0
+                            (let ((n (string-to-number input)))
+                              (if (> n 0) n
+                                (user-error "Invalid port: %s (use a number or \"auto\")" input))))))
+                (madolt-server--set-port port)
+                port))))
 
 ;;;###autoload (autoload 'madolt-server "madolt-connection" nil t)
 (transient-define-prefix madolt-server ()

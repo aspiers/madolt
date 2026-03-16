@@ -144,5 +144,21 @@
   "The madolt-server transient should be defined."
   (should (fboundp 'madolt-server)))
 
+;;;; Port infix display
+
+(ert-deftest test-madolt-server-port-format-auto ()
+  "Port 0 should display as \"auto\" in the transient."
+  (let ((obj (madolt-server-port-variable
+              :variable 'madolt-sql-server-port)))
+    (oset obj value 0)
+    (should (string-match-p "auto" (transient-format-value obj)))))
+
+(ert-deftest test-madolt-server-port-format-number ()
+  "A non-zero port should display as a number."
+  (let ((obj (madolt-server-port-variable
+              :variable 'madolt-sql-server-port)))
+    (oset obj value 3307)
+    (should (string-match-p "3307" (transient-format-value obj)))))
+
 (provide 'madolt-connection-tests)
 ;;; madolt-connection-tests.el ends here
