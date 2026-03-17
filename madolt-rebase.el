@@ -123,9 +123,10 @@ interactive rebase uses SQL directly."
                         (replace-regexp-in-string "'" "''" upstream)))
          (result (madolt-call-dolt "sql" "-q" query)))
     (if (zerop (car result))
-        (progn
-          (madolt-refresh)
-          (madolt-rebase--show-plan branch upstream db-dir))
+        ;; Don't refresh before showing the plan — refreshing runs
+        ;; CLI commands that Dolt may interpret as branch changes,
+        ;; causing --continue to fail with "changes in branch".
+        (madolt-rebase--show-plan branch upstream db-dir)
       (madolt-refresh)
       (message "Rebase failed: %s" (string-trim (cdr result))))))
 
