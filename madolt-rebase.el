@@ -214,11 +214,16 @@ interactive rebase uses SQL directly."
   (interactive
    (let* ((current (madolt-current-branch))
           (at-point (madolt-branch-or-commit-at-point))
+          ;; When a raw commit hash is at point (not a branch/tag), use its
+          ;; parent as the upstream so that commit is included in the plan.
           (default (and at-point
                         (not (equal at-point current))
-                        at-point)))
+                        (if (madolt-commit-at-point)
+                            (or (madolt-rebase--commit-parent at-point)
+                                at-point)
+                          at-point))))
      (list (if default
-               ;; Use the commit/branch at point without prompting
+               ;; Use the derived upstream without prompting
                default
              (completing-read
               (format "Rebase %s onto interactively: " current)
@@ -453,7 +458,7 @@ git-rebase-todo layout."
             :message (match-string-no-properties 3)))))
 
 (defun madolt-rebase--set-action (action)
-  "Set the ACTION for the commit on the current line."
+  "Set the ACTION for the commit on the current line and advance to the next."
   (let ((data (madolt-rebase--current-line-data)))
     (unless data
       (user-error "No commit on this line"))
@@ -479,30 +484,28 @@ git-rebase-todo layout."
                   (overlay-put new-ov 'madolt-drop t)
                   (overlay-put new-ov 'face '(:strike-through t))))
             (when ov
-              (delete-overlay ov))))))))
+              (delete-overlay ov)))))
+      (forward-line 1)
+      (beginning-of-line))))
 
 (defun madolt-rebase-plan-pick ()
   "Set the current commit to pick and move to next line." (interactive)
-  (madolt-rebase--set-action "pick")
-  (forward-line 1)
-  (beginning-of-line))
+  (madolt-rebase--set-action "pick"))
 
 (defun madolt-rebase-plan-squash ()
-  "Set the current commit to squash." (interactive)
+  "Set the current commit to squash and move to next line." (interactive)
   (madolt-rebase--set-action "squash"))
 
 (defun madolt-rebase-plan-fixup ()
-  "Set the current commit to fixup." (interactive)
+  "Set the current commit to fixup and move to next line." (interactive)
   (madolt-rebase--set-action "fixup"))
 
 (defun madolt-rebase-plan-drop ()
   "Set the current commit to drop and move to next line." (interactive)
-  (madolt-rebase--set-action "drop")
-  (forward-line 1)
-  (beginning-of-line))
+  (madolt-rebase--set-action "drop"))
 
 (defun madolt-rebase-plan-reword ()
-  "Set the current commit to reword." (interactive)
+  "Set the current commit to reword and move to next line." (interactive)
   (madolt-rebase--set-action "reword"))
 
 (defun madolt-rebase-plan-move-up ()

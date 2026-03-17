@@ -176,6 +176,39 @@
         (should (equal called-args
                        '("sql" "-q" "CALL DOLT_REBASE('-i', 'feature')")))))))
 
+;;;; Interactive rebase — commit at point uses parent as base
+
+(ert-deftest test-madolt-rebase-interactive-uses-parent-when-commit-at-point ()
+  "When a commit is at point, interactive rebase uses its parent as upstream.
+This ensures the pointed-at commit is included in the rebase plan."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "first")
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "second")
+    (let* ((head (string-trim
+                  (cdr (madolt--run "sql" "-q"
+                                    "SELECT commit_hash FROM dolt_log LIMIT 1"
+                                    "-r" "csv"))))
+           (head (car (last (split-string head "\n"))))
+           (parent (madolt-rebase--commit-parent head))
+           (called-upstream nil))
+      (cl-letf (((symbol-function 'madolt-commit-at-point) (lambda () head))
+                ((symbol-function 'madolt-branch-or-commit-at-point) (lambda () head))
+                ((symbol-function 'madolt-call-dolt)
+                 (lambda (&rest args)
+                   (let ((flat (madolt--flatten-args args)))
+                     (when (cl-some (lambda (a) (string-match-p "DOLT_REBASE" a)) flat)
+                       (let ((query (car (last flat))))
+                         (when (string-match "DOLT_REBASE('-i', '\\([^']+\\)')" query)
+                           (setq called-upstream (match-string 1 query))))))
+                   '(0 . "")))
+                ((symbol-function 'madolt-rebase--show-plan) #'ignore)
+                ((symbol-function 'madolt-rebase--stash-push)
+                 (lambda (_dir _name) nil)))
+        (call-interactively #'madolt-rebase-interactive)
+        (should (equal called-upstream parent))))))
+
 ;;;; Rebase command — reports failure
 
 (ert-deftest test-madolt-rebase-elsewhere-reports-failure ()
