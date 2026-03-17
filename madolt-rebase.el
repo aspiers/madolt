@@ -46,6 +46,7 @@
   "Rebase the current branch."
   ["Arguments"
    :if-not madolt-rebase-in-progress-p
+   ("-i" "Interactive"          "--interactive")
    ("-e" "Empty commits: keep"  "--empty=keep")]
   [:if-not madolt-rebase-in-progress-p
    :description (lambda ()

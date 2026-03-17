@@ -111,7 +111,7 @@
                              (cl-some (lambda (s)
                                         (and (listp s)
                                              (equal (plist-get (cdr s) :argument)
-                                                    "--empty=keep")))
+                                                    "--interactive")))
                                       (aref g 2))))
                       groups)))
     (should args-group)
