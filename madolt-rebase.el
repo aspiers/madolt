@@ -38,6 +38,7 @@
 (require 'madolt-process)
 
 (declare-function madolt-branch-or-commit-at-point "madolt-mode" ())
+(declare-function madolt-connection--log "madolt-connection" (user-message &optional detail))
 (declare-function madolt-display-buffer "madolt-mode" (buffer))
 
 ;;;; Transient menu
@@ -91,6 +92,36 @@ ARGS are additional arguments from the transient."
         (message "Rebased %s onto %s" (madolt-current-branch) upstream)
       (message "Rebase failed: %s" (string-trim (cdr result))))))
 
+(defvar madolt-rebase--active-stashes nil
+  "Alist of (db-dir . stash-name) for in-progress interactive rebases.
+Used by continue/abort commands when the plan buffer is no longer current.")
+
+(defun madolt-rebase--stash-push (db-dir stash-name)
+  "Push a stash named STASH-NAME before an interactive rebase in DB-DIR.
+Returns STASH-NAME on success, nil if there was nothing to stash,
+or signals an error if the stash push fails unexpectedly."
+  (let* ((query (format "CALL DOLT_STASH('push', '%s', '-a')" stash-name))
+         (result (let ((default-directory db-dir))
+                   (madolt-call-dolt "sql" "-q" query))))
+    (cond
+     ((zerop (car result)) stash-name)
+     ;; Dolt says there's nothing to stash — not an error
+     ((string-match-p "No local changes to save" (cdr result)) nil)
+     (t (error "Failed to stash before rebase: %s"
+               (string-trim (cdr result)))))))
+
+(defun madolt-rebase--stash-pop (db-dir stash-name)
+  "Pop stash STASH-NAME in DB-DIR after an interactive rebase.
+Logs silently if the stash no longer exists."
+  (when stash-name
+    (let* ((query (format "CALL DOLT_STASH('pop', '%s')" stash-name))
+           (result (let ((default-directory db-dir))
+                     (madolt-call-dolt "sql" "-q" query))))
+      (unless (zerop (car result))
+        (madolt-connection--log
+         (format "Could not pop pre-rebase stash '%s'" stash-name)
+         (string-trim (cdr result)))))))
+
 (defun madolt-rebase-interactive (upstream &optional _args)
   "Start an interactive rebase of current branch onto UPSTREAM.
 Uses the SQL DOLT_REBASE procedure to create a rebase plan in the
@@ -119,14 +150,27 @@ interactive rebase uses SQL directly."
   ;; $EDITOR which Dolt v1.82.x doesn't support properly.
   (let* ((branch (madolt-current-branch))
          (db-dir (or (madolt-database-dir) default-directory))
+         ;; Stash everything (including ignored tables) before starting the
+         ;; rebase to work around dolthub/dolt#10698: validateRebaseBranchHasntChanged
+         ;; compares working root (includes ignored tables) against staged root
+         ;; (excludes them), causing spurious "changes in branch" failures.
+         (stash-name (madolt-rebase--stash-push
+                      db-dir
+                      (format "madolt-rebase-%s-%d" branch (float-time))))
          (query (format "CALL DOLT_REBASE('-i', '%s')"
                         (replace-regexp-in-string "'" "''" upstream)))
          (result (madolt-call-dolt "sql" "-q" query)))
     (if (zerop (car result))
-        ;; Don't refresh before showing the plan — refreshing runs
-        ;; CLI commands that Dolt may interpret as branch changes,
-        ;; causing --continue to fail with "changes in branch".
-        (madolt-rebase--show-plan branch upstream db-dir)
+        (progn
+          ;; Record stash so finish/abort can pop it, even if plan buffer is gone.
+          (setf (alist-get db-dir madolt-rebase--active-stashes nil nil #'equal)
+                stash-name)
+          ;; Don't refresh before showing the plan — refreshing runs
+          ;; CLI commands that Dolt may interpret as branch changes,
+          ;; causing --continue to fail with "changes in branch".
+          (madolt-rebase--show-plan branch upstream db-dir stash-name))
+      ;; Rebase failed to start; pop the stash we just pushed.
+      (madolt-rebase--stash-pop db-dir stash-name)
       (madolt-refresh)
       (message "Rebase failed: %s" (string-trim (cdr result))))))
 
@@ -139,11 +183,16 @@ falls back to CLI."
          (rebase-branch (concat "dolt_rebase_" branch))
          (sql-rebase (and branch
                          (member rebase-branch (madolt-branch-names))))
+         (db-dir (or (madolt-database-dir) default-directory))
+         (stash-name (alist-get db-dir madolt-rebase--active-stashes
+                                nil nil #'equal))
          (result (if sql-rebase
                      (madolt-call-dolt "--branch" rebase-branch
                                        "sql" "-q"
                                        "CALL DOLT_REBASE('--continue')")
                    (madolt-call-dolt "rebase" "--continue"))))
+    (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
+    (madolt-rebase--stash-pop db-dir stash-name)
     (madolt-refresh)
     (if (zerop (car result))
         (message "Rebase continued successfully")
@@ -169,11 +218,16 @@ falls back to CLI."
          (rebase-branch (concat "dolt_rebase_" branch))
          (sql-rebase (and branch
                          (member rebase-branch (madolt-branch-names))))
+         (db-dir (or (madolt-database-dir) default-directory))
+         (stash-name (alist-get db-dir madolt-rebase--active-stashes
+                                nil nil #'equal))
          (result (if sql-rebase
                      (madolt-call-dolt "--branch" rebase-branch
                                        "sql" "-q"
                                        "CALL DOLT_REBASE('--abort')")
                    (madolt-call-dolt "rebase" "--abort"))))
+    (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
+    (madolt-rebase--stash-pop db-dir stash-name)
     (madolt-refresh)
     (if (zerop (car result))
         (message "Rebase aborted")
@@ -189,6 +243,9 @@ falls back to CLI."
 
 (defvar-local madolt-rebase--db-dir nil
   "The database directory for the rebase.")
+
+(defvar-local madolt-rebase--stash-name nil
+  "Name of the stash pushed before this interactive rebase, or nil.")
 
 (defvar-keymap madolt-rebase-mode-map
   :doc "Keymap for madolt rebase plan editor."
@@ -418,7 +475,9 @@ git-rebase-todo layout."
   (interactive)
   (let* ((entries (madolt-rebase--parse-buffer))
          (default-directory madolt-rebase--db-dir)
-         (rebase-branch (concat "dolt_rebase_" madolt-rebase--branch)))
+         (rebase-branch (concat "dolt_rebase_" madolt-rebase--branch))
+         (stash-name madolt-rebase--stash-name)
+         (db-dir madolt-rebase--db-dir))
     ;; Build a single SQL statement that updates all entries.
     ;; First shift all orders to high values to avoid PK conflicts,
     ;; then set the final orders and actions.
@@ -451,6 +510,8 @@ git-rebase-todo layout."
                    "--branch" rebase-branch
                    "sql" "-q" "CALL DOLT_REBASE('--continue')")))
       (kill-buffer (current-buffer))
+      (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
+      (madolt-rebase--stash-pop db-dir stash-name)
       (madolt-refresh)
       (if (zerop (car result))
           (message "Rebase completed successfully")
@@ -461,22 +522,28 @@ git-rebase-todo layout."
   (interactive)
   (when (y-or-n-p "Abort the rebase? ")
     (let* ((default-directory madolt-rebase--db-dir)
-           (rebase-branch (concat "dolt_rebase_" madolt-rebase--branch)))
+           (rebase-branch (concat "dolt_rebase_" madolt-rebase--branch))
+           (stash-name madolt-rebase--stash-name)
+           (db-dir madolt-rebase--db-dir))
       (madolt-call-dolt "--branch" rebase-branch
-                        "sql" "-q" "CALL DOLT_REBASE('--abort')"))
-    (kill-buffer (current-buffer))
-    (madolt-refresh)
-    (message "Rebase aborted")))
+                        "sql" "-q" "CALL DOLT_REBASE('--abort')")
+      (kill-buffer (current-buffer))
+      (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
+      (madolt-rebase--stash-pop db-dir stash-name)
+      (madolt-refresh)
+      (message "Rebase aborted"))))
 
-(defun madolt-rebase--show-plan (branch upstream db-dir)
+(defun madolt-rebase--show-plan (branch upstream db-dir stash-name)
   "Show the rebase plan editor for BRANCH onto UPSTREAM.
-DB-DIR is the database directory."
+DB-DIR is the database directory.  STASH-NAME is the name of the
+pre-rebase stash (or nil if nothing was stashed)."
   (let ((buf (get-buffer-create (format "*madolt-rebase: %s*" branch))))
     (with-current-buffer buf
       (madolt-rebase-mode)
       (setq madolt-rebase--branch branch
             madolt-rebase--upstream upstream
-            madolt-rebase--db-dir db-dir)
+            madolt-rebase--db-dir db-dir
+            madolt-rebase--stash-name stash-name)
       (let ((plan (madolt-rebase--read-plan)))
         (if plan
             (madolt-rebase--render-plan plan)
