@@ -325,7 +325,7 @@ git-rebase-todo layout."
                      ("reword" 'madolt-diff-new)
                      (_        'default))))
         (let ((line-start (point)))
-          (insert (propertize (format "%-7s" action) 'font-lock-face face)
+          (insert (propertize action 'font-lock-face face)
                   " "
                   (propertize short-hash 'font-lock-face 'madolt-hash)
                   " "
@@ -379,9 +379,7 @@ git-rebase-todo layout."
           (line-start (line-beginning-position))
           (line-end (line-end-position)))
       (beginning-of-line)
-      ;; Match the full padded action field (%-7s) to avoid leaving
-      ;; trailing spaces when replacing a shorter action with a longer one.
-      (when (looking-at "\\w+\\s-*")
+      (when (looking-at "\\w+")
         (let ((face (pcase action
                       ("pick"   'madolt-diff-added)
                       ("squash" 'madolt-diff-old)
@@ -389,8 +387,7 @@ git-rebase-todo layout."
                       ("drop"   'madolt-diff-removed)
                       ("reword" 'madolt-diff-new)
                       (_        'default))))
-          (replace-match (propertize (format "%-7s" action)
-                                     'font-lock-face face)))
+          (replace-match (propertize action 'font-lock-face face)))
         ;; Add/remove strikethrough on the whole line for drop
         (let ((ov (cl-find-if (lambda (o) (overlay-get o 'madolt-drop))
                               (overlays-in line-start line-end))))

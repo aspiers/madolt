@@ -384,7 +384,7 @@ Only shown when a SQL-initiated interactive rebase is in progress."
                               (_        'default))))
               (magit-insert-section (commit hash)
                 (magit-insert-heading
-                  (propertize (format "%-7s" action) 'font-lock-face face)
+                  (propertize action 'font-lock-face face)
                   " "
                   (propertize short 'font-lock-face 'madolt-hash)
                   " "
