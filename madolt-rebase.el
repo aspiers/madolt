@@ -379,7 +379,9 @@ git-rebase-todo layout."
           (line-start (line-beginning-position))
           (line-end (line-end-position)))
       (beginning-of-line)
-      (when (looking-at "\\w+")
+      ;; Match the full padded action field (%-7s) to avoid leaving
+      ;; trailing spaces when replacing a shorter action with a longer one.
+      (when (looking-at "\\w+\\s-*")
         (let ((face (pcase action
                       ("pick"   'madolt-diff-added)
                       ("squash" 'madolt-diff-old)
@@ -401,8 +403,10 @@ git-rebase-todo layout."
               (delete-overlay ov))))))))
 
 (defun madolt-rebase-plan-pick ()
-  "Set the current commit to pick." (interactive)
-  (madolt-rebase--set-action "pick"))
+  "Set the current commit to pick and move to next line." (interactive)
+  (madolt-rebase--set-action "pick")
+  (forward-line 1)
+  (beginning-of-line))
 
 (defun madolt-rebase-plan-squash ()
   "Set the current commit to squash." (interactive)
