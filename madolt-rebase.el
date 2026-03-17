@@ -103,12 +103,14 @@ interactive rebase uses SQL directly."
           (default (and at-point
                         (not (equal at-point current))
                         at-point)))
-     (list (completing-read
-            (format "Rebase %s onto%s interactively: " current
-                    (if default (format " (default %s)" default) ""))
-            (append (remove current (madolt-branch-names))
-                    (madolt-all-ref-names))
-            nil nil nil nil default)
+     (list (if default
+               ;; Use the commit/branch at point without prompting
+               default
+             (completing-read
+              (format "Rebase %s onto interactively: " current)
+              (append (remove current (madolt-branch-names))
+                      (madolt-all-ref-names))
+              nil nil nil nil nil))
            (transient-args 'madolt-rebase))))
   (when (string-empty-p upstream)
     (user-error "Must specify an upstream branch"))
