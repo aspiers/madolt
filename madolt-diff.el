@@ -780,19 +780,83 @@ many characters, using \"…\" for truncation."
         (cl-incf count)))
     count))
 
+(defvar-local madolt-diff--row-field-overlays nil
+  "Hash table mapping row-diff sections to their field-hiding overlay.
+The overlay covers the non-PK fields portion of the heading and is
+toggled invisible when the section body is shown (level 4).")
+
 (defun madolt-diff--insert-row-diff (row-change)
   "Insert a row-diff section for ROW-CHANGE.
 The summary line has per-component faces: +/-/~ prefix uses
 added/removed colours, column names are bold, values are plain.
 The per-field detail lines are in the section body so they are
-hidden at level 3 and shown at level 4."
+hidden at level 3 and shown at level 4.
+
+When expanded to level 4, the non-PK fields in the heading are
+hidden via an overlay since the detail lines show them below.
+When collapsed back to level 3, the overlay is removed."
   (let* ((change-type (madolt-diff--row-change-type row-change))
-         (summary (madolt-diff--row-summary row-change change-type)))
+         (pk-summary (madolt-diff--row-pk-summary row-change change-type))
+         (full-summary (madolt-diff--row-summary row-change change-type))
+         (pk-len (+ (length madolt-diff--indent) (length pk-summary)))
+         (full-len (+ (length madolt-diff--indent) (length full-summary))))
     (magit-insert-section (row-diff row-change t)
-      (magit-insert-heading
-        (concat madolt-diff--indent summary))
+      (let ((heading-start (point)))
+        (magit-insert-heading
+          (concat madolt-diff--indent full-summary))
+        ;; Create an overlay covering the non-PK fields portion.
+        ;; It starts after the PK fields and ends at the newline
+        ;; (which magit-insert-heading appended).
+        (when (> full-len pk-len)
+          (let ((ov (make-overlay (+ heading-start pk-len)
+                                  (+ heading-start full-len))))
+            (overlay-put ov 'madolt-row-fields t)
+            (overlay-put ov 'evaporate t)
+            (unless madolt-diff--row-field-overlays
+              (setq madolt-diff--row-field-overlays
+                    (make-hash-table :test 'eq)))
+            (puthash magit-insert-section--current ov
+                     madolt-diff--row-field-overlays))))
       (magit-insert-section-body
         (madolt-diff--insert-row-details row-change change-type)))))
+
+(defun madolt-diff--row-pk-summary (row-change change-type)
+  "Return a PK-only summary string for ROW-CHANGE of CHANGE-TYPE.
+Shows only the primary key fields, used as the heading when the
+row-diff section is expanded to level 4."
+  (let* ((from-row (alist-get 'from_row row-change))
+         (to-row (alist-get 'to_row row-change))
+         (row (or to-row from-row))
+         (pk-cols (when madolt-diff--current-table
+                    (madolt-primary-key-columns
+                     madolt-diff--current-table)))
+         (pk-set (mapcar #'intern pk-cols))
+         (pk-fields (if pk-set
+                        (cl-remove-if-not (lambda (pair) (memq (car pair) pk-set)) row)
+                      ;; No PK info — use just the first field
+                      (list (car row))))
+         (face (pcase change-type
+                 ('added 'madolt-diff-added)
+                 ('deleted 'madolt-diff-removed)
+                 ('modified 'madolt-diff-old)))
+         (prefix (pcase change-type
+                   ('added "+") ('deleted "-") ('modified "~")))
+         (fields (madolt-diff--format-row-fields pk-fields nil face)))
+    (concat (propertize prefix 'font-lock-face face) " " fields)))
+
+(defun madolt-diff--on-section-toggle (section)
+  "After toggling SECTION, toggle the field overlay on row-diffs.
+When shown (level 4): hide the non-PK fields in the heading.
+When hidden (level 3): show the full heading."
+  (when (and section
+             (eq (oref section type) 'row-diff)
+             madolt-diff--row-field-overlays)
+    (let ((ov (gethash section madolt-diff--row-field-overlays)))
+      (when ov
+        (overlay-put ov 'invisible (not (oref section hidden)))))))
+
+(advice-remove 'magit-section-toggle #'madolt-diff--on-section-toggle)
+(advice-add 'magit-section-toggle :after #'madolt-diff--on-section-toggle)
 
 (defun madolt-diff--insert-row-details (row-change change-type)
   "Insert expanded detail lines for ROW-CHANGE of CHANGE-TYPE."
