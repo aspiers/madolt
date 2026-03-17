@@ -253,5 +253,104 @@
     (let ((madolt-use-sql-server t))
       (should-not (madolt-rebase-in-progress-p)))))
 
+;;;; Single-commit rebase transient suffixes
+
+(ert-deftest test-madolt-rebase-has-drop-suffix ()
+  "madolt-rebase should have a 'k' suffix for dropping a commit."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-rebase)))
+    (should (assoc "k" suffixes))
+    (should (eq (cdr (assoc "k" suffixes))
+                'madolt-rebase-drop-commit))))
+
+(ert-deftest test-madolt-rebase-has-edit-suffix ()
+  "madolt-rebase should have an 'm' suffix for editing a commit."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-rebase)))
+    (should (assoc "m" suffixes))
+    (should (eq (cdr (assoc "m" suffixes))
+                'madolt-rebase-edit-commit))))
+
+(ert-deftest test-madolt-rebase-has-reword-suffix ()
+  "madolt-rebase should have a 'w' suffix for rewording a commit."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-rebase)))
+    (should (assoc "w" suffixes))
+    (should (eq (cdr (assoc "w" suffixes))
+                'madolt-rebase-reword-commit))))
+
+;;;; Single-commit rebase operations
+
+(defun madolt-test--setup-two-commits ()
+  "Create two commits on main and return the hash of the second (HEAD)."
+  (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+  (madolt-test-commit "first")
+  (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+  (madolt-test-commit "second")
+  (string-trim
+   (cdr (madolt--run "sql" "-q"
+                     "SELECT commit_hash FROM dolt_log LIMIT 1"
+                     "-r" "csv"
+                     ))))
+
+(ert-deftest test-madolt-rebase-drop-commit-opens-plan ()
+  "madolt-rebase-drop-commit should start a rebase with the commit set to drop."
+  (madolt-with-test-database
+    (let ((head (madolt-test--setup-two-commits)))
+      ;; Strip CSV header
+      (setq head (car (last (split-string head "\n"))))
+      (cl-letf (((symbol-function 'madolt-display-buffer) #'ignore))
+        (madolt-rebase-drop-commit head))
+      (should (madolt-rebase-in-progress-p))
+      ;; The rebase plan should have action=drop for HEAD commit
+      (let* ((branch (madolt-current-branch))
+             (rebase-branch (concat "dolt_rebase_" branch))
+             (json (madolt-dolt-json
+                    "--branch" rebase-branch
+                    "sql" "-q"
+                    (format "SELECT action FROM dolt_rebase WHERE commit_hash='%s'"
+                            head)
+                    "-r" "json")))
+        (should (equal "drop"
+                       (alist-get 'action
+                                  (car (alist-get 'rows json)))))))))
+
+(ert-deftest test-madolt-rebase-reword-commit-opens-plan ()
+  "madolt-rebase-reword-commit should start a rebase with action=reword."
+  (madolt-with-test-database
+    (let ((head (madolt-test--setup-two-commits)))
+      (setq head (car (last (split-string head "\n"))))
+      (cl-letf (((symbol-function 'madolt-display-buffer) #'ignore))
+        (madolt-rebase-reword-commit head))
+      (should (madolt-rebase-in-progress-p))
+      (let* ((branch (madolt-current-branch))
+             (rebase-branch (concat "dolt_rebase_" branch))
+             (json (madolt-dolt-json
+                    "--branch" rebase-branch
+                    "sql" "-q"
+                    (format "SELECT action FROM dolt_rebase WHERE commit_hash='%s'"
+                            head)
+                    "-r" "json")))
+        (should (equal "reword"
+                       (alist-get 'action
+                                  (car (alist-get 'rows json)))))))))
+
+(ert-deftest test-madolt-rebase-edit-commit-opens-plan ()
+  "madolt-rebase-edit-commit should start a rebase with action=edit."
+  (madolt-with-test-database
+    (let ((head (madolt-test--setup-two-commits)))
+      (setq head (car (last (split-string head "\n"))))
+      (cl-letf (((symbol-function 'madolt-display-buffer) #'ignore))
+        (madolt-rebase-edit-commit head))
+      (should (madolt-rebase-in-progress-p))
+      (let* ((branch (madolt-current-branch))
+             (rebase-branch (concat "dolt_rebase_" branch))
+             (json (madolt-dolt-json
+                    "--branch" rebase-branch
+                    "sql" "-q"
+                    (format "SELECT action FROM dolt_rebase WHERE commit_hash='%s'"
+                            head)
+                    "-r" "json")))
+        (should (equal "edit"
+                       (alist-get 'action
+                                  (car (alist-get 'rows json)))))))))
+
 (provide 'madolt-rebase-tests)
 ;;; madolt-rebase-tests.el ends here

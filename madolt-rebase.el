@@ -38,6 +38,7 @@
 (require 'madolt-process)
 
 (declare-function madolt-branch-or-commit-at-point "madolt-mode" ())
+(declare-function madolt-commit-at-point "madolt-mode" ())
 (declare-function madolt-connection--log "madolt-connection" (user-message &optional detail))
 (declare-function madolt-display-buffer "madolt-mode" (buffer))
 
@@ -59,11 +60,92 @@
   ["Rebase"
    :if-not madolt-rebase-in-progress-p
    ("i" "interactively"  madolt-rebase-interactive)]
+  ["Rebase commit at point"
+   :if-not madolt-rebase-in-progress-p
+   ("m" "to modify it"   madolt-rebase-edit-commit)
+   ("w" "to reword it"   madolt-rebase-reword-commit)
+   ("k" "to remove it"   madolt-rebase-drop-commit)]
   ["Actions"
    :if madolt-rebase-in-progress-p
    ("r" "Continue"     madolt-rebase-continue-command)
    ("s" "Skip"         madolt-rebase-skip-command)
    ("a" "Abort"        madolt-rebase-abort-command)])
+
+;;;; Single-commit rebase helpers
+
+(defun madolt-rebase--commit-parent (hash)
+  "Return the first parent commit hash of HASH, or nil if it has none."
+  (let ((json (madolt-dolt-json
+               "sql" "-q"
+               (format "SELECT parent_hash FROM dolt_commit_ancestors WHERE commit_hash='%s' AND parent_index=0 LIMIT 1"
+                       hash)
+               "-r" "json")))
+    (when json
+      (let ((val (alist-get 'parent_hash (car (alist-get 'rows json)))))
+        ;; Dolt returns NULL as the symbol nil
+        (and val (not (eq val 'null)) val)))))
+
+(defun madolt-rebase--on-commit (commit action)
+  "Start an interactive rebase and set ACTION on COMMIT.
+Rebases onto COMMIT's parent, then updates the dolt_rebase table
+to set the given ACTION for COMMIT, and opens the plan buffer."
+  (let* ((parent (madolt-rebase--commit-parent commit))
+         (branch (madolt-current-branch)))
+    (unless parent
+      (user-error "Cannot rebase: commit %s has no parent" commit))
+    (unless branch
+      (user-error "Not on a branch"))
+    (let* ((db-dir (or (madolt-database-dir) default-directory))
+           (stash-name (madolt-rebase--stash-push
+                        db-dir
+                        (format "madolt-rebase-%s-%s-%d"
+                                branch parent (float-time))))
+           (result (madolt-call-dolt
+                    "sql" "-q"
+                    (format "CALL DOLT_REBASE('-i', '%s')" parent))))
+      (if (not (zerop (car result)))
+          (progn
+            (madolt-rebase--stash-pop db-dir stash-name)
+            (madolt-refresh)
+            (message "Rebase failed: %s" (string-trim (cdr result))))
+        ;; Set the desired action for this specific commit.
+        (let* ((rebase-branch (concat "dolt_rebase_" branch))
+               (update-result
+                (madolt-call-dolt
+                 "--branch" rebase-branch
+                 "sql" "-q"
+                 (format "UPDATE dolt_rebase SET action='%s' WHERE commit_hash='%s'"
+                         action commit))))
+          (if (not (zerop (car update-result)))
+              (progn
+                ;; Roll back: abort the rebase and pop the stash.
+                (madolt-call-dolt "--branch" rebase-branch
+                                  "sql" "-q" "CALL DOLT_REBASE('--abort')")
+                (madolt-rebase--stash-pop db-dir stash-name)
+                (madolt-refresh)
+                (message "Failed to set %s on commit: %s"
+                         action (string-trim (cdr update-result))))
+            (setf (alist-get db-dir madolt-rebase--active-stashes nil nil #'equal)
+                  stash-name)
+            (madolt-rebase--show-plan branch parent db-dir stash-name)))))))
+
+(defun madolt-rebase-drop-commit (commit)
+  "Remove COMMIT from history via interactive rebase."
+  (interactive (list (or (madolt-commit-at-point)
+                         (user-error "No commit at point"))))
+  (madolt-rebase--on-commit commit "drop"))
+
+(defun madolt-rebase-edit-commit (commit)
+  "Edit (modify) COMMIT via interactive rebase."
+  (interactive (list (or (madolt-commit-at-point)
+                         (user-error "No commit at point"))))
+  (madolt-rebase--on-commit commit "edit"))
+
+(defun madolt-rebase-reword-commit (commit)
+  "Reword the message of COMMIT via interactive rebase."
+  (interactive (list (or (madolt-commit-at-point)
+                         (user-error "No commit at point"))))
+  (madolt-rebase--on-commit commit "reword"))
 
 ;;;; Interactive commands
 

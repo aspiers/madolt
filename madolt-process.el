@@ -140,6 +140,15 @@ OUTPUT is the query output."
    (concat "SQL> " (truncate-string-to-width sql 200 nil nil "..."))
    exit-code output))
 
+(defun madolt--process-truncate-heading (heading)
+  "Return HEADING truncated to near the window width with ellipsis.
+Uses the width of the process buffer window if visible, otherwise
+falls back to `fill-column'.  Reserves 4 chars for the exit-code prefix."
+  (let* ((win (get-buffer-window (current-buffer)))
+         (max-width (- (if win (window-width win) (+ fill-column 4)) 4 1))
+         (max-width (max 20 max-width)))
+    (truncate-string-to-width heading max-width nil nil "...")))
+
 (defun madolt--process-insert-section-1 (heading exit-code output)
   "Insert a process section with HEADING, EXIT-CODE, and OUTPUT."
   (let ((buf (madolt-process-buffer t)))
@@ -150,6 +159,7 @@ OUTPUT is the query output."
                (or madolt-process--root-section magit-root-section)))
           (goto-char (1- (point-max)))
           (let* ((has-output (not (string-empty-p output)))
+                 (short-heading (madolt--process-truncate-heading heading))
                  (section
                   (magit-insert-section (process)
                     (insert (propertize (format "%3s " exit-code)
@@ -158,7 +168,7 @@ OUTPUT is the query output."
                                             'madolt-process-ok
                                           'madolt-process-ng)))
                     (magit-insert-heading
-                      (propertize heading
+                      (propertize short-heading
                                   'font-lock-face 'madolt-process-heading))
                     (when has-output
                       (magit-insert-section-body
