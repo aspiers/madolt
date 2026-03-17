@@ -170,7 +170,8 @@
     (let (called-args)
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
-                ((symbol-function 'madolt-refresh) #'ignore))
+                ((symbol-function 'madolt-refresh) #'ignore)
+                ((symbol-function 'madolt-rebase--show-plan) #'ignore))
         (madolt-rebase-interactive "feature" nil)
         (should (equal called-args
                        '("sql" "-q" "CALL DOLT_REBASE('-i', 'feature')")))))))
