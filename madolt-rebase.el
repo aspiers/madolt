@@ -441,10 +441,8 @@ git-rebase-todo layout."
            (all-sql (mapconcat #'identity
                                (append shift-stmts update-stmts)
                                ";\n"))
-           ;; Use madolt--run-cli directly to avoid cluttering the
-           ;; process buffer with the lengthy plan update SQL.
-           (result (madolt--run-cli
-                    (list "--branch" rebase-branch "sql" "-q" all-sql))))
+           (result (madolt-call-dolt
+                    "--branch" rebase-branch "sql" "-q" all-sql)))
       (unless (zerop (car result))
         (user-error "Failed to update plan: %s"
                     (string-trim (cdr result)))))
