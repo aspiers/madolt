@@ -38,6 +38,7 @@
 (require 'madolt-process)
 
 (declare-function madolt-branch-or-commit-at-point "madolt-mode" ())
+(declare-function madolt-display-buffer "madolt-mode" (buffer))
 
 ;;;; Transient menu
 
@@ -248,13 +249,11 @@ Returns a list of plists (:order :action :hash :message)."
                 rows)))))
 
 (defun madolt-rebase--render-plan (plan)
-  "Render PLAN entries in the current buffer."
+  "Render PLAN entries in the current buffer.
+Commits appear first, followed by help comments, matching magit's
+git-rebase-todo layout."
   (let ((inhibit-read-only t))
     (erase-buffer)
-    (insert (propertize
-             (format "Rebasing %s onto %s\n\n"
-                     madolt-rebase--branch madolt-rebase--upstream)
-             'font-lock-face 'magit-section-heading))
     (dolist (entry plan)
       (let* ((action (plist-get entry :action))
              (hash (plist-get entry :hash))
@@ -267,17 +266,42 @@ Returns a list of plists (:order :action :hash :message)."
                      ("drop"   'madolt-diff-removed)
                      ("reword" 'madolt-diff-new)
                      (_        'default))))
-        (insert (propertize (format "%-7s" action) 'font-lock-face face)
-                " "
-                (propertize short-hash 'font-lock-face 'madolt-hash)
-                " "
-                (or message "")
-                "\n")))
+        (let ((line-start (point)))
+          (insert (propertize (format "%-7s" action) 'font-lock-face face)
+                  " "
+                  (propertize short-hash 'font-lock-face 'madolt-hash)
+                  " "
+                  (or message "")
+                  "\n")
+          (when (equal action "drop")
+            (let ((ov (make-overlay line-start (1- (point)))))
+              (overlay-put ov 'madolt-drop t)
+              (overlay-put ov 'face '(:strike-through t)))))))
     (insert (propertize
-             "\n# c=pick  s=squash  f=fixup  d=drop  r=reword\n# M-p/M-n to reorder\n# C-c C-c to apply, C-c C-k to abort\n"
+             (concat
+              "\n"
+              (format "# Rebase %s onto %s (%d command%s)\n"
+                      madolt-rebase--branch madolt-rebase--upstream
+                      (length plan) (if (= 1 (length plan)) "" "s"))
+              "#\n"
+              "# Commands:\n"
+              "# C-c C-c  apply the rebase plan\n"
+              "# C-c C-k  abort the rebase\n"
+              "# p        move point to previous line\n"
+              "# n        move point to next line\n"
+              "# M-p      move the commit at point up\n"
+              "# M-n      move the commit at point down\n"
+              "# c        pick = use commit\n"
+              "# r        reword = use commit, but edit the commit message\n"
+              "# s        squash = use commit, but meld into previous commit\n"
+              "# f        fixup = like squash, but discard this commit's message\n"
+              "# d        drop = remove commit\n"
+              "#\n"
+              "# These lines can be re-ordered; they are executed from top to bottom.\n"
+              "#\n"
+              "# If you drop a line here THAT COMMIT WILL BE LOST.\n")
              'font-lock-face 'font-lock-comment-face))
-    (goto-char (point-min))
-    (forward-line 2)))
+    (goto-char (point-min))))
 
 (defun madolt-rebase--current-line-data ()
   "Return the plan entry data for the current line, or nil."
@@ -294,17 +318,29 @@ Returns a list of plists (:order :action :hash :message)."
     (unless data
       (user-error "No commit on this line"))
     (let ((inhibit-read-only t)
-          (face (pcase action
-                  ("pick"   'madolt-diff-added)
-                  ("squash" 'madolt-diff-old)
-                  ("fixup"  'madolt-diff-old)
-                  ("drop"   'madolt-diff-removed)
-                  ("reword" 'madolt-diff-new)
-                  (_        'default))))
+          (line-start (line-beginning-position))
+          (line-end (line-end-position)))
       (beginning-of-line)
       (when (looking-at "\\w+")
-        (replace-match (propertize (format "%-7s" action)
-                                   'font-lock-face face))))))
+        (let ((face (pcase action
+                      ("pick"   'madolt-diff-added)
+                      ("squash" 'madolt-diff-old)
+                      ("fixup"  'madolt-diff-old)
+                      ("drop"   'madolt-diff-removed)
+                      ("reword" 'madolt-diff-new)
+                      (_        'default))))
+          (replace-match (propertize (format "%-7s" action)
+                                     'font-lock-face face)))
+        ;; Add/remove strikethrough on the whole line for drop
+        (let ((ov (cl-find-if (lambda (o) (overlay-get o 'madolt-drop))
+                              (overlays-in line-start line-end))))
+          (if (equal action "drop")
+              (unless ov
+                (let ((new-ov (make-overlay line-start line-end)))
+                  (overlay-put new-ov 'madolt-drop t)
+                  (overlay-put new-ov 'face '(:strike-through t))))
+            (when ov
+              (delete-overlay ov))))))))
 
 (defun madolt-rebase-plan-pick ()
   "Set the current commit to pick." (interactive)
@@ -319,8 +355,10 @@ Returns a list of plists (:order :action :hash :message)."
   (madolt-rebase--set-action "fixup"))
 
 (defun madolt-rebase-plan-drop ()
-  "Set the current commit to drop." (interactive)
-  (madolt-rebase--set-action "drop"))
+  "Set the current commit to drop and move to next line." (interactive)
+  (madolt-rebase--set-action "drop")
+  (forward-line 1)
+  (beginning-of-line))
 
 (defun madolt-rebase-plan-reword ()
   "Set the current commit to reword." (interactive)
@@ -443,7 +481,7 @@ DB-DIR is the database directory."
             (madolt-rebase--render-plan plan)
           (kill-buffer buf)
           (user-error "No rebase plan found"))))
-    (pop-to-buffer buf)))
+    (madolt-display-buffer buf)))
 
 (provide 'madolt-rebase)
 ;;; madolt-rebase.el ends here
