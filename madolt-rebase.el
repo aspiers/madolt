@@ -156,7 +156,7 @@ interactive rebase uses SQL directly."
          ;; (excludes them), causing spurious "changes in branch" failures.
          (stash-name (madolt-rebase--stash-push
                       db-dir
-                      (format "madolt-rebase-%s-%d" branch (float-time))))
+                      (format "madolt-rebase-%s-%s-%d" branch upstream (float-time))))
          (query (format "CALL DOLT_REBASE('-i', '%s')"
                         (replace-regexp-in-string "'" "''" upstream)))
          (result (madolt-call-dolt "sql" "-q" query)))

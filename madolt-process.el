@@ -102,7 +102,7 @@ the last process section heading."
                                  magit-root-section)))
                        buf))))
     (unless nodisplay
-      (pop-to-buffer buffer)
+      (madolt-display-buffer buffer)
       (madolt--process-goto-last))
     buffer))
 
