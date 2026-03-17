@@ -25,19 +25,33 @@
   "madolt-rebase should be a transient prefix."
   (should (get 'madolt-rebase 'transient--layout)))
 
-(ert-deftest test-madolt-rebase-has-rebase-suffix ()
-  "madolt-rebase should have an 'r' suffix for rebase."
+(ert-deftest test-madolt-rebase-has-elsewhere-suffix ()
+  "madolt-rebase should have an 'e' suffix for rebase elsewhere."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-rebase)))
+    (should (assoc "e" suffixes))
+    (should (eq (cdr (assoc "e" suffixes))
+                'madolt-rebase-elsewhere))))
+
+(ert-deftest test-madolt-rebase-has-interactive-suffix ()
+  "madolt-rebase should have an 'i' suffix for interactive rebase."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-rebase)))
+    (should (assoc "i" suffixes))
+    (should (eq (cdr (assoc "i" suffixes))
+                'madolt-rebase-interactive))))
+
+(ert-deftest test-madolt-rebase-has-continue-suffix ()
+  "madolt-rebase should have an 'r' suffix for continue."
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-rebase)))
     (should (assoc "r" suffixes))
     (should (eq (cdr (assoc "r" suffixes))
-                'madolt-rebase-command))))
-
-(ert-deftest test-madolt-rebase-has-continue-suffix ()
-  "madolt-rebase should have a 'c' suffix for continue."
-  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-rebase)))
-    (should (assoc "c" suffixes))
-    (should (eq (cdr (assoc "c" suffixes))
                 'madolt-rebase-continue-command))))
+
+(ert-deftest test-madolt-rebase-has-skip-suffix ()
+  "madolt-rebase should have an 's' suffix for skip."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-rebase)))
+    (should (assoc "s" suffixes))
+    (should (eq (cdr (assoc "s" suffixes))
+                'madolt-rebase-skip-command))))
 
 (ert-deftest test-madolt-rebase-has-abort-suffix ()
   "madolt-rebase should have an 'a' suffix for abort."
@@ -56,7 +70,7 @@
     (should-not (madolt-rebase-in-progress-p))))
 
 (ert-deftest test-madolt-rebase-start-group-has-if-not ()
-  "The Rebase group (with \\='r\\=') should have :if-not predicate."
+  "The Rebase group (with \\='i\\=') should have :if-not predicate."
   (let* ((layout (get 'madolt-rebase 'transient--layout))
          (groups (aref layout 2))
          (rebase-group (cl-find-if
@@ -64,7 +78,7 @@
                           (and (vectorp g)
                                (cl-some (lambda (s)
                                           (and (listp s)
-                                               (equal (plist-get (cdr s) :key) "r")))
+                                               (equal (plist-get (cdr s) :key) "i")))
                                         (aref g 2))))
                         groups)))
     (should rebase-group)
@@ -72,7 +86,7 @@
                 'madolt-rebase-in-progress-p))))
 
 (ert-deftest test-madolt-rebase-actions-group-has-if ()
-  "The Actions group (with \\='c\\=' and \\='a\\=') should have :if predicate."
+  "The Actions group (with \\='r\\=' and \\='a\\=') should have :if predicate."
   (let* ((layout (get 'madolt-rebase 'transient--layout))
          (groups (aref layout 2))
          (actions-group (cl-find-if
@@ -80,7 +94,7 @@
                            (and (vectorp g)
                                 (cl-some (lambda (s)
                                            (and (listp s)
-                                                (equal (plist-get (cdr s) :key) "c")))
+                                                (equal (plist-get (cdr s) :key) "r")))
                                          (aref g 2))))
                          groups)))
     (should actions-group)
@@ -97,7 +111,7 @@
                              (cl-some (lambda (s)
                                         (and (listp s)
                                              (equal (plist-get (cdr s) :argument)
-                                                    "--interactive")))
+                                                    "--empty=keep")))
                                       (aref g 2))))
                       groups)))
     (should args-group)
@@ -120,8 +134,8 @@
 
 ;;;; Rebase command — calls dolt with correct args
 
-(ert-deftest test-madolt-rebase-command-calls-dolt ()
-  "madolt-rebase-command should invoke dolt rebase with correct args."
+(ert-deftest test-madolt-rebase-elsewhere-calls-dolt ()
+  "madolt-rebase-elsewhere should invoke dolt rebase with correct args."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
@@ -130,11 +144,11 @@
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
                 ((symbol-function 'madolt-refresh) #'ignore))
-        (madolt-rebase-command "feature" nil)
+        (madolt-rebase-elsewhere "feature" nil)
         (should (equal called-args '("rebase" "feature")))))))
 
-(ert-deftest test-madolt-rebase-command-with-interactive-flag ()
-  "madolt-rebase-command with --interactive should pass the flag."
+(ert-deftest test-madolt-rebase-elsewhere-with-empty-keep ()
+  "madolt-rebase-elsewhere with --empty=keep should pass the flag."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
@@ -143,28 +157,28 @@
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
                 ((symbol-function 'madolt-refresh) #'ignore))
-        (madolt-rebase-command "feature" '("--interactive"))
-        (should (equal called-args
-                       '("rebase" "--interactive" "feature")))))))
-
-(ert-deftest test-madolt-rebase-command-with-empty-keep ()
-  "madolt-rebase-command with --empty=keep should pass the flag."
-  (madolt-with-test-database
-    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
-    (madolt-test-commit "init")
-    (madolt-branch-create "feature")
-    (let (called-args)
-      (cl-letf (((symbol-function 'madolt-call-dolt)
-                 (lambda (&rest args) (setq called-args args) '(0 . "")))
-                ((symbol-function 'madolt-refresh) #'ignore))
-        (madolt-rebase-command "feature" '("--empty=keep"))
+        (madolt-rebase-elsewhere "feature" '("--empty=keep"))
         (should (equal called-args
                        '("rebase" "--empty=keep" "feature")))))))
 
+(ert-deftest test-madolt-rebase-interactive-calls-sql ()
+  "madolt-rebase-interactive should invoke SQL DOLT_REBASE."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-branch-create "feature")
+    (let (called-args)
+      (cl-letf (((symbol-function 'madolt-call-dolt)
+                 (lambda (&rest args) (setq called-args args) '(0 . "")))
+                ((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-rebase-interactive "feature" nil)
+        (should (equal called-args
+                       '("sql" "-q" "CALL DOLT_REBASE('-i', 'feature')")))))))
+
 ;;;; Rebase command — reports failure
 
-(ert-deftest test-madolt-rebase-command-reports-failure ()
-  "madolt-rebase-command should report failure when rebase fails."
+(ert-deftest test-madolt-rebase-elsewhere-reports-failure ()
+  "madolt-rebase-elsewhere should report failure when rebase fails."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
@@ -175,7 +189,7 @@
                 ((symbol-function 'message)
                  (lambda (fmt &rest args)
                    (push (apply #'format fmt args) messages))))
-        (madolt-rebase-command "nonexistent" nil))
+        (madolt-rebase-elsewhere "nonexistent" nil))
       (should (cl-some (lambda (msg)
                          (string-match-p "failed" msg))
                        messages)))))
@@ -222,7 +236,7 @@
     ;; Switch to feature and rebase onto main
     (madolt-branch-checkout "feature")
     (cl-letf (((symbol-function 'madolt-refresh) #'ignore))
-      (madolt-rebase-command "main" nil))
+      (madolt-rebase-elsewhere "main" nil))
     ;; After rebase, feature should have both t2 and t3
     (should (madolt-dolt-success-p "sql" "-q" "SELECT 1 FROM t2 LIMIT 1"))
     (should (madolt-dolt-success-p "sql" "-q" "SELECT 1 FROM t3 LIMIT 1"))))
