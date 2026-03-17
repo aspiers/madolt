@@ -572,5 +572,71 @@ Stubs upstream functions since dolt file:// fetch has limitations."
       (should (string-match-p "Unpushed to origin/main (2)"
                               (buffer-string))))))
 
+;;;; Rebase sequence section
+
+(defun madolt-test--setup-rebase ()
+  "Set up a two-commit history and start an interactive rebase.
+Returns the hash of the commit used as the rebase upstream.
+Leaves a SQL-initiated rebase in progress on `main'."
+  (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+  (madolt-test-commit "initial")
+  (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+  (madolt-test-commit "add t2")
+  (madolt-test-create-table "t3" "id INT PRIMARY KEY")
+  (madolt-test-commit "add t3")
+  ;; Upstream = the "initial" commit (two back from HEAD)
+  (let ((upstream (string-trim
+                   (cdr (madolt--run "sql" "-q"
+                                     "SELECT commit_hash FROM dolt_log ORDER BY date ASC LIMIT 1 OFFSET 1"
+                                     "-r" "csv")))))
+    ;; Strip CSV header line
+    (setq upstream (car (last (split-string upstream "\n"))))
+    (madolt--run "sql" "-q"
+                 (format "CALL DOLT_REBASE('-i', '%s')" upstream))
+    upstream))
+
+(ert-deftest test-madolt-status-rebase-section-visible ()
+  "The \"Rebasing\" section appears when an interactive rebase is in progress."
+  (madolt-with-test-database
+    (madolt-test--setup-rebase)
+    (madolt-with-status-buffer
+      (should (string-match-p "Rebasing" (buffer-string))))))
+
+(ert-deftest test-madolt-status-rebase-section-hidden-when-none ()
+  "The rebase section is not shown when no rebase is in progress."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-with-status-buffer
+      (should-not (string-match-p "Rebasing" (buffer-string))))))
+
+(ert-deftest test-madolt-status-rebase-section-shows-branch ()
+  "The rebase section heading includes the branch being rebased."
+  (madolt-with-test-database
+    (madolt-test--setup-rebase)
+    (madolt-with-status-buffer
+      (should (string-match-p "Rebasing main onto" (buffer-string))))))
+
+(ert-deftest test-madolt-status-rebase-section-shows-commits ()
+  "The rebase section lists the commits remaining in the plan."
+  (madolt-with-test-database
+    (madolt-test--setup-rebase)
+    (madolt-with-status-buffer
+      (should (string-match-p "add t2" (buffer-string)))
+      (should (string-match-p "add t3" (buffer-string))))))
+
+(ert-deftest test-madolt-status-rebase-section-type ()
+  "The rebase section has the rebase-sequence section type."
+  (madolt-with-test-database
+    (madolt-test--setup-rebase)
+    (madolt-with-status-buffer
+      (let ((found nil))
+        (madolt-test--walk-sections
+         (lambda (section)
+           (when (eq (oref section type) 'rebase-sequence)
+             (setq found t)))
+         magit-root-section)
+        (should found)))))
+
 (provide 'madolt-status-tests)
 ;;; madolt-status-tests.el ends here

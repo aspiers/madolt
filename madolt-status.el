@@ -103,6 +103,7 @@ No longer used; headings now rely on `magit-insert-heading' auto-face."
 
 (defcustom madolt-status-sections-hook
   '(madolt-insert-status-header
+    madolt-insert-rebase-sequence
     madolt-insert-merge-conflicts
     madolt-insert-untracked-tables
     madolt-insert-unstaged-changes
@@ -320,6 +321,75 @@ launches parallel prefetch for:
   '((t :foreground "red" :weight bold))
   "Face for the conflict status in table entries."
   :group 'madolt-faces)
+
+;;;; Rebase sequence
+
+(defun madolt-insert-rebase-sequence ()
+  "Insert a section showing the in-progress interactive rebase, like magit.
+Only shown when a SQL-initiated interactive rebase is in progress."
+  (when (madolt-rebase-in-progress-p)
+    (let* ((branch (madolt-current-branch))
+           (rebase-branch (concat "dolt_rebase_" branch))
+           ;; Upstream is the HEAD commit of the rebase branch.
+           (upstream-hash
+            (let ((json (madolt-dolt-json
+                         "--branch" rebase-branch
+                         "sql" "-q"
+                         "SELECT commit_hash FROM dolt_log LIMIT 1"
+                         "-r" "json")))
+              (when json
+                (alist-get 'commit_hash (car (alist-get 'rows json))))))
+           ;; Resolve hash to a branch name if possible.
+           (upstream
+            (or (when upstream-hash
+                  (let ((json (madolt-dolt-json
+                               "sql" "-q"
+                               (format "SELECT name FROM dolt_branches WHERE hash='%s' AND name NOT LIKE 'dolt_rebase_%%' LIMIT 1"
+                                       upstream-hash)
+                               "-r" "json")))
+                    (when json
+                      (alist-get 'name (car (alist-get 'rows json))))))
+                upstream-hash))
+           ;; Read the remaining rebase plan entries.
+           (plan
+            (let ((json (madolt-dolt-json
+                         "--branch" rebase-branch
+                         "sql" "-q"
+                         "SELECT * FROM dolt_rebase ORDER BY rebase_order"
+                         "-r" "json")))
+              (when json
+                (mapcar (lambda (row)
+                          (list :action  (alist-get 'action row)
+                                :hash    (alist-get 'commit_hash row)
+                                :message (alist-get 'commit_message row)))
+                        (alist-get 'rows json))))))
+      (when (and branch upstream plan)
+        (magit-insert-section (rebase-sequence)
+          (magit-insert-heading
+            (concat "Rebasing "
+                    (propertize branch 'font-lock-face 'madolt-branch-local)
+                    " onto "
+                    (propertize upstream 'font-lock-face 'madolt-branch-local)))
+          (dolist (entry plan)
+            (let* ((action  (plist-get entry :action))
+                   (hash    (plist-get entry :hash))
+                   (short   (substring hash 0 (min 8 (length hash))))
+                   (message (plist-get entry :message))
+                   (face    (pcase action
+                              ("pick"   'magit-sequence-pick)
+                              ("drop"   'magit-sequence-drop)
+                              ("squash" 'magit-sequence-part)
+                              ("fixup"  'magit-sequence-part)
+                              ("reword" 'magit-sequence-pick)
+                              (_        'default))))
+              (magit-insert-section (commit hash)
+                (magit-insert-heading
+                  (propertize (format "%-7s" action) 'font-lock-face face)
+                  " "
+                  (propertize short 'font-lock-face 'madolt-hash)
+                  " "
+                  (or message "")))))
+          (insert "\n"))))))
 
 (defun madolt-insert-merge-conflicts ()
   "Insert a section showing tables with unresolved merge conflicts.
