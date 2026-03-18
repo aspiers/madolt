@@ -160,10 +160,11 @@ ARGS are additional arguments from the transient."
                         (not (equal at-point current))
                         at-point)))
      (list (completing-read
-            (format "Rebase %s onto%s: " current
-                    (if default (format " (default %s)" default) ""))
-            (append (remove current (madolt-branch-names))
-                    (madolt-all-ref-names))
+             (format "Rebase %s onto%s: " current
+                     (if default (format " (default %s)" default) ""))
+             (append (remove current (madolt-branch-names))
+                     (madolt-remote-branch-names)
+                     (madolt-all-ref-names))
             nil nil nil nil default)
            (transient-args 'madolt-rebase))))
   (when (string-empty-p upstream)
@@ -226,10 +227,11 @@ interactive rebase uses SQL directly."
                ;; Use the derived upstream without prompting
                default
              (completing-read
-              (format "Rebase %s onto interactively: " current)
-              (append (remove current (madolt-branch-names))
-                      (madolt-all-ref-names))
-              nil nil nil nil nil))
+               (format "Rebase %s onto interactively: " current)
+               (append (remove current (madolt-branch-names))
+                       (madolt-remote-branch-names)
+                       (madolt-all-ref-names))
+               nil nil nil nil nil))
            (transient-args 'madolt-rebase))))
   (when (string-empty-p upstream)
     (user-error "Must specify an upstream branch"))

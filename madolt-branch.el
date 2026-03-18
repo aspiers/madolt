@@ -39,26 +39,44 @@
 
 (declare-function madolt-branch-at-point "madolt-mode" ())
 (declare-function madolt-branch-or-commit-at-point "madolt-mode" ())
+(declare-function madolt-remote-branch-names "madolt-dolt" ())
 
 ;;;; Transient menu
 
 ;;;###autoload (autoload 'madolt-branch "madolt-branch" nil t)
 (transient-define-prefix madolt-branch ()
   "Manage Dolt branches."
-  ["Branch"
-   ("b" "Checkout"              madolt-branch-checkout-command)
-   ("c" "Create & checkout"     madolt-branch-checkout-create-command)
-   ("n" "Create (no checkout)"  madolt-branch-create-command)
-   ("x" "Reset"                 madolt-branch-reset-command)
-   ("k" "Delete"                madolt-branch-delete-command)
-   ("m" "Rename"                madolt-branch-rename-command)])
+  [["Checkout"
+    ("b" "branch/revision"    madolt-branch-checkout-command)
+    ("l" "local branch"       madolt-branch-checkout-local-command)]
+   [""
+    ("c" "new branch"         madolt-branch-checkout-create-command)]
+   ["Create"
+    ("n" "new branch"         madolt-branch-create-command)]
+   ["Do"
+    ("C" "configure upstream" madolt-branch-set-upstream-command)
+    ("m" "rename"             madolt-branch-rename-command)
+    ("x" "reset"              madolt-branch-reset-command)
+    ("k" "delete"             madolt-branch-delete-command)]])
 
 ;;;; Interactive commands
 
 (defun madolt-branch-checkout-command (branch)
-  "Switch to BRANCH."
+  "Switch to BRANCH (local or remote/branch)."
   (interactive
-   (list (completing-read "Checkout branch: " (madolt-branch-names)
+   (list (completing-read "Checkout branch: "
+                          (append (madolt-branch-names)
+                                  (madolt-remote-branch-names))
+                          nil t nil nil
+                          (or (madolt-branch-at-point)
+                              (madolt-current-branch)))))
+  (madolt-run-dolt "checkout" branch)
+  (message "Switched to branch %s" branch))
+
+(defun madolt-branch-checkout-local-command (branch)
+  "Switch to a local BRANCH (no remote branches offered)."
+  (interactive
+   (list (completing-read "Checkout local branch: " (madolt-branch-names)
                           nil t nil nil
                           (or (madolt-branch-at-point)
                               (madolt-current-branch)))))
@@ -69,17 +87,19 @@
   "Create and switch to a new branch NAME.
 Optional START-POINT specifies the starting commit or branch."
   (interactive
-   (let ((default (madolt-branch-or-commit-at-point)))
-     (list (read-string "Create and checkout branch: ")
-           (let ((start (read-string
-                         (format "Starting point%s: "
-                                 (if default
-                                     (format " (default %s)" default)
-                                   " (default HEAD)"))
-                         nil nil (or default "HEAD"))))
-             (and (not (string-empty-p start))
-                  (not (equal start "HEAD"))
-                  start)))))
+   (let* ((default (madolt-branch-or-commit-at-point))
+          (start (completing-read
+                  (format "Create and checkout branch starting at%s: "
+                          (if default (format " (default %s)" default) ""))
+                  (append (madolt-branch-names)
+                          (madolt-remote-branch-names)
+                          (madolt-all-ref-names))
+                  nil nil nil nil (or default "HEAD")))
+          (start (and (not (string-empty-p start))
+                      (not (equal start "HEAD"))
+                      start)))
+     (list (read-string "Create and checkout branch name: ")
+           start)))
   (if start-point
       (madolt-run-dolt "checkout" "-b" name start-point)
     (madolt-run-dolt "checkout" "-b" name))
@@ -89,17 +109,19 @@ Optional START-POINT specifies the starting commit or branch."
   "Create a new branch NAME without switching to it.
 Optional START-POINT specifies the starting commit or branch."
   (interactive
-   (let ((default (madolt-branch-or-commit-at-point)))
-     (list (read-string "Create branch: ")
-           (let ((start (read-string
-                         (format "Starting point%s: "
-                                 (if default
-                                     (format " (default %s)" default)
-                                   " (default HEAD)"))
-                         nil nil (or default "HEAD"))))
-             (and (not (string-empty-p start))
-                  (not (equal start "HEAD"))
-                  start)))))
+   (let* ((default (madolt-branch-or-commit-at-point))
+          (start (completing-read
+                  (format "Create branch starting at%s: "
+                          (if default (format " (default %s)" default) ""))
+                  (append (madolt-branch-names)
+                          (madolt-remote-branch-names)
+                          (madolt-all-ref-names))
+                  nil nil nil nil (or default "HEAD")))
+          (start (and (not (string-empty-p start))
+                      (not (equal start "HEAD"))
+                      start)))
+     (list (read-string "Create branch name: ")
+           start)))
   (if start-point
       (madolt-run-dolt "branch" name start-point)
     (madolt-run-dolt "branch" name))
@@ -122,7 +144,9 @@ to TO using `dolt branch -f'."
           (to (completing-read
                (format "Reset %s to%s: " branch
                        (if default (format " (default %s)" default) ""))
-               (madolt-all-ref-names)
+               (append (madolt-branch-names)
+                       (madolt-remote-branch-names)
+                       (madolt-all-ref-names))
                nil nil nil nil default)))
      (list branch to)))
   (when (string-empty-p to)
@@ -169,6 +193,27 @@ to TO using `dolt branch -f'."
                (format "Branch %s is not fully merged.  Force delete? " name))
           (madolt-run-dolt "branch" "-D" name)
           (message "Force deleted branch %s" name))))))
+
+(defun madolt-branch-set-upstream-command (branch upstream)
+  "Set the upstream tracking branch for BRANCH to UPSTREAM.
+UPSTREAM should be in \"remote/branch\" format."
+  (interactive
+   (let* ((branch (completing-read "Set upstream for branch: "
+                                   (madolt-branch-names)
+                                   nil t nil nil
+                                   (madolt-current-branch)))
+          (upstream (completing-read
+                     (format "Set upstream of %s to: " branch)
+                     (madolt-remote-branch-names)
+                     nil nil nil nil nil)))
+     (list branch upstream)))
+  (when (string-empty-p upstream)
+    (user-error "Must specify an upstream"))
+  (let ((result (madolt-call-dolt "branch" "--set-upstream-to" upstream branch)))
+    (madolt-refresh)
+    (if (zerop (car result))
+        (message "Set upstream of %s to %s" branch upstream)
+      (message "Failed to set upstream: %s" (string-trim (cdr result))))))
 
 (defun madolt-branch-rename-command (old-name new-name)
   "Rename branch OLD-NAME to NEW-NAME."

@@ -968,6 +968,18 @@ TABLES is a list of table name strings."
              branches)
      tags)))
 
+(defun madolt-remote-branch-names ()
+  "Return a list of remote branch names in \"remote/branch\" format."
+  (let ((lines (madolt-dolt-lines "branch" "-r")))
+    (mapcar (lambda (line)
+              (let ((name (string-trim
+                           (replace-regexp-in-string "^\\*\\s-*" "" line))))
+                ;; dolt branch -r outputs "remotes/origin/main" — strip prefix
+                (if (string-prefix-p "remotes/" name)
+                    (substring name (length "remotes/"))
+                  name)))
+            lines)))
+
 (defun madolt-branch-list-verbose ()
   "Return a list of branch plists from `dolt branch -av'.
 Each plist has keys :name :hash :message :current :remote.
