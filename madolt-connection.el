@@ -153,6 +153,7 @@ a server via `madolt-server-start'.")
   (server-process nil :documentation "The dolt sql-server process if started by madolt.")
   (port nil :documentation "Actual port of the connected sql-server.")
   (pending-output "" :documentation "Accumulated output for the current query.")
+  (error-output "" :documentation "ERROR lines stripped from output by the filter.")
   (ready nil :documentation "Non-nil when the connection is ready for queries."))
 
 (defvar madolt-connection--connections (make-hash-table :test 'equal)
@@ -337,16 +338,23 @@ Returns non-nil on success."
       (setf (madolt-connection-process conn) nil))))
 
 (defun madolt-connection--filter (process output)
-  "Accumulate OUTPUT from PROCESS, stripping warning lines.
-Lines starting with \"WARNING:\" or \"ERROR \" are removed from
-the query output and surfaced as Emacs warnings instead."
+   "Accumulate OUTPUT from PROCESS, stripping warning/error lines.
+Lines starting with \"WARNING \" are removed and logged.
+Lines starting with \"ERROR \" are stored in the connection's
+error-output slot so that `madolt-connection-query' can signal
+them as Lisp errors after the full response arrives."
   (when-let ((key (process-get process :madolt-db-key))
              (conn (gethash key madolt-connection--connections)))
     (let ((lines (split-string output "\n"))
           (clean nil))
       (dolist (line lines)
         (cond
-         ((string-match-p "\\`\\(WARNING\\|ERROR\\) " line)
+         ((string-match-p "\\`ERROR " line)
+          (madolt-connection--log "mysql warning" line)
+          ;; Store so query can signal it after output is complete.
+          (setf (madolt-connection-error-output conn)
+                (concat (madolt-connection-error-output conn) line "\n")))
+         ((string-match-p "\\`WARNING " line)
           (madolt-connection--log "mysql warning" line))
          (t (push line clean))))
       (let ((filtered (string-join (nreverse clean) "\n")))
@@ -366,8 +374,10 @@ TIMEOUT is the maximum seconds to wait (default 5)."
   (let ((conn (madolt-connection--get)))
     ;; Drain any late-arriving output from a previous query
     (setf (madolt-connection-pending-output conn) "")
+    (setf (madolt-connection-error-output conn) "")
     (accept-process-output (madolt-connection-process conn) 0.01)
     (setf (madolt-connection-pending-output conn) "")
+    (setf (madolt-connection-error-output conn) "")
     (process-send-string (madolt-connection-process conn)
                          (concat sql ";\n"))
     ;; Wait for complete output (mysql --batch ends output with newline)
@@ -386,8 +396,12 @@ TIMEOUT is the maximum seconds to wait (default 5)."
          "SQL query timed out; falling back to CLI"
          (format "query: %s" sql))
         (error "SQL query timed out")))
-    (let ((output (madolt-connection-pending-output conn)))
+    (let ((output (madolt-connection-pending-output conn))
+          (err    (madolt-connection-error-output conn)))
       (setf (madolt-connection-pending-output conn) "")
+      (setf (madolt-connection-error-output conn) "")
+      (when (and err (not (string-empty-p err)))
+        (error "%s" (string-trim err)))
       (madolt-connection--parse-batch-output output))))
 
 (defun madolt-connection--output-complete-p (conn)
