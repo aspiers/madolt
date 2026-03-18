@@ -188,12 +188,11 @@ when the buffer is first set up.")
 (defvar-local madolt-revision--hash nil
   "The commit hash being shown in a revision buffer.")
 
-(defvar madolt-log--remote-names nil
-  "List of remote names for the current refresh cycle.
-Bound dynamically during log/revision buffer refresh so that
-`madolt-format-ref-labels' can distinguish remote tracking
-branches (e.g. \"origin/main\") from local branches with slashes
-\(e.g. \"feature/foo\").")
+(defvar-local madolt-log--remote-names nil
+  "List of remote names for this log/revision buffer.
+Set at the start of each refresh so that `madolt-format-ref-labels'
+can distinguish remote tracking branches (e.g. \"origin/main\") from
+local branches with slashes (e.g. \"feature/foo\").")
 
 ;;;; Transient menus
 
@@ -456,9 +455,9 @@ The limit is handled separately via `madolt-log--limit'."
 
 (defun madolt-log-refresh-buffer ()
   "Refresh the log buffer by inserting commit sections."
+  (setq madolt-log--remote-names (madolt-remote-names))
   (let* ((rev (unless (string= madolt-log--rev "--all")
                 madolt-log--rev))
-         (madolt-log--remote-names (madolt-remote-names))
          (entries (madolt-log-entries
                    madolt-log--limit
                    rev
@@ -818,8 +817,8 @@ If not found, signal an error."
 
 (defun madolt-revision-refresh-buffer ()
   "Refresh the revision buffer."
+  (setq madolt-log--remote-names (madolt-remote-names))
   (let* ((hash madolt-revision--hash)
-         (madolt-log--remote-names (madolt-remote-names))
          (entry (madolt-log--find-entry hash))
          (parents (plist-get entry :parents))
          (parent (or (car parents)
