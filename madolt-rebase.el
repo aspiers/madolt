@@ -341,10 +341,12 @@ falls back to CLI."
   :parent special-mode-map
   "c"     #'madolt-rebase-plan-pick
   "d"     #'madolt-rebase-plan-drop
-  "k"     #'madolt-rebase-plan-drop
-  "s"     #'madolt-rebase-plan-squash
+  "e"     #'madolt-rebase-plan-edit
   "f"     #'madolt-rebase-plan-fixup
+  "k"     #'madolt-rebase-plan-drop
+  "m"     #'madolt-rebase-plan-edit
   "r"     #'madolt-rebase-plan-reword
+  "s"     #'madolt-rebase-plan-squash
   "w"     #'madolt-rebase-plan-reword
   "p"     #'previous-line
   "n"     #'next-line
@@ -408,6 +410,7 @@ git-rebase-todo layout."
              (message (plist-get entry :message))
              (face (pcase action
                      ("pick"   'madolt-diff-added)
+                     ("edit"   'magit-sequence-onto)
                      ("squash" 'madolt-diff-old)
                      ("fixup"  'madolt-diff-old)
                      ("drop"   'madolt-diff-removed)
@@ -438,11 +441,12 @@ git-rebase-todo layout."
               "# n        move point to next line\n"
               "# M-p      move the commit at point up\n"
               "# M-n      move the commit at point down\n"
-              "# c        pick = use commit\n"
-              "# r        reword = use commit, but edit the commit message\n"
-              "# s        squash = use commit, but meld into previous commit\n"
-              "# f        fixup = like squash, but discard this commit's message\n"
-              "# d        drop = remove commit\n"
+               "# c        pick   = use commit\n"
+               "# m, e     edit   = use commit, but stop to amend\n"
+               "# r, w     reword = use commit, but edit the commit message\n"
+               "# s        squash = use commit, but meld into previous commit\n"
+               "# f        fixup  = like squash, but discard this commit's message\n"
+               "# d, k     drop   = remove commit\n"
               "#\n"
               "# These lines can be re-ordered; they are executed from top to bottom.\n"
               "#\n"
@@ -471,6 +475,7 @@ git-rebase-todo layout."
       (when (looking-at "\\w+")
         (let ((face (pcase action
                       ("pick"   'madolt-diff-added)
+                      ("edit"   'magit-sequence-onto)
                       ("squash" 'madolt-diff-old)
                       ("fixup"  'madolt-diff-old)
                       ("drop"   'madolt-diff-removed)
@@ -505,6 +510,10 @@ git-rebase-todo layout."
 (defun madolt-rebase-plan-drop ()
   "Set the current commit to drop and move to next line." (interactive)
   (madolt-rebase--set-action "drop"))
+
+(defun madolt-rebase-plan-edit ()
+  "Set the current commit to edit and move to next line." (interactive)
+  (madolt-rebase--set-action "edit"))
 
 (defun madolt-rebase-plan-reword ()
   "Set the current commit to reword and move to next line." (interactive)
