@@ -70,7 +70,11 @@
   :group 'madolt
   (setq-local revert-buffer-function #'ignore)
   (setq-local magit-section-initial-visibility-alist
-              '((process . hide))))
+              '((process . hide)))
+  ;; Truncate visually at window edge rather than wrapping; this means
+  ;; long command headings are clipped by the window, not hard-truncated
+  ;; at insert time (which was always wrong when the buffer wasn't visible).
+  (setq-local truncate-lines t))
 
 (defun madolt--process-buffer-name (&optional directory)
   "Return the process buffer name for DIRECTORY's dolt database."
@@ -140,15 +144,6 @@ OUTPUT is the query output."
    (concat "SQL> " (truncate-string-to-width sql 200 nil nil "..."))
    exit-code output))
 
-(defun madolt--process-truncate-heading (heading)
-  "Return HEADING truncated to near the window width with ellipsis.
-Uses the width of the process buffer window if visible, otherwise
-falls back to `fill-column'.  Reserves 4 chars for the exit-code prefix."
-  (let* ((win (get-buffer-window (current-buffer)))
-         (max-width (- (if win (window-width win) (+ fill-column 4)) 4 1))
-         (max-width (max 20 max-width)))
-    (truncate-string-to-width heading max-width nil nil "...")))
-
 (defun madolt--process-insert-section-1 (heading exit-code output)
   "Insert a process section with HEADING, EXIT-CODE, and OUTPUT."
   (let ((buf (madolt-process-buffer t)))
@@ -159,7 +154,6 @@ falls back to `fill-column'.  Reserves 4 chars for the exit-code prefix."
                (or madolt-process--root-section magit-root-section)))
           (goto-char (1- (point-max)))
           (let* ((has-output (not (string-empty-p output)))
-                 (short-heading (madolt--process-truncate-heading heading))
                  (section
                   (magit-insert-section (process)
                     (insert (propertize (format "%3s " exit-code)
@@ -168,7 +162,7 @@ falls back to `fill-column'.  Reserves 4 chars for the exit-code prefix."
                                             'madolt-process-ok
                                           'madolt-process-ng)))
                     (magit-insert-heading
-                      (propertize short-heading
+                      (propertize heading
                                   'font-lock-face 'madolt-process-heading))
                     (when has-output
                       (magit-insert-section-body
