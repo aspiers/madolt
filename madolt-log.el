@@ -85,35 +85,39 @@ remotes)."
         (branches nil)
         (remotes nil)
         (parts (split-string refs-string ", " t)))
-    (dolist (part parts)
-      (cond
-       ;; "HEAD -> branchname" -- HEAD pointing to current branch.
-       ;; Like magit, show just the branch name with the current-branch
-       ;; face (boxed); no @ prefix since the face is sufficient.
-       ((string-match "\\`HEAD -> \\(.+\\)\\'" part)
-        (setq head-target
-              (propertize (match-string 1 part)
-                          'font-lock-face 'madolt-branch-current)))
-       ;; "HEAD" alone (detached)
-       ((string-equal part "HEAD")
-        (setq head-target (propertize "@" 'font-lock-face 'madolt-head)))
-       ;; "tag: tagname"
-       ((string-match "\\`tag: \\(.+\\)\\'" part)
-        (push (propertize (match-string 1 part)
-                          'font-lock-face 'madolt-tag)
-              tags))
-       ;; Remote tracking branch: "remotename/branch" where remotename
-       ;; matches a known remote.  Without remote-names, branches like
-       ;; "feature/foo" are correctly treated as local.
-       ((and remote-names
-             (string-match "\\`\\([^/]+\\)/" part)
-             (member (match-string 1 part) remote-names))
-        (push (propertize part 'font-lock-face 'madolt-branch-remote)
-              remotes))
-       ;; Local branch (including branches with "/" like "feature/foo")
-       (t
-        (push (propertize part 'font-lock-face 'madolt-branch-local)
-              branches))))
+    (dolist (raw-part parts)
+      ;; Strip "remotes/" prefix that dolt log --all adds to remote refs.
+      (let ((part (if (string-prefix-p "remotes/" raw-part)
+                      (substring raw-part (length "remotes/"))
+                    raw-part)))
+        (cond
+         ;; "HEAD -> branchname" -- HEAD pointing to current branch.
+         ;; Like magit, show just the branch name with the current-branch
+         ;; face (boxed); no @ prefix since the face is sufficient.
+         ((string-match "\\`HEAD -> \\(.+\\)\\'" part)
+          (setq head-target
+                (propertize (match-string 1 part)
+                            'font-lock-face 'madolt-branch-current)))
+         ;; "HEAD" alone (detached)
+         ((string-equal part "HEAD")
+          (setq head-target (propertize "@" 'font-lock-face 'madolt-head)))
+         ;; "tag: tagname"
+         ((string-match "\\`tag: \\(.+\\)\\'" part)
+          (push (propertize (match-string 1 part)
+                            'font-lock-face 'madolt-tag)
+                tags))
+         ;; Remote tracking branch: "remotename/branch" where remotename
+         ;; matches a known remote.  Without remote-names, branches like
+         ;; "feature/foo" are correctly treated as local.
+         ((and remote-names
+               (string-match "\\`\\([^/]+\\)/" part)
+               (member (match-string 1 part) remote-names))
+          (push (propertize part 'font-lock-face 'madolt-branch-remote)
+                remotes))
+         ;; Local branch (including branches with "/" like "feature/foo")
+         (t
+          (push (propertize part 'font-lock-face 'madolt-branch-local)
+                branches)))))
     ;; Assemble in magit's order: head, tags, local branches, remotes
     (let ((all (append (when head-target (list head-target))
                        (nreverse tags)
@@ -211,9 +215,9 @@ local branches with slashes (e.g. \"feature/foo\").")
    ("o" "Other branch"   madolt-log-other)
    ("h" "HEAD"           madolt-log-head)
    ("a" "All branches"   madolt-log-all)]
-  ["Reflog"
-   ("O" "Current branch" madolt-reflog-current)
-   ("p" "Other ref"      madolt-reflog-other)])
+   ["Reflog"
+    ("O" "Current branch" madolt-reflog-current)
+    ("p" "Other ref"      madolt-reflog-other)])
 
 ;;;; Log refresh transient (L)
 
