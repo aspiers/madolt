@@ -31,14 +31,14 @@ Require emacs
 Require dolt
 
 Set Shell "bash"
-Set FontSize 22
+Set FontSize 16
 Set FontFamily "SauceCodePro Nerd Font Mono"
 Set LetterSpacing 0
 Set LineHeight 1.1
-Set Width 1800
-Set Height 1000
-Set Padding 20
-Set Framerate 15
+Set Width 1200
+Set Height 700
+Set Padding 15
+Set Framerate 10
 Set Theme "Dracula"
 Set TypingSpeed 60ms
 Set WindowBar Colorful
