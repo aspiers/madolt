@@ -61,6 +61,8 @@
 (require 'madolt-remote)
 (require 'madolt-stash)
 (require 'madolt-tag)
+(require 'madolt-connection)
+(require 'madolt-refs)
 
 ;;;; Customization
 

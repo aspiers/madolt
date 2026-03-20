@@ -1,11 +1,29 @@
-# madolt demo - A magit-like Emacs interface for Dolt
+# madolt demo — A magit-like Emacs interface for Dolt
 #
-# This VHS tape creates an animated GIF demonstrating madolt's core features.
+# This VHS tape creates an animated GIF demonstrating madolt's features.
 # Run with: vhs demo.tape
 #
 # Prerequisites:
-#   - Emacs 29.1+ with magit-section, transient installed
+#   - Emacs 29.1+ with magit-section, transient, keycast installed
 #   - Dolt CLI
+#
+# Scenes:
+#   1.  Status buffer overview
+#   2.  Dispatch menu (?)
+#   3.  Inline diff expansion (unstaged employees)
+#   4.  Stage + commit (employees + tasks; departments stays dirty)
+#   5.  Log with graph
+#   6.  Stash demo (stash departments → list → pop → stash again)
+#   7.  Interactive rebase (squash fix-typo, reorder)
+#   8.  Pop stash, stash again for merge
+#   9.  Merge feature/projects (conflict)
+#   10. Conflict resolution (resolve theirs, continue merge)
+#   11. Pop stash
+#   12. Blame (employees table)
+#   13. SQL query
+#   14. SQL server (start, status, stop)
+#   15. Refs buffer
+#   16. Create new branch
 
 Output demo.gif
 
@@ -25,35 +43,50 @@ Set Theme "Dracula"
 Set TypingSpeed 60ms
 Set WindowBar Colorful
 
-# Launch Emacs directly via wrapper that sets up environment
+# Launch Emacs via wrapper (sets up env, resets demo repo, loads madolt)
 Hide
 Type "bash demo/launch.sh"
 Enter
+# Accept the sql-server prompt (server runs throughout the demo)
+Wait+Screen@30s /Start one/
+Type "y"
 # Wait for the status buffer to fully render
 Wait+Screen@30s /Recent commits/
 Show
 
+# ================================================================
+# Act 1: Orientation
+# ================================================================
+
 # === Scene 1: Status buffer overview ===
-# Head, Path, Remote, Untracked, Unstaged, Staged, Recent commits
+# Shows: Database, Path, Head (main), Remote (origin),
+# Untracked (tasks), Unstaged (departments, employees), Recent commits
 Sleep 3s
 
-# === Scene 2: Show the help/dispatch menu ===
+# === Scene 2: Dispatch menu ===
 Type "?"
 Sleep 4s
-# Dismiss the transient
 Ctrl+G
 Sleep 1s
 
-# === Scene 3: Navigate to unstaged table and expand inline diff ===
-Down 9
+# ================================================================
+# Act 2: Working with changes
+# ================================================================
+
+# === Scene 3: Inline diff expansion ===
+# Navigate to employees under Unstaged changes.
+# From top: 10 section-forwards past Path, Head, Remote, blank,
+# Untracked heading, tasks, blank, Unstaged heading, departments,
+# then employees.
+Down 10
 Sleep 500ms
 
-# TAB expands to show row-level changes (level 3 summary)
+# TAB: row-level diff (salary + title changes for Carol and Bob)
 Tab
 Sleep 3s
 
-# === Scene 4: Expand a row to see per-field detail (level 4) ===
-Down 2
+# Move to first changed row, expand for per-field detail
+Down 1
 Sleep 500ms
 Tab
 Sleep 3s
@@ -62,102 +95,330 @@ Sleep 3s
 Tab
 Sleep 500ms
 
-# === Scene 5: Stage the unstaged table ===
-# Navigate back up to the table heading
-Up 2
+# === Scene 4: Stage + commit ===
+# Navigate up to employees table heading
+Up 1
 Sleep 300ms
+# Stage employees
 Type "s"
-Sleep 2s
+Sleep 1.5s
 
-# Navigate to the untracked table and stage it too
-Down 6
-Sleep 500ms
+# Point lands on departments. Go up 3 to tasks:
+# departments → Unstaged heading → blank → tasks
+Up 3
+Sleep 300ms
+# Stage tasks
 Type "s"
-Sleep 2s
+Sleep 1.5s
 
-# === Scene 6: Commit staged changes ===
-# Press 'c' for commit transient — linger to show options
+# Now: departments unstaged, employees+tasks staged.
+# Open commit transient — pause to show options
 Type "c"
 Sleep 2.5s
 
-# Press 'c' to create commit
+# Press 'c' to create commit (opens message buffer)
 Type "c"
 Sleep 1s
 
-# Type commit message
-Type "Add projects table, update department budgets"
-Enter
-Enter
-Type "Stage the new projects table and department budget changes."
+# Type a single-line commit message (keeps stash display clean)
+Type "Add tasks table, promote Carol and raise Bob"
 Sleep 700ms
 
-# Finalize the commit with C-c C-c
+# Finalize commit with C-c C-c
 Ctrl+C
 Ctrl+C
 Sleep 2s
 
-# === Scene 7: View the commit log ===
-# Press 'l' for log transient
-Type "l"
-Sleep 2.5s
+# ================================================================
+# Act 3: History exploration
+# ================================================================
 
-# Press 'l' for current branch log
+# === Scene 5: Log ===
+# Open log transient
 Type "l"
 Sleep 2s
 
-# Move to first commit and expand it
+# Current branch log
+Type "l"
+Sleep 3s
+
+# Expand first commit
 Down
 Sleep 500ms
 Tab
-Sleep 1.5s
+Sleep 2s
 
-# Move down to a table entry and expand its diff
+# Expand a table diff inside the commit
 Down
 Sleep 500ms
 Tab
 Sleep 3s
 
-# Scroll down to see more diff content
-Down 3
-Sleep 500ms
-Down 3
-Sleep 1.5s
-
-# === Scene 8: Return to status and view refs ===
+# Return to status
 Type "q"
 Sleep 1s
 
-# Press 'y' for refs buffer
+# ================================================================
+# Act 4: Stash
+# ================================================================
+
+# === Scene 6: Stash demo ===
+# departments is still unstaged after the commit — perfect for stash.
+
+# Open stash transient — pause to show menu
+Type "z"
+Sleep 2s
+
+# Stash the dirty departments changes
+Type "z"
+Sleep 2s
+
+# List stashes (shown in minibuffer/echo area)
+Type "z"
+Sleep 1s
+Type "l"
+Sleep 2s
+
+# Pop the stash to restore departments changes
+Type "z"
+Sleep 1s
+Type "p"
+# Pop prompts for stash number — accept default (0)
+Sleep 500ms
+Enter
+Sleep 2s
+
+# Stash again — we need clean state for interactive rebase
+Type "z"
+Sleep 1s
+Type "z"
+Sleep 1.5s
+
+# ================================================================
+# Act 5: Interactive rebase
+# ================================================================
+
+# === Scene 7: Interactive rebase to clean up history ===
+Type "r"
+Sleep 2s
+
+# Start interactive rebase
+Type "i"
+Sleep 500ms
+
+# Upstream prompt has completion — clear it and type our ref.
+# Go back 5 commits to include the fix-typo commit.
+Ctrl+A
+Ctrl+K
+Type "HEAD~5"
+Enter
+Sleep 3s
+
+# Plan editor is now open showing 5 commits oldest-first:
+#   pick Q2 budget adjustment for Engineering
+#   pick Promote Alice Chen to Staff Engineer
+#   pick Fix typo in Alice's email       ← squash this
+#   pick Update Sales headcount
+#   pick Add tasks table, promote Carol and raise Bob
+
+# Navigate to the fix-typo commit (3rd line = 2 Downs)
+Down 2
+Sleep 500ms
+
+# Change action to squash (merge into Promote Alice above)
+Type "s"
+Sleep 2s
+
+# Move to next line (Update Sales headcount) and reorder it up
+Down 1
+Sleep 500ms
+# M-p moves the line at point up one position
+Alt+p
+Sleep 2s
+
+# Apply the rebase plan
+Ctrl+C
+Ctrl+C
+Sleep 4s
+
+# ================================================================
+# Act 6: Merge with conflict resolution
+# ================================================================
+
+# === Scene 8: Pop stash, stash again for merge ===
+# Pop stash to briefly recover departments changes
+Type "z"
+Sleep 1s
+Type "p"
+Sleep 500ms
+Enter
+Sleep 1.5s
+
+# Stash again for clean merge
+Type "z"
+Sleep 1s
+Type "z"
+Sleep 1.5s
+
+# === Scene 9: Merge feature/projects ===
+# Open merge transient — pause to show options
+Type "m"
+Sleep 2s
+
+# Press 'm' to merge
+Type "m"
+Sleep 500ms
+
+# Prompted for branch — clear completion and type branch name
+Ctrl+A
+Ctrl+K
+Type "feature/projects"
+Enter
+Sleep 4s
+
+# Merge conflict! Process buffer shows the error.
+# Return to status to see the conflict state.
+Type "q"
+Sleep 2s
+
+# === Scene 10: Resolve the conflict ===
+# Status shows "Merge conflicts (1): departments"
+# Open conflicts transient
+Type "C"
+Sleep 2s
+
+# View conflicts on departments
+Type "c"
+Sleep 500ms
+Ctrl+A
+Ctrl+K
+Type "departments"
+Enter
+Sleep 3s
+
+# Shows base/ours/theirs comparison for Engineering row.
+# Return to status
+Type "q"
+Sleep 500ms
+
+# Resolve using theirs (accept feature branch values)
+Type "C"
+Sleep 1.5s
+Type "t"
+Sleep 500ms
+Ctrl+A
+Ctrl+K
+Type "departments"
+Enter
+Sleep 2s
+
+# Continue merge: open merge transient (shows Continue/Abort)
+Type "m"
+Sleep 1.5s
+Type "m"
+Sleep 1s
+
+# Merge commit message prompt — clear default and type our own
+Ctrl+A
+Ctrl+K
+Type "Merge feature/projects into main"
+Enter
+Sleep 2s
+
+# === Scene 11: Pop stash to recover departments changes ===
+Type "z"
+Sleep 1s
+Type "p"
+Sleep 500ms
+Enter
+Sleep 1.5s
+
+# ================================================================
+# Act 7: Database-native features
+# ================================================================
+
+# === Scene 12: Blame ===
+Type "B"
+Sleep 500ms
+# Prompted for table — clear completion and type
+Ctrl+A
+Ctrl+K
+Type "employees"
+Enter
+Sleep 4s
+
+# Per-row blame annotations with commit hashes and authors
+Type "q"
+Sleep 1s
+
+# === Scene 13: SQL query ===
+Type "e"
+Sleep 500ms
+Type "SELECT name, salary FROM employees WHERE salary > 100000"
+Enter
+Sleep 4s
+
+# Formatted table results
+Type "q"
+Sleep 1s
+
+# === Scene 14: SQL server ===
+# Server is already running from startup. Show the transient and status.
+# Open SQL server transient — show the menu
+Type "E"
+Sleep 2s
+
+# Show server status (server was started at startup)
+Type "i"
+Sleep 2s
+
+# Stop the server
+Type "E"
+Sleep 1.5s
+Type "k"
+Sleep 2s
+
+# Restart it to show the full lifecycle
+Type "E"
+Sleep 1.5s
+Type "s"
+Sleep 3s
+
+# ================================================================
+# Act 8: Branch management & refs
+# ================================================================
+
+# === Scene 15: Refs buffer ===
 Type "y"
 Sleep 3s
 
-# Expand the feature branch to show cherry commits
-Down 2
+# Expand feature/projects branch to show cherry commits
+Down
 Sleep 500ms
 Tab
 Sleep 2s
 
-# Return from refs buffer
+# Return from refs
 Type "q"
 Sleep 1s
 
-# === Scene 9: Create and checkout a new branch ===
-# Press 'b' for branch transient
+# === Scene 16: Create a new branch ===
+# Open branch transient
 Type "b"
 Sleep 2s
 
-# Press 'c' to create and checkout
+# Create and checkout
 Type "c"
 Sleep 500ms
 
-# Type branch name
-Type "feature/demo"
+# Prompted for start point first — accept HEAD default
 Enter
 Sleep 500ms
 
-# Accept default start point (HEAD)
+# Now prompted for branch name
+Type "feature/next-sprint"
 Enter
 Sleep 2s
 
-# Show the clean status with new branch in Head line
+# Status shows new branch in Head line
 Sleep 3s

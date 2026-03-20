@@ -1,5 +1,24 @@
 #!/bin/bash
-# Set up a dolt repo with interesting state for the madolt demo
+# Set up a dolt repo with interesting state for the madolt demo.
+#
+# Creates a history with:
+#   - Multiple commits on main (employees, departments)
+#   - A tag (v0.1)
+#   - A feature branch that diverges from main with conflicting changes
+#   - Extra commits on main after divergence (for non-ff merge + graph)
+#   - A "fix typo" commit suitable for squashing during rebase demo
+#   - Working state: staged + unstaged + untracked tables
+#
+# The resulting state supports all demo scenes:
+#   - Inline diff expansion (unstaged employees changes)
+#   - Stash (unstaged changes before merge)
+#   - Stage + commit (employees + tasks table)
+#   - Log with graph (diverged branches)
+#   - Merge with conflict (departments budget on both branches)
+#   - Conflict resolution
+#   - Interactive rebase (squash fix-typo, reorder)
+#   - Blame, SQL query, SQL server, refs, branch creation
+
 set -e
 
 DEMO_DIR="${1:-/tmp/madolt-demo-db}"
@@ -10,7 +29,9 @@ cd "$DEMO_DIR"
 
 dolt init
 
-# === Commit 1: Initial schema ===
+# ============================================================
+# Commit 1: Initial schema — employees and departments
+# ============================================================
 dolt sql -q "CREATE TABLE employees (
   id INT PRIMARY KEY,
   name VARCHAR(100),
@@ -44,23 +65,26 @@ dolt sql -q "INSERT INTO departments VALUES
 dolt add .
 dolt commit -m "Initial schema with employees and departments"
 
-# === Commit 2: Add more employees ===
+# ============================================================
+# Commit 2: Add more employees
+# ============================================================
 dolt sql -q "INSERT INTO employees VALUES
   (4, 'Diana Lopez',   'diana@example.com', 'Sales',       'Account Executive', 68000.00, '2024-02-20', 'Chicago',       '555-0104'),
   (5, 'Erik Johnson',  'erik@example.com',  'Engineering', 'Principal Engineer',110000.00, '2020-11-05', 'San Francisco', '555-0105')"
 dolt add .
 dolt commit -m "Add new hires Diana and Erik"
 
-# === Commit 3: Budget update ===
-dolt sql -q "UPDATE departments SET budget = 550000.00 WHERE name = 'Engineering'"
-dolt add .
-dolt commit -m "Increase Engineering budget"
-
-# === Create a tag on this commit ===
+# ============================================================
+# Tag v0.1 — first milestone
+# ============================================================
 dolt tag v0.1 -m "First milestone"
 
-# === Create a feature branch with work ===
+# ============================================================
+# Feature branch: diverges here, adds projects + modifies departments
+# ============================================================
 dolt checkout -b feature/projects
+
+# Feature commit 1: Add projects table
 dolt sql -q "CREATE TABLE projects (
   id INT PRIMARY KEY,
   name VARCHAR(100),
@@ -77,23 +101,65 @@ dolt sql -q "INSERT INTO projects VALUES
   (2, 'New Website',        2, 'planning', '2025-03-01', '2025-09-15',  80000.00, 'medium', 'Marketing'),
   (3, 'API Redesign',       5, 'active',   '2025-02-01', '2025-08-01', 120000.00, 'high',   'Engineering')"
 dolt add .
-dolt commit -m "Add projects table with initial project data"
+dolt commit -m "Add projects table"
 
-# === Switch back to main for the demo ===
+# Feature commit 2: Increase Engineering budget (CONFLICTS with main)
+dolt sql -q "UPDATE departments SET budget = 700000.00, head_count = 15 WHERE name = 'Engineering'"
+dolt add .
+dolt commit -m "Increase Engineering budget for new projects"
+
+# ============================================================
+# Back to main: add commits after divergence (non-ff merge, graph)
+# ============================================================
 dolt checkout main
 
-# === Create working state for the demo: ===
+# Commit 3: Update Engineering budget differently (CONFLICTS with feature)
+dolt sql -q "UPDATE departments SET budget = 600000.00 WHERE name = 'Engineering'"
+dolt add .
+dolt commit -m "Q2 budget adjustment for Engineering"
 
-# 1. Stage a modification to employees (salary raise + title change)
-dolt sql -q "UPDATE employees SET salary = 100000.00, title = 'Staff Engineer' WHERE name = 'Alice Chen'"
-dolt sql -q "UPDATE employees SET salary = 115000.00 WHERE name = 'Carol Williams'"
-dolt add employees
+# Commit 4: Promote Alice (good data for blame + inline diff)
+dolt sql -q "UPDATE employees SET salary = 105000.00, title = 'Staff Engineer' WHERE name = 'Alice Chen'"
+dolt add .
+dolt commit -m "Promote Alice Chen to Staff Engineer"
 
-# 2. Make unstaged changes to departments
+# Commit 5: Fix a typo — intentionally small for rebase squash demo
+dolt sql -q "UPDATE employees SET email = 'alice.chen@example.com' WHERE name = 'Alice Chen'"
+dolt add .
+dolt commit -m "Fix typo in Alice's email"
+
+# Commit 6: Add Sales headcount — another small commit for rebase reorder
+dolt sql -q "UPDATE departments SET head_count = 10 WHERE name = 'Sales'"
+dolt add .
+dolt commit -m "Update Sales headcount"
+
+# ============================================================
+# Working state for the demo opening
+# ============================================================
+
+# Unstaged: salary raises for two employees (Scene 3 diff expansion)
+dolt sql -q "UPDATE employees SET salary = 115000.00, title = 'Senior Staff Engineer' WHERE name = 'Carol Williams'"
+dolt sql -q "UPDATE employees SET salary = 75000.00 WHERE name = 'Bob Martinez'"
+
+# Unstaged: departments changes (persist after Scene 4 commit, used for
+# stash demo in Scene 6 and must be stashed before merge in Scene 7)
 dolt sql -q "UPDATE departments SET budget = 250000.00, head_count = 8 WHERE name = 'Marketing'"
-dolt sql -q "INSERT INTO departments VALUES (4, 'Research', 300000.00, 3, 'Boston', 4, '2025-01-15')"
 
-# 3. Configure a remote
+# Untracked: new tasks table (Scene 4 staging)
+dolt sql -q "CREATE TABLE tasks (
+  id INT PRIMARY KEY,
+  title VARCHAR(200),
+  assignee_id INT,
+  status VARCHAR(20),
+  priority VARCHAR(10),
+  created DATE
+)"
+dolt sql -q "INSERT INTO tasks VALUES
+  (1, 'Set up CI pipeline',     5, 'in_progress', 'high',   '2025-03-01'),
+  (2, 'Write onboarding docs',  2, 'open',        'medium', '2025-03-05'),
+  (3, 'Database backup script',  3, 'open',        'high',   '2025-03-10')"
+
+# Configure a remote for the refs display
 dolt remote add origin aspiers/madolt-demo-db
 
 echo "Demo repo ready at $DEMO_DIR"

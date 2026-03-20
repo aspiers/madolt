@@ -9,7 +9,7 @@
                         (expand-file-name "~/.emacs.d/straight/build/"))))
   (when (file-directory-p straight-dir)
     (dolist (pkg '("magit-section" "transient" "with-editor" "compat"
-                   "dash" "seq" "cond-let" "llama"))
+                   "dash" "seq" "cond-let" "llama" "keycast"))
       (let ((pkg-dir (expand-file-name pkg straight-dir)))
         (when (file-directory-p pkg-dir)
           (add-to-list 'load-path pkg-dir))))))
@@ -38,6 +38,30 @@
 ;; Load madolt
 (require 'madolt)
 
+
+
+;; Display madolt buffers in the same window (full-frame).
+;; The default falls back to display-buffer which splits.
+;; TODO: add a proper madolt-display-buffer-function defcustom.
+(defun madolt-display-buffer (buffer)
+  "Display BUFFER in the current window."
+  (let ((window (display-buffer buffer '(display-buffer-same-window))))
+    (when window
+      (select-window window))))
+
+;; Enable keycast to show keystrokes in the mode line during the demo
+(require 'keycast)
+(keycast-mode-line-mode 1)
+;; Make keycast key face high-contrast for the recording
+(set-face-attribute 'keycast-key nil
+                    :foreground "#1e1e2e"
+                    :background "#f5c2e7"
+                    :weight 'bold
+                    :box '(:line-width -3 :style released-button))
+(set-face-attribute 'keycast-command nil
+                    :foreground "#cdd6f4"
+                    :weight 'bold)
+
 ;; Open status buffer after Emacs finishes initializing
 ;; Use emacs-startup-hook to ensure we have a frame/window
 (add-hook 'emacs-startup-hook
@@ -46,7 +70,7 @@
             ;; Ensure only the status buffer is visible (full frame)
             (delete-other-windows)
             (let ((buf (get-buffer
-                        (format "*madolt-status: %s*"
+                        (format "madolt-status: %s"
                                 (file-name-nondirectory
                                  (getenv "DEMO_DB"))))))
               (when buf
