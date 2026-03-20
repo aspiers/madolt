@@ -394,16 +394,45 @@ DIRECTORY defaults to the current database directory."
          (name (and dir (madolt--buffer-name mode dir))))
     (and name (get-buffer name))))
 
+(defcustom madolt-display-buffer-function
+  #'madolt-display-buffer-traditional
+  "The function used to display a madolt buffer.
+
+All madolt buffers (buffers whose major-modes derive from
+`madolt-mode') are displayed using `madolt-display-buffer',
+which in turn uses the function specified here."
+  :group 'madolt
+  :type '(radio (function-item madolt-display-buffer-traditional)
+                (function-item madolt-display-buffer-same-window)
+                (function-item display-buffer)
+                (function :tag "Function")))
+
 (defun madolt-display-buffer (buffer)
   "Display BUFFER in a window and select it.
-Delegates to `magit-display-buffer' when available, so that the
-user's `magit-display-buffer-function' setting is respected.
-Falls back to `display-buffer' otherwise."
-  (if (fboundp 'magit-display-buffer)
-      (magit-display-buffer buffer)
-    (let ((window (display-buffer buffer)))
-      (when window
-        (select-window window)))))
+Uses `madolt-display-buffer-function' to determine how to display
+the buffer."
+  (let ((window (funcall madolt-display-buffer-function buffer)))
+    (when window
+      (select-window window))))
+
+(defun madolt-display-buffer-traditional (buffer)
+  "Display BUFFER the way magit traditionally does.
+When called from a madolt buffer, display BUFFER in the same
+window — unless it is a process or diff buffer, which get their
+own window.  From non-madolt buffers, use the default display
+logic."
+  (display-buffer
+   buffer (if (and (derived-mode-p 'madolt-mode)
+                   (not (memq (with-current-buffer buffer major-mode)
+                              '(madolt-process-mode
+                                madolt-revision-mode
+                                madolt-diff-mode))))
+              '(display-buffer-same-window)
+            nil)))
+
+(defun madolt-display-buffer-same-window (buffer)
+  "Display BUFFER in the selected window unconditionally."
+  (display-buffer buffer '(display-buffer-same-window)))
 
 ;;;; Refresh
 

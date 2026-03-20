@@ -38,17 +38,6 @@
 ;; Load madolt
 (require 'madolt)
 
-
-
-;; Display madolt buffers in the same window (full-frame).
-;; The default falls back to display-buffer which splits.
-;; TODO: add a proper madolt-display-buffer-function defcustom.
-(defun madolt-display-buffer (buffer)
-  "Display BUFFER in the current window."
-  (let ((window (display-buffer buffer '(display-buffer-same-window))))
-    (when window
-      (select-window window))))
-
 ;; Enable keycast to show keystrokes in the mode line during the demo
 (require 'keycast)
 (keycast-mode-line-mode 1)
