@@ -25,7 +25,7 @@
 #   15. Refs buffer
 #   16. Create new branch
 
-Output demo.gif
+Output demo.webm
 
 Require emacs
 Require dolt
