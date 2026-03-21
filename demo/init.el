@@ -46,6 +46,16 @@
   (set-face-attribute 'madolt-diff-new nil :foreground "#a6e3a1")
   (set-face-attribute 'madolt-diff-old nil :foreground "#f38ba8"))
 
+;; High-contrast mode line for visibility in recordings
+(set-face-attribute 'mode-line nil
+                    :foreground "#cdd6f4"   ; catppuccin text
+                    :background "#585b70"   ; catppuccin surface2
+                    :box '(:line-width -1 :color "#7f849c"))
+(set-face-attribute 'mode-line-inactive nil
+                    :foreground "#6c7086"   ; catppuccin overlay0
+                    :background "#313244"   ; catppuccin surface0
+                    :box '(:line-width -1 :color "#45475a"))
+
 ;; Enable keycast to show keystrokes in the mode line during the demo
 (require 'keycast)
 (keycast-mode-line-mode 1)
