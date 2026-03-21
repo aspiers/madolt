@@ -351,6 +351,12 @@ copies the full commit hash."
   (keymap-set map "S-SPC" #'madolt-diff-show-or-scroll-down)
   (keymap-set map "DEL"   #'madolt-diff-show-or-scroll-down))
 
+;; Let the process buffer inherit madolt-mode keybindings (P for push,
+;; F for pull, c for commit, etc.) without deriving from madolt-mode
+;; (which would create a circular require).
+(with-eval-after-load 'madolt-process
+  (set-keymap-parent madolt-process-mode-map madolt-mode-map))
+
 ;;;; Buffer lifecycle
 
 (defun madolt-setup-buffer (mode &optional directory)
