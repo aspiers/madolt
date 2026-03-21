@@ -686,20 +686,41 @@ Returns ROW unchanged if TABLE is nil or has no PK info."
 
 ;;;; Diff queries
 
+(defun madolt-diff--needs-system-p (args)
+  "Return non-nil if ARGS reference a system table (dolt_*).
+Dolt excludes system tables from diff output by default; the
+`--system' flag is required to include them."
+  (cl-some (lambda (arg)
+             (string-prefix-p "dolt_" arg))
+           args))
+
 (defun madolt-diff-json (&rest args)
   "Run `dolt diff' with JSON output and return parsed result.
-ARGS are additional arguments passed to `dolt diff'."
-  (apply #'madolt-dolt-json "diff" "-r" "json" args))
+ARGS are additional arguments passed to `dolt diff'.
+Automatically adds `--system' when a system table (dolt_*) is
+referenced, since dolt excludes them by default."
+  (apply #'madolt-dolt-json "diff" "-r" "json"
+         (if (madolt-diff--needs-system-p args)
+             (cons "--system" args)
+           args)))
 
 (defun madolt-diff-stat (&rest args)
   "Run `dolt diff --stat' and return the output string.
-ARGS are additional arguments passed to `dolt diff'."
-  (cdr (apply #'madolt--run "diff" "--stat" args)))
+ARGS are additional arguments passed to `dolt diff'.
+Automatically adds `--system' for system tables."
+  (let ((effective (if (madolt-diff--needs-system-p args)
+                       (cons "--system" args)
+                     args)))
+    (cdr (apply #'madolt--run "diff" "--stat" effective))))
 
 (defun madolt-diff-raw (&rest args)
   "Run `dolt diff' and return the raw tabular output string.
-ARGS are additional arguments passed to `dolt diff'."
-  (cdr (apply #'madolt--run "diff" args)))
+ARGS are additional arguments passed to `dolt diff'.
+Automatically adds `--system' for system tables."
+  (let ((effective (if (madolt-diff--needs-system-p args)
+                       (cons "--system" args)
+                     args)))
+    (cdr (apply #'madolt--run "diff" effective))))
 
 ;;;; Commit message helpers
 
