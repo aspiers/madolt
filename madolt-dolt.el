@@ -893,15 +893,16 @@ lines (e.g. the `|\\' on a Merge: line) are captured as
           (setq seen-commit-line t)
           (setq state 'in-commit)))
        ;; Content line within a commit that has junction chars in its
-       ;; graph prefix (e.g. "|\ Merge: ...").  Capture the graph
-       ;; prefix as :graph-post on the current entry.
+       ;; graph prefix (e.g. "|\ Merge: ..." followed by "| \ Author: ...").
+       ;; Collect all such graph prefixes as :graph-post on the current
+       ;; entry so the full progressive fork is rendered.
        ((and (eq state 'in-commit) seen-commit-line current-entry
              (string-match "^\\([|*/ \\\\]+\\)\\s-+" raw-line)
-             (string-match-p "[/\\\\]" (match-string 1 raw-line))
-             ;; Only capture the first junction within a commit
-             (not (plist-get current-entry :graph-post)))
+             (string-match-p "[/\\\\]" (match-string 1 raw-line)))
         (plist-put current-entry :graph-post
-                   (list (string-trim-right (match-string 1 raw-line))))
+                   (append (plist-get current-entry :graph-post)
+                           (list (string-trim-right
+                                  (match-string 1 raw-line)))))
         ;; Don't change state — still in-commit
         )
        ;; Graph-only line with junction chars (\ or /) — collect as
