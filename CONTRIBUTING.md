@@ -21,20 +21,17 @@ with:
 make test STRAIGHT_DIR=/path/to/your/packages
 ```
 
-## Regenerating the demo GIF
+## Regenerating the demo clips
 
-The animated demo GIF is built with [VHS](https://github.com/charmbracelet/vhs):
+See [`demo/README.md`](demo/README.md) for full details.  Quick start:
 
 ```sh
-vhs demo.tape
+# Single clip
+vhs demo/clip1-overview.tape
+
+# All clips
+for tape in demo/clip*.tape; do vhs "$tape"; done
 ```
-
-This runs `demo/setup.sh` to create a temporary Dolt repo at
-`/tmp/madolt-demo-db`, launches Emacs via `demo/launch.sh` with
-`demo/init.el`, and records the scripted interaction into `demo.gif`.
-
-To modify the demo content, edit `demo/setup.sh` (repo data) or
-`demo.tape` (recorded keystrokes and timing).
 
 ## Known limitations
 
