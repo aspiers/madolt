@@ -38,6 +38,14 @@
 ;; Load madolt
 (require 'madolt)
 
+;; Explicit diff face colours — catppuccin may not define magit-diff
+;; faces in terminal mode even with magit loaded.
+(with-eval-after-load 'madolt-diff
+  (set-face-attribute 'madolt-diff-added nil :foreground "#a6e3a1")
+  (set-face-attribute 'madolt-diff-removed nil :foreground "#f38ba8")
+  (set-face-attribute 'madolt-diff-new nil :foreground "#a6e3a1")
+  (set-face-attribute 'madolt-diff-old nil :foreground "#f38ba8"))
+
 ;; Enable keycast to show keystrokes in the mode line during the demo
 (require 'keycast)
 (keycast-mode-line-mode 1)

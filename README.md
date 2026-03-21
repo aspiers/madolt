@@ -9,7 +9,17 @@ Git-like version control operations on SQL databases.  The core
 workflow is: **view status -> stage tables -> commit -> view
 history**.
 
-![madolt demo](demo.gif)
+### Overview & diffs
+![Overview & diffs](demo/clip1-overview.gif)
+
+### Stage, commit, log, refs & branch
+![Workflow](demo/clip2-workflow.gif)
+
+### Stash & interactive rebase
+![Stash & rebase](demo/clip3-stash-rebase.gif)
+
+### Merge, conflicts, blame, SQL & server
+![Merge & database](demo/clip4-merge-database.gif)
 
 ## Features
 
