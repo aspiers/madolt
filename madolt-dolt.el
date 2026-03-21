@@ -727,11 +727,17 @@ such as \"--merges\".
 The :parents key holds a list of parent hash strings, parsed from
 the commit line (dolt log is called with --parents).  It is nil
 only for initial commits that have no parent."
-  (let* ((args (append (list "log" "--parents"
-                             "-n" (number-to-string (or n 10)))
-                       (madolt--flatten-args extra-args)
+  (let* ((flat-extra (madolt--flatten-args extra-args))
+         (graph-mode (member "--graph" flat-extra))
+         ;; When --graph is active, omit -n so dolt computes the full
+         ;; branch topology (dolt's graph layout drops merge junction
+         ;; lines when -n is given).  We truncate entries after parsing.
+         (limit (or n 10))
+         (args (append (list "log" "--parents")
+                       (unless graph-mode
+                         (list "-n" (number-to-string limit)))
+                       flat-extra
                        (when rev (list rev))))
-         (graph-mode (member "--graph" args))
          (output (cdr (apply #'madolt--run args)))
          (clean-output (madolt--strip-ansi output))
          (entries nil)
@@ -844,7 +850,11 @@ only for initial commits that have no parent."
     ;; extract these and attach them to each entry's :graph-pre.
     (when graph-mode
       (madolt-log--attach-graph-continuations entries clean-output))
-    (nreverse entries)))
+    (let ((result (nreverse entries)))
+      ;; In graph mode we fetched all commits (no -n) so truncate here.
+      (if (and graph-mode (> (length result) limit))
+          (seq-take result limit)
+        result))))
 
 ;;;; Reflog queries
 
