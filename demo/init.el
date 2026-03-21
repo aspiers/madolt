@@ -8,7 +8,7 @@
 (let ((straight-dir (or (getenv "STRAIGHT_DIR")
                         (expand-file-name "~/.emacs.d/straight/build/"))))
   (when (file-directory-p straight-dir)
-    (dolist (pkg '("magit-section" "transient" "with-editor" "compat"
+    (dolist (pkg '("magit-section" "magit" "transient" "with-editor" "compat"
                    "dash" "seq" "cond-let" "llama" "keycast"))
       (let ((pkg-dir (expand-file-name pkg straight-dir)))
         (when (file-directory-p pkg-dir)
