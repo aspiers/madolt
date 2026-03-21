@@ -660,6 +660,30 @@ The result is cached per refresh cycle via `madolt--refresh-cache'."
          (rows (and json (alist-get 'rows json))))
     (mapcar (lambda (row) (alist-get 'COLUMN_NAME row)) rows)))
 
+(defun madolt-reorder-pk-first (table row)
+  "Return ROW alist reordered with primary key fields of TABLE first.
+Non-PK fields retain their original relative order.
+Returns ROW unchanged if TABLE is nil or has no PK info."
+  (if (null table)
+      row
+    (let* ((pk-cols (madolt-primary-key-columns table))
+           (pk-set (mapcar #'intern pk-cols)))
+      (if (null pk-set)
+          row
+        (let ((pk-fields nil)
+              (other-fields nil))
+          (dolist (pair row)
+            (if (memq (car pair) pk-set)
+                (push pair pk-fields)
+              (push pair other-fields)))
+          (append (nreverse pk-fields) (nreverse other-fields)))))))
+
+(defun madolt-pk-field-p (table field)
+  "Return non-nil if FIELD (a symbol) is a primary key column of TABLE."
+  (and table
+       (memq field (mapcar #'intern
+                           (madolt-primary-key-columns table)))))
+
 ;;;; Diff queries
 
 (defun madolt-diff-json (&rest args)

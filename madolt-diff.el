@@ -734,9 +734,11 @@ to fit all fields."
 Column names use `madolt-diff-column-name', equals signs use
 `madolt-diff-context', and values use VAL-FACE (defaulting to
 `madolt-diff-context').
+Primary key fields are shown first when table context is available.
 When MAX-WIDTH is non-nil, truncate long values to fit within that
 many characters, using \"…\" for truncation."
-  (let ((vf (or val-face 'madolt-diff-context)))
+  (let ((vf (or val-face 'madolt-diff-context))
+        (row (madolt-reorder-pk-first madolt-diff--current-table row)))
     (if (or (null max-width) (null row))
         ;; No width constraint or empty row
         (mapconcat (lambda (pair)
@@ -812,6 +814,11 @@ When collapsed back to level 3, the overlay is removed."
                                   (+ heading-start full-len))))
             (overlay-put ov 'madolt-row-fields t)
             (overlay-put ov 'evaporate t)
+            ;; Use 'display instead of 'invisible to hide fields,
+            ;; because magit-section-show removes all overlays with
+            ;; 'invisible t in the section range.
+            (unless (oref magit-insert-section--current hidden)
+              (overlay-put ov 'display ""))
             (unless madolt-diff--row-field-overlays
               (setq madolt-diff--row-field-overlays
                     (make-hash-table :test 'eq)))
@@ -847,19 +854,25 @@ row-diff section is expanded to level 4."
 (defun madolt-diff--on-section-toggle (section)
   "After toggling SECTION, toggle the field overlay on row-diffs.
 When shown (level 4): hide the non-PK fields in the heading.
-When hidden (level 3): show the full heading."
+When hidden (level 3): show the full heading.
+Uses `display' property instead of `invisible' because
+`magit-section-show' removes all `invisible' overlays."
   (when (and section
              (eq (oref section type) 'row-diff)
              madolt-diff--row-field-overlays)
     (let ((ov (gethash section madolt-diff--row-field-overlays)))
       (when ov
-        (overlay-put ov 'invisible (not (oref section hidden)))))))
+        (if (oref section hidden)
+            (overlay-put ov 'display nil)
+          (overlay-put ov 'display ""))))))
 
 (advice-remove 'magit-section-toggle #'madolt-diff--on-section-toggle)
 (advice-add 'magit-section-toggle :after #'madolt-diff--on-section-toggle)
 
 (defun madolt-diff--insert-row-details (row-change change-type)
-  "Insert expanded detail lines for ROW-CHANGE of CHANGE-TYPE."
+  "Insert expanded detail lines for ROW-CHANGE of CHANGE-TYPE.
+Primary key fields are omitted since they are already visible
+in the row heading above."
   (let ((from-row (alist-get 'from_row row-change))
         (to-row (alist-get 'to_row row-change))
         (detail-indent (concat madolt-diff--indent "    "))
@@ -867,25 +880,29 @@ When hidden (level 3): show the full heading."
     (pcase change-type
       ('added
        (dolist (pair to-row)
-         (insert (format "%s%s:  %s\n"
-                         detail-indent
-                         (propertize (symbol-name (car pair))
-                                     'font-lock-face 'madolt-diff-column-name)
-                         (madolt-diff--format-field-value
-                          (cdr pair) 'madolt-diff-added value-indent)))))
+         (unless (madolt-pk-field-p madolt-diff--current-table (car pair))
+           (insert (format "%s%s:  %s\n"
+                           detail-indent
+                           (propertize (symbol-name (car pair))
+                                       'font-lock-face 'madolt-diff-column-name)
+                           (madolt-diff--format-field-value
+                            (cdr pair) 'madolt-diff-added value-indent))))))
       ('deleted
        (dolist (pair from-row)
-         (insert (format "%s%s:  %s\n"
-                         detail-indent
-                         (propertize (symbol-name (car pair))
-                                     'font-lock-face 'madolt-diff-column-name)
-                         (madolt-diff--format-field-value
-                          (cdr pair) 'madolt-diff-removed value-indent)))))
+         (unless (madolt-pk-field-p madolt-diff--current-table (car pair))
+           (insert (format "%s%s:  %s\n"
+                           detail-indent
+                           (propertize (symbol-name (car pair))
+                                       'font-lock-face 'madolt-diff-column-name)
+                           (madolt-diff--format-field-value
+                            (cdr pair) 'madolt-diff-removed value-indent))))))
       ('modified
        (madolt-diff--insert-modified-details from-row to-row)))))
 
 (defun madolt-diff--insert-modified-details (from-row to-row)
-  "Insert cell-by-cell comparison for modified FROM-ROW vs TO-ROW."
+  "Insert cell-by-cell comparison for modified FROM-ROW vs TO-ROW.
+Primary key fields are omitted since they are already visible
+in the row heading above."
   ;; Gather all keys preserving order from from-row, then add new keys
   (let ((keys (mapcar #'car from-row))
         (detail-indent (concat madolt-diff--indent "    "))
@@ -895,9 +912,10 @@ When hidden (level 3): show the full heading."
         (push (car pair) keys)))
     (setq keys (nreverse keys))
     (dolist (key keys)
-      (let ((old-val (alist-get key from-row))
-            (new-val (alist-get key to-row)))
-        (if (equal old-val new-val)
+      (unless (madolt-pk-field-p madolt-diff--current-table key)
+        (let ((old-val (alist-get key from-row))
+              (new-val (alist-get key to-row)))
+          (if (equal old-val new-val)
             ;; Unchanged cell
             (insert (format "%s%s:  %s\n"
                             detail-indent
@@ -929,7 +947,7 @@ When hidden (level 3): show the full heading."
                               (propertize "→" 'font-lock-face 'madolt-diff-changed-cell)))
               (dolist (line (split-string new-str "\n"))
                 (insert (format "%s%s\n" value-indent
-                                (propertize line 'font-lock-face 'madolt-diff-new)))))))))
+                                 (propertize line 'font-lock-face 'madolt-diff-new))))))))))
     ))
 
 ;;;; Raw mode
