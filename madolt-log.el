@@ -705,11 +705,15 @@ without selecting it."
         (madolt-revision-mode)
         (setq default-directory db-dir)
         (setq madolt-buffer-database-dir db-dir)
-        (setq madolt-revision--hash hash)
-        (madolt-refresh)))
+        (setq madolt-revision--hash hash)))
+    ;; Display before refresh so that (window-width) during diff
+    ;; rendering uses the correct window dimensions.
     (if noselect
         (display-buffer buffer '(nil (inhibit-same-window . t)))
       (madolt-display-buffer buffer))
+    (unless existing
+      (with-current-buffer buffer
+        (madolt-refresh)))
     buffer))
 
 ;;;; Show-or-scroll (SPC / DEL)
