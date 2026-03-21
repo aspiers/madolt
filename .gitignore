@@ -5,3 +5,6 @@
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# Temporary files (demo databases, test artifacts, logs)
+tmp/

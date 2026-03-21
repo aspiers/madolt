@@ -293,6 +293,13 @@ produces perfectly readable human-friendly output.  Use raw `bd`
 commands (e.g. `bd ready`, `bd show <id>`, `bd list`) and read
 their output directly.
 
+## Temporary Files
+
+**ALWAYS use `tmp/` inside the repository** for temporary files, demo
+databases, test artifacts, etc.  NEVER use `/tmp` — it requires
+extra permissions and is outside the project tree.  The `tmp/`
+directory is already in `.gitignore`.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.

@@ -7,11 +7,12 @@ REPO_DIR="$(cd "$DEMO_DIR/.." && pwd)"
 
 export TERM=xterm-256color
 export MADOLT_DIR="$REPO_DIR"
-export DEMO_DB=/tmp/madolt-demo-db
-export CATPPUCCIN_DIR=/tmp/catppuccin-emacs
+export DEMO_DB="$REPO_DIR/tmp/madolt-demo-db"
+export CATPPUCCIN_DIR="$REPO_DIR/tmp/catppuccin-emacs"
 
 # Reset demo repo to known state
-bash "$DEMO_DIR/setup.sh" "$DEMO_DB" >/dev/null 2>&1
+# DEMO_PHASE can be: base (default), clip2, clip3, clip4
+bash "$DEMO_DIR/setup.sh" "$DEMO_DB" "${DEMO_PHASE:-base}" >/dev/null 2>&1
 
 # Clone catppuccin theme if not already present
 if [ ! -d "$CATPPUCCIN_DIR" ]; then

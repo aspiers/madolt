@@ -21,7 +21,13 @@
 
 set -e
 
-DEMO_DIR="${1:-/tmp/madolt-demo-db}"
+DEMO_DIR="${1:-tmp/madolt-demo-db}"
+PHASE="${2:-base}"
+
+# Phase "base": full reset + initial setup (clip 1: overview & diffs)
+# Phase "clip2": base + stage/commit (clip 2: branch, stage, commit, log, refs)
+# Phase "clip3": clip2 + stash departments (clip 3: stash & rebase)
+# Phase "clip4": clip3 + rebase done + stash for merge (clip 4: merge, conflicts, database)
 
 rm -rf "$DEMO_DIR"
 mkdir -p "$DEMO_DIR"
@@ -162,6 +168,57 @@ dolt sql -q "INSERT INTO tasks VALUES
 # Configure a remote for the refs display
 dolt remote add origin aspiers/madolt-demo-db
 
-echo "Demo repo ready at $DEMO_DIR"
-echo ""
-dolt status
+# ============================================================
+# Phase-specific state advancement
+# ============================================================
+
+if [ "$PHASE" = "base" ]; then
+    echo "Demo repo ready at $DEMO_DIR (phase: base)"
+    echo ""
+    dolt status
+    exit 0
+fi
+
+# --- clip2: stage employees + tasks, commit ---
+dolt add employees
+dolt add tasks
+dolt commit -m "Add tasks table, promote Carol and raise Bob"
+
+if [ "$PHASE" = "clip2" ]; then
+    echo "Demo repo ready at $DEMO_DIR (phase: clip2)"
+    echo ""
+    dolt status
+    exit 0
+fi
+
+# --- clip3: stash departments, ready for rebase ---
+dolt stash
+
+if [ "$PHASE" = "clip3" ]; then
+    echo "Demo repo ready at $DEMO_DIR (phase: clip3)"
+    echo ""
+    dolt status
+    exit 0
+fi
+
+# --- clip4: rebase done (squash fix-typo), pop+stash for merge ---
+# The rebase is hard to replay non-interactively, so instead we
+# manually replicate its effect: squash "Fix typo" into "Promote Alice".
+# This means we do a soft reset and recommit.
+#
+# Actually, dolt rebase is interactive-only. For clip4 setup we need
+# the post-rebase state. The simplest approach: just leave the history
+# as-is (the rebase demo is in clip 3, not clip 4). Clip 4 only needs
+# clean state for merge.
+dolt stash pop
+dolt stash
+
+if [ "$PHASE" = "clip4" ]; then
+    echo "Demo repo ready at $DEMO_DIR (phase: clip4)"
+    echo ""
+    dolt status
+    exit 0
+fi
+
+echo "Unknown phase: $PHASE"
+exit 1
