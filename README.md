@@ -334,6 +334,20 @@ files (~6,030 LOC):
 | `madolt-reflog.el`    | Reference log viewer                        | 134 |
 | `madolt-sql.el`       | SQL query interface                         | 121 |
 
+## Acknowledgements
+
+Madolt could not possibly have been made without the incredible
+creation which is [Magit](https://magit.vc/).  Not only does it
+emulate Magit's superb UI design as much as possible, but also depends
+on a lot of its code and associated dependencies such as
+[transient](https://docs.magit.vc/transient/).
+
+So immeasurable thanks go to [its
+creators](https://magit.vc/#credits), and in particular [Jonas
+Bernoulli](https://emacsair.me/) who has been a tireless maintainer of
+the highest quality for many years.  Please do consider [supporting
+his work](https://magit.vc/donate/)!
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, running
