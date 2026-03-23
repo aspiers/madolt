@@ -933,6 +933,30 @@ Queries dolt log directly for HASH so it works regardless of
 which branch the commit belongs to."
   (car (madolt-log-entries 1 hash)))
 
+;;;; Washer-aware section level expansion
+
+;; `magit-section-show-children' iterates children before showing the
+;; section, so washer-based sections (like log commit diffs) have no
+;; children to expand.  This advice detects when a washer ran and
+;; re-applies the requested depth to the newly-created children.
+
+(defun madolt-log--show-children-rewash (orig-fn section &optional depth)
+  "Advice around `magit-section-show-children' to handle washers.
+When SECTION has a washer, showing it populates children that were
+empty when `magit-section-show-children-1' first ran.  Re-apply
+DEPTH to the new children so level commands (1-4) work on first
+press."
+  (let ((had-washer (and (slot-boundp section 'washer)
+                         (oref section washer))))
+    (funcall orig-fn section depth)
+    ;; If a washer just ran, children were created after the initial
+    ;; depth pass.  Re-apply depth to the new children.
+    (when (and had-washer depth (oref section children))
+      (magit-section-show-children-1 section depth))))
+
+(advice-add 'magit-section-show-children :around
+            #'madolt-log--show-children-rewash)
+
 ;; Branch name completion moved to madolt-dolt.el as `madolt-branch-names'.
 (define-obsolete-function-alias 'madolt--branch-names
   #'madolt-branch-names "0.2.0"
