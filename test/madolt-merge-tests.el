@@ -108,15 +108,52 @@
       (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
                 ((symbol-function 'madolt-commit--setup-buffer)
                  (lambda (&rest _)
-                   (setq buffer-opened t))))
+                   (setq buffer-opened t)))
+                ((symbol-function 'madolt-process-buffer) #'ignore))
         ;; --squash bypasses the buffer and calls do-merge directly
         (madolt-merge-command "feature" '("--squash")))
       (should-not buffer-opened))))
 
-;;;; Merge command — no-commit does not prompt for message
+;;;; Merge command — non-FF merge opens commit buffer
 
-(ert-deftest test-madolt-merge-no-commit-no-message-prompt ()
-  "Merging with --no-commit should not prompt for a merge message."
+(ert-deftest test-madolt-merge-non-ff-opens-buffer ()
+  "Non-fast-forward merge should open a commit message buffer."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY, val VARCHAR(100)")
+    (madolt-test-insert-row "t1" "(1, 'original')")
+    (madolt-test-commit "init")
+    ;; Create divergent branches so merge can't fast-forward
+    (madolt-branch-checkout-create "feature")
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "add t2")
+    (madolt-branch-checkout "main")
+    (madolt-test-update-row "t1" "val = 'changed'" "id = 1")
+    (madolt-test-commit "change on main")
+    ;; Merge should open a commit buffer
+    (let (captured-message captured-finish-fn)
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
+                ((symbol-function 'madolt-commit--setup-buffer)
+                 (lambda (initial-message _args _amend-p &optional finish-fn _buf-name-fn)
+                   (setq captured-message initial-message)
+                   (setq captured-finish-fn finish-fn)))
+                ((symbol-function 'madolt-process-buffer) #'ignore))
+        (madolt-merge-command "feature" nil))
+      ;; Buffer should have been opened with default merge message
+      (should (stringp captured-message))
+      (should (string-match-p "Merge feature into main" captured-message))
+      ;; Simulate C-c C-c to finalize
+      (funcall captured-finish-fn captured-message nil))
+    ;; t2 should exist (merge completed)
+    (should (madolt-dolt-success-p "sql" "-q" "SELECT 1 FROM t2 LIMIT 1"))
+    ;; Commit message should match
+    (let ((entries (madolt-log-entries 1)))
+      (should (string-match-p "Merge feature into main"
+                              (plist-get (car entries) :message))))))
+
+;;;; Merge command — fast-forward merge does not open buffer
+
+(ert-deftest test-madolt-merge-ff-no-buffer ()
+  "Fast-forward merge should not open a commit message buffer."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
@@ -124,13 +161,34 @@
     (madolt-test-create-table "t2" "id INT PRIMARY KEY")
     (madolt-test-commit "add t2")
     (madolt-branch-checkout "main")
-    (let ((read-string-called nil))
+    (let ((buffer-opened nil))
       (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
-                ((symbol-function 'read-string)
+                ((symbol-function 'madolt-commit--setup-buffer)
                  (lambda (&rest _)
-                   (setq read-string-called t) "")))
+                   (setq buffer-opened t))))
+        (madolt-merge-command "feature" nil))
+      ;; Fast-forward should not open a buffer
+      (should-not buffer-opened))))
+
+;;;; Merge command — no-commit does not prompt for message
+
+(ert-deftest test-madolt-merge-no-commit-no-message-prompt ()
+  "Merging with --no-commit should not open a merge message buffer."
+  (madolt-with-test-database
+    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+    (madolt-test-commit "init")
+    (madolt-branch-checkout-create "feature")
+    (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+    (madolt-test-commit "add t2")
+    (madolt-branch-checkout "main")
+    (let ((buffer-opened nil))
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
+                ((symbol-function 'madolt-commit--setup-buffer)
+                 (lambda (&rest _)
+                   (setq buffer-opened t)))
+                ((symbol-function 'madolt-process-buffer) #'ignore))
         (madolt-merge-command "feature" '("--no-commit")))
-      (should-not read-string-called))))
+      (should-not buffer-opened))))
 
 ;;;; Merge command — calls dolt with correct args
 
@@ -296,7 +354,7 @@
     (should-error (madolt-merge-continue-command) :type 'user-error)))
 
 (ert-deftest test-madolt-merge-continue-after-resolve ()
-  "madolt-merge-continue-command succeeds after conflicts are resolved."
+  "madolt-merge-continue-command opens commit buffer after resolving."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY, val VARCHAR(100)")
     (madolt-test-insert-row "t1" "(1, 'original')")
@@ -312,11 +370,20 @@
     ;; Resolve conflicts and stage
     (madolt-call-dolt "conflicts" "resolve" "--ours" "t1")
     (madolt-call-dolt "add" "t1")
-    ;; Continue should succeed
-    (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
-              ((symbol-function 'read-string)
-               (lambda (&rest _) "Merge resolved")))
-      (madolt-merge-continue-command))
+    ;; Continue should open commit buffer; capture the finish function
+    ;; and initial message, then invoke it directly to simulate C-c C-c.
+    (let (captured-message captured-finish-fn)
+      (cl-letf (((symbol-function 'madolt-refresh) #'ignore)
+                ((symbol-function 'madolt-commit--setup-buffer)
+                 (lambda (initial-message _args _amend-p &optional finish-fn _buf-name-fn)
+                   (setq captured-message initial-message)
+                   (setq captured-finish-fn finish-fn))))
+        (madolt-merge-continue-command))
+      ;; Buffer should have been opened with a merge message
+      (should (stringp captured-message))
+      (should (string-match-p "Merge into" captured-message))
+      ;; Simulate the user pressing C-c C-c with the message
+      (funcall captured-finish-fn "Merge resolved" nil))
     ;; Should no longer be merging
     (should-not (madolt-merge-in-progress-p))
     ;; Commit message should be ours

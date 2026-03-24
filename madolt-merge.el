@@ -151,15 +151,27 @@ MESSAGE may be nil to use dolt's auto-generated message."
             (madolt-process-buffer)
             (message "Merge failed: %s"
                      (truncate-string-to-width failure 80 nil nil "...")))
-        (message "Merged %s into %s" branch
-                 (madolt-current-branch))))))
+        (if (and (member "--no-commit" flags)
+                 (equal head-before head-after))
+            ;; --no-commit stopped before creating the merge commit
+            (message "Merge of %s staged (commit pending)" branch)
+          (message "Merged %s into %s" branch
+                   (madolt-current-branch)))))))
+
+(defun madolt-merge--do-commit (message _args)
+  "Commit a pending merge with MESSAGE.
+Ignores _ARGS since the merge is already staged.
+Used as the finish function for the merge commit buffer."
+  ;; Save to message history
+  (ring-insert madolt-commit--message-ring message)
+  (madolt-run-dolt "commit" "-m" message))
 
 (defun madolt-merge-command (branch &optional args)
   "Merge BRANCH into the current branch.
 ARGS are additional arguments from the transient.
-Runs the merge first; on success, opens a buffer for the merge
-commit message (like magit).  With --squash or --no-commit,
-skips the message buffer."
+With --squash or --no-commit, runs the merge directly.
+Otherwise, runs merge with --no-commit first, then opens a
+commit message buffer (like magit) for non-fast-forward merges."
   (interactive
    (let* ((current (madolt-current-branch))
           (at-point (madolt-branch-or-commit-at-point))
@@ -174,19 +186,38 @@ skips the message buffer."
            (transient-args 'madolt-merge))))
   (let* ((current (madolt-current-branch))
          (merge-args (append args (list branch)))
-         (needs-message (not (or (member "--squash" args)
-                                 (member "--no-commit" args)))))
-    ;; Run the merge with a default message first
-    (madolt-merge--do-merge
-     (if needs-message
-         (format "Merge %s into %s" current branch)
-       nil)
-     merge-args)))
+         (needs-buffer (not (or (member "--squash" args)
+                                (member "--no-commit" args)))))
+    (if (not needs-buffer)
+        ;; --squash or --no-commit: run directly, no message needed
+        (madolt-merge--do-merge nil merge-args)
+      ;; Normal merge: run with --no-commit, then open buffer if needed.
+      ;; --no-commit has no effect on fast-forward merges (they just
+      ;; complete immediately), so the buffer only opens for real merges.
+      (let* ((head-before (madolt-dolt-string "log" "-n" "1" "--oneline"))
+             (no-commit-args (cons "--no-commit" merge-args)))
+        (madolt-merge--do-merge nil no-commit-args)
+        ;; Check if the merge is pending (non-FF merge stopped by --no-commit)
+        (let ((head-after (madolt-dolt-string "log" "-n" "1" "--oneline"))
+              (conflicts (alist-get 'conflicts (madolt-status-tables))))
+          (when (and (equal head-before head-after)
+                     ;; HEAD didn't change — could be a pending merge
+                     ;; (non-FF stopped by --no-commit) or a failure.
+                     ;; Only open the buffer if we're pending a commit
+                     ;; with no unresolved conflicts.
+                     (not conflicts)
+                     (or (madolt-merge-in-progress-p)
+                         (alist-get 'staged (madolt-status-tables))))
+            (madolt-commit--setup-buffer
+             (format "Merge %s into %s" branch current)
+             nil nil
+             #'madolt-merge--do-commit
+             #'madolt-merge--buffer-name)))))))
 
 (defun madolt-merge-continue-command ()
   "Continue the current merge after resolving conflicts.
-Stages all tables with `dolt add .' and commits.  If there are
-still unresolved conflicts, reports an error.
+Stages all tables with `dolt add .' and opens a commit message
+buffer.  If there are still unresolved conflicts, reports an error.
 When the merge was started via SQL, finalizes the SQL transaction."
   (interactive)
   (unless (madolt-merge-in-progress-p)
@@ -201,14 +232,12 @@ When the merge was started via SQL, finalizes the SQL transaction."
   (let ((add-result (madolt-call-dolt "add" ".")))
     (unless (zerop (car add-result))
       (user-error "Failed to stage: %s" (string-trim (cdr add-result)))))
-  ;; Commit the merge
-  (let* ((msg (read-string "Merge commit message: "
-                           (format "Merge into %s" (madolt-current-branch))))
-         (result (madolt-call-dolt "commit" "-m" msg)))
-    (madolt-refresh)
-    (if (zerop (car result))
-        (message "Merge committed: %s" msg)
-      (message "Commit failed: %s" (string-trim (cdr result))))))
+  ;; Open commit buffer for the merge message
+  (madolt-commit--setup-buffer
+   (format "Merge into %s" (madolt-current-branch))
+   nil nil
+   #'madolt-merge--do-commit
+   #'madolt-merge--buffer-name))
 
 (defun madolt-merge-abort-command ()
   "Abort the current merge.
