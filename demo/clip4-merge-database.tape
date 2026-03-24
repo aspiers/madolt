@@ -74,15 +74,22 @@ Type "departments"
 Enter
 Sleep 2.5s
 
-# Continue merge
+# Continue merge — opens commit buffer with default message
 Type "m"
 Sleep 1.5s
 Type "m"
-Sleep 1s
+Sleep 2s
+
+# Edit the merge commit message in the buffer
 Ctrl+A
 Ctrl+K
 Type "Merge feature/projects into main"
-Enter
+Sleep 1s
+
+# Finalize with C-c C-c
+Ctrl+C
+Sleep 200ms
+Ctrl+C
 Sleep 2.5s
 
 # Pop stash to recover departments changes
