@@ -246,6 +246,61 @@
                   (should (string-match-p "dolt branch" heading))))))
         (kill-buffer buf)))))
 
+;;;; Output cleaning
+
+(ert-deftest test-madolt-process-cleans-backspaces ()
+  "Process buffer strips backspace spinner artifacts from output."
+  (madolt-with-test-database
+    (let ((buf (madolt-process-buffer t)))
+      (unwind-protect
+          (progn
+            ;; Simulate dolt push output with spinner garbage
+            (madolt--process-insert-section
+             '("push" "origin" "main") 0
+             "Uploading...\b\b\b\b\b\b\b\b\b\b\b\b\b\b- Uploading...\b\b\b\b\b\b\b\b\b\b\b\b\b\b\\ Uploading...")
+            (with-current-buffer buf
+              (let ((content (buffer-substring-no-properties
+                              (point-min) (point-max))))
+                ;; Should not contain raw backspace characters
+                (should-not (string-match-p "\b" content))
+                (should-not (string-match-p "\\^H" content))
+                ;; Should contain the cleaned text
+                (should (string-match-p "Uploading" content)))))
+        (kill-buffer buf)))))
+
+(ert-deftest test-madolt-process-cleans-ansi ()
+  "Process buffer strips ANSI escape sequences from output."
+  (madolt-with-test-database
+    (let ((buf (madolt-process-buffer t)))
+      (unwind-protect
+          (progn
+            (madolt--process-insert-section
+             '("status") 0
+             "\033[32mOn branch main\033[0m")
+            (with-current-buffer buf
+              (let ((content (buffer-substring-no-properties
+                              (point-min) (point-max))))
+                (should-not (string-match-p "\033" content))
+                (should (string-match-p "On branch main" content)))))
+        (kill-buffer buf)))))
+
+(ert-deftest test-madolt-process-empty-after-cleaning ()
+  "Process buffer omits body when output is only spinner garbage."
+  (madolt-with-test-database
+    (let ((buf (madolt-process-buffer t)))
+      (unwind-protect
+          (progn
+            ;; Output that becomes empty after backspace processing
+            (madolt--process-insert-section
+             '("push" "origin") 0
+             "-\b \b")
+            (with-current-buffer buf
+              (let ((content (buffer-substring-no-properties
+                              (point-min) (point-max))))
+                ;; Should have the heading but no indented body content
+                (should (string-match-p "dolt push" content)))))
+        (kill-buffer buf)))))
+
 ;;;; Faces
 
 (ert-deftest test-madolt-process-faces-defined ()

@@ -153,7 +153,8 @@ OUTPUT is the query output."
               (magit-insert-section--parent
                (or madolt-process--root-section magit-root-section)))
           (goto-char (1- (point-max)))
-          (let* ((has-output (not (string-empty-p output)))
+          (let* ((cleaned (madolt--clean-output output))
+                 (has-output (not (string-empty-p cleaned)))
                  (section
                   (magit-insert-section (process)
                     (insert (propertize (format "%3s " exit-code)
@@ -168,7 +169,7 @@ OUTPUT is the query output."
                       (magit-insert-section-body
                         (let ((indented
                                (replace-regexp-in-string
-                                "^" "  " (string-trim-right output))))
+                                "^" "  " cleaned)))
                           (insert indented))
                         (insert "\n\n"))))))
             ;; Collapse all previously visible sections so only
