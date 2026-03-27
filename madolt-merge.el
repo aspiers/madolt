@@ -98,10 +98,30 @@ then re-enables it after."
       (if (not (zerop (car result)))
           ;; dolt sql -q failed (shouldn't happen with allow_commit_conflicts)
           nil
-        ;; Check output for conflicts
-        (if (and output (string-match-p "conflict" output))
-            (cons 1 (format "Merge conflict with %s" branch))
-          (cons 0 (or output "")))))))
+        ;; Parse CSV output: header is "hash,fast_forward,conflicts,message"
+        ;; followed by a data row like "abc123,0,0,merge successful".
+        ;; Extract the conflicts column value to detect real conflicts,
+        ;; and return the message column (not raw CSV) to avoid
+        ;; downstream false positives from the "conflicts" header word.
+        (let* ((lines (and output (split-string output "\n" t)))
+               (data-line (cadr lines))
+               (fields (and data-line (split-string data-line ",")))
+               (conflicts-val (and fields (nth 2 fields)))
+               (has-conflicts (and conflicts-val
+                                   (not (string= "0" (string-trim conflicts-val)))))
+               ;; Message is everything after the 3rd comma (may contain commas)
+               (msg (when data-line
+                      (let ((pos 0))
+                        (dotimes (_ 3)
+                          (when pos
+                            (setq pos (string-search "," data-line pos))
+                            (when pos (cl-incf pos))))
+                        (if pos
+                            (substring data-line pos)
+                          "")))))
+          (if has-conflicts
+              (cons 1 (format "Merge conflict with %s" branch))
+            (cons 0 (or msg output ""))))))))
 
 (defun madolt-merge--do-merge (message args)
   "Execute `dolt merge' with MESSAGE and ARGS.

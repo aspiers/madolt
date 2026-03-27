@@ -273,6 +273,69 @@
                          (string-match-p "\\(conflict\\|failed\\|CONFLICT\\)" msg))
                        messages)))))
 
+;;;; madolt-merge--via-sql CSV parsing
+
+(ert-deftest test-madolt-merge-via-sql-no-conflict ()
+  "madolt-merge--via-sql should not false-positive on CSV header."
+  (madolt-with-test-database
+    (cl-letf (((symbol-function 'madolt-sql-server-info)
+               (lambda () '("localhost" 3306)))
+              ((symbol-function 'madolt--run-cli)
+               (lambda (_args)
+                 ;; Simulate successful merge CSV output
+                 (cons 0 "hash,fast_forward,conflicts,message\nabc123,1,0,merge successful")))
+              ((symbol-function 'madolt-connection-disconnect) #'ignore))
+      (let ((result (madolt-merge--via-sql "feature" nil nil)))
+        (should result)
+        (should (zerop (car result)))
+        ;; Output should be the message column, not raw CSV
+        (should (string= "merge successful" (cdr result)))))))
+
+(ert-deftest test-madolt-merge-via-sql-with-conflict ()
+  "madolt-merge--via-sql should detect real conflicts from CSV data."
+  (madolt-with-test-database
+    (cl-letf (((symbol-function 'madolt-sql-server-info)
+               (lambda () '("localhost" 3306)))
+              ((symbol-function 'madolt--run-cli)
+               (lambda (_args)
+                 ;; Simulate merge with conflicts
+                 (cons 0 "hash,fast_forward,conflicts,message\nabc123,0,1,conflicts found")))
+              ((symbol-function 'madolt-connection-disconnect) #'ignore))
+      (let ((result (madolt-merge--via-sql "feature" nil nil)))
+        (should result)
+        (should (= 1 (car result)))
+        (should (string-match-p "Merge conflict with feature" (cdr result)))))))
+
+(ert-deftest test-madolt-merge-via-sql-success-no-downstream-conflict ()
+  "Successful SQL merge should not trigger false conflict in do-merge."
+  (madolt-with-test-database
+    (let ((madolt-use-sql-server t)
+          (call-count 0))
+      (cl-letf (((symbol-function 'madolt-sql-server-info)
+                 (lambda () '("localhost" 3306)))
+                ((symbol-function 'madolt--run-cli)
+                 (lambda (_args)
+                   (cons 0 "hash,fast_forward,conflicts,message\nabc123,1,0,merge successful")))
+                ((symbol-function 'madolt-connection-disconnect) #'ignore)
+                ((symbol-function 'madolt-refresh) #'ignore)
+                ((symbol-function 'madolt-dolt-string)
+                 (lambda (&rest _)
+                   (cl-incf call-count)
+                   (format "hash%d msg" call-count))))
+        (let ((messages nil))
+          (cl-letf (((symbol-function 'message)
+                     (lambda (fmt &rest args)
+                       (push (apply #'format fmt args) messages))))
+            (madolt-merge--do-merge "" '("feature")))
+          ;; Should NOT report a conflict or failure
+          (should-not (cl-some (lambda (msg)
+                                 (string-match-p "\\(conflict\\|failed\\|CONFLICT\\)" msg))
+                               messages))
+          ;; Should report success
+          (should (cl-some (lambda (msg)
+                             (string-match-p "Merged" msg))
+                           messages)))))))
+
 ;;;; Merge with --ff-only flag
 
 (ert-deftest test-madolt-merge-ff-only-calls-dolt ()
