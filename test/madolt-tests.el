@@ -195,5 +195,26 @@
     (should (assoc "<return>" suffixes))
     (should (eq (cdr (assoc "<return>" suffixes)) 'madolt-visit-thing))))
 
+;;;; Responsive columns
+
+(ert-deftest test-madolt-dispatch-responsive-columns-wide ()
+  "Dispatch uses more columns on wide screens."
+  (cl-letf (((symbol-function 'window-width) (lambda () 120)))
+    ;; 120/20 = 6 columns
+    (let* ((layout (get 'madolt-dispatch 'transient--layout))
+           (groups (aref layout 2))
+           (cmd-group (car groups)))
+      ;; The command group should use madolt-responsive-columns
+      (should (eq (aref cmd-group 0) 'madolt-responsive-columns)))))
+
+(ert-deftest test-madolt-dispatch-responsive-columns-narrow ()
+  "Dispatch falls back to 3 columns on narrow screens."
+  (cl-letf (((symbol-function 'window-width) (lambda () 60)))
+    ;; 60/20 = 3 columns (minimum)
+    (let* ((layout (get 'madolt-dispatch 'transient--layout))
+           (groups (aref layout 2))
+           (cmd-group (car groups)))
+      (should (eq (aref cmd-group 0) 'madolt-responsive-columns)))))
+
 (provide 'madolt-tests)
 ;;; madolt-tests.el ends here
