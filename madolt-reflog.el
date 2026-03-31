@@ -72,7 +72,7 @@
 (defun madolt-reflog-other (ref)
   "Show reflog for REF."
   (interactive
-   (list (completing-read "Reflog for ref: " (madolt-branch-names)
+   (list (completing-read "Reflog for ref: " (madolt-all-ref-names)
                           nil nil nil nil (madolt-branch-at-point))))
   (madolt-reflog--show ref nil))
 
