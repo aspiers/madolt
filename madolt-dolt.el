@@ -1204,12 +1204,43 @@ When MESSAGE is non-nil, create an annotated tag."
  (lambda (_args) "SELECT CONCAT(IF(name = active_branch(), '* ', '  '), name) FROM dolt_branches ORDER BY name"))
 
 (madolt--register-sql-translation
+ 'branch-list-all
+ (lambda (args)
+   (and (equal (car args) "branch")
+        (member "-a" (cdr args))
+        ;; Only -a, no other flags that change semantics.
+        (cl-every (lambda (a) (member a '("-a"))) (cdr args))))
+ (lambda (_args)
+   (concat
+    "SELECT CONCAT(IF(b.name = active_branch(), '* ', '  '), b.name) "
+    "FROM ((SELECT name FROM dolt_branches) "
+    "UNION ALL "
+    "(SELECT name FROM dolt_remote_branches)) b "
+    "ORDER BY b.name")))
+
+(madolt--register-sql-translation
+ 'branch-list-remote
+ (lambda (args)
+   (and (equal (car args) "branch")
+        (member "-r" (cdr args))
+        (cl-every (lambda (a) (member a '("-r"))) (cdr args))))
+ (lambda (_args)
+   "SELECT CONCAT('  ', name) FROM dolt_remote_branches ORDER BY name"))
+
+(madolt--register-sql-translation
  'remote-list
  (lambda (args)
    (and (equal (car args) "remote")
         (member "-v" args)))
  (lambda (_args)
    "SELECT name, url FROM dolt_remotes ORDER BY name"))
+
+(madolt--register-sql-translation
+ 'remote-list-bare
+ (lambda (args)
+   (equal args '("remote")))
+ (lambda (_args)
+   "SELECT name FROM dolt_remotes ORDER BY name"))
 
 (madolt--register-sql-translation
  'tag-list
