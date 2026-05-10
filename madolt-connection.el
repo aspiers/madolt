@@ -364,6 +364,14 @@ them as Lisp errors after the full response arrives."
 
 ;;;; Query execution
 
+(defconst madolt-connection--end-sentinel "__MADOLT_QUERY_END__"
+  "Sentinel string sent after every SQL query to mark end-of-output.
+Without this, queries with empty result sets (e.g. dolt_status on a
+clean repo) produce no output at all from mysql --batch, so we cannot
+tell the difference between \"query running\" and \"query finished
+with empty result\" and end up waiting the full timeout.  Appending
+`SELECT \\='SENTINEL\\='' guarantees at least one output line per call.")
+
 (defun madolt-connection-query (sql &optional timeout)
   "Execute SQL query synchronously and return results.
 Returns a list of rows, where each row is a list of strings.
@@ -378,9 +386,10 @@ TIMEOUT is the maximum seconds to wait (default 5)."
     (accept-process-output (madolt-connection-process conn) 0.01)
     (setf (madolt-connection-pending-output conn) "")
     (setf (madolt-connection-error-output conn) "")
-    (process-send-string (madolt-connection-process conn)
-                         (concat sql ";\n"))
-    ;; Wait for complete output (mysql --batch ends output with newline)
+    (process-send-string
+     (madolt-connection-process conn)
+     (format "%s;\nSELECT '%s';\n" sql madolt-connection--end-sentinel))
+    ;; Wait until the end-of-query sentinel arrives.
     (let ((timeout (or timeout 5.0))
           (start (float-time)))
       (while (and (< (- (float-time) start) timeout)
@@ -396,7 +405,8 @@ TIMEOUT is the maximum seconds to wait (default 5)."
          "SQL query timed out; falling back to CLI"
          (format "query: %s" sql))
         (error "SQL query timed out")))
-    (let ((output (madolt-connection-pending-output conn))
+    (let ((output (madolt-connection--strip-end-sentinel
+                   (madolt-connection-pending-output conn)))
           (err    (madolt-connection-error-output conn)))
       (setf (madolt-connection-pending-output conn) "")
       (setf (madolt-connection-error-output conn) "")
@@ -405,11 +415,22 @@ TIMEOUT is the maximum seconds to wait (default 5)."
       (madolt-connection--parse-batch-output output))))
 
 (defun madolt-connection--output-complete-p (conn)
-  "Check if CONN has complete output from the current query."
-  ;; In batch mode, mysql output ends with a newline after the last row.
+  "Check if CONN has complete output from the current query.
+The output is considered complete once the end-of-query sentinel
+appears as a line of its own."
   (let ((output (madolt-connection-pending-output conn)))
-    (and (not (string-empty-p output))
-         (string-suffix-p "\n" output))))
+    (and output
+         (string-match-p
+          (concat "^" (regexp-quote madolt-connection--end-sentinel) "$")
+          output))))
+
+(defun madolt-connection--strip-end-sentinel (output)
+  "Return OUTPUT with the trailing end-of-query sentinel line removed."
+  (replace-regexp-in-string
+   (concat "\\(\\`\\|\n\\)"
+           (regexp-quote madolt-connection--end-sentinel)
+           "\n*\\'")
+   "" output))
 
 (defun madolt-connection--parse-batch-output (output)
   "Parse mysql batch OUTPUT into a list of rows.
