@@ -175,7 +175,11 @@ Both repos share the same initial commit structure (t1 table)."
            (,work (file-name-as-directory (make-temp-file "madolt-work-" t))))
        (unwind-protect
            (let ((process-environment
-                  (append (list "NO_COLOR=1") process-environment)))
+                  (append (list "NO_COLOR=1") process-environment))
+                 ;; Tests must not prompt for sql-server (no stdin in
+                 ;; batch mode).  Disable for the duration of BODY just
+                 ;; like `madolt-with-test-database' does.
+                 (madolt-use-sql-server nil))
              ;; Initialize origin repo with a commit
              (let ((default-directory (file-truename ,orig)))
                (call-process madolt-dolt-executable nil nil nil "init")
