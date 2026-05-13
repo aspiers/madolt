@@ -51,19 +51,44 @@
 
 ;;;; Pull suffixes
 
-(ert-deftest test-madolt-pull-has-default-suffix ()
-  "madolt-pull should have a 'p' suffix for pulling from default remote."
+(ert-deftest test-madolt-pull-has-push-target-suffix ()
+  "madolt-pull should have a 'p' suffix for pulling from the push target."
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-pull)))
     (should (assoc "p" suffixes))
     (should (eq (cdr (assoc "p" suffixes))
-                'madolt-pull-from-default))))
+                'madolt-pull-from-push-target))))
+
+(ert-deftest test-madolt-pull-has-upstream-suffix ()
+  "madolt-pull should have a 'u' suffix for pulling from the upstream."
+  (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-pull)))
+    (should (assoc "u" suffixes))
+    (should (eq (cdr (assoc "u" suffixes))
+                'madolt-pull-from-upstream))))
 
 (ert-deftest test-madolt-pull-has-elsewhere-suffix ()
-  "madolt-pull should have an 'e' suffix for pulling from elsewhere."
+  "madolt-pull should have an 'e' suffix for pulling from any remote branch."
   (let ((suffixes (madolt-test--transient-suffix-keys 'madolt-pull)))
     (should (assoc "e" suffixes))
     (should (eq (cdr (assoc "e" suffixes))
-                'madolt-pull-from-remote))))
+                'madolt-pull-from-elsewhere))))
+
+(ert-deftest test-madolt-remote-split-tracking-ref ()
+  "Splitting REMOTE/BRANCH should use the longest matching remote prefix."
+  (cl-letf (((symbol-function 'madolt-remote-names)
+             (lambda () '("origin" "fork"))))
+    (should (equal '("origin" . "main")
+                   (madolt-remote--split-tracking-ref "origin/main")))
+    (should (equal '("fork" . "feature/x")
+                   (madolt-remote--split-tracking-ref "fork/feature/x")))
+    (should-not (madolt-remote--split-tracking-ref "no-slash"))
+    (should-not (madolt-remote--split-tracking-ref nil))))
+
+(ert-deftest test-madolt-remote-split-tracking-ref-unknown-remote ()
+  "An unknown remote prefix falls back to splitting on the first slash."
+  (cl-letf (((symbol-function 'madolt-remote-names)
+             (lambda () '("origin"))))
+    (should (equal '("upstream" . "main")
+                   (madolt-remote--split-tracking-ref "upstream/main")))))
 
 ;;;; Push suffixes
 
@@ -237,18 +262,42 @@
         (madolt-push-to-default nil)
         (should (equal called-args '("push" "origin" "main")))))))
 
-(ert-deftest test-madolt-pull-command-calls-dolt ()
-  "madolt-pull-from-default should invoke dolt pull with correct args."
-  (madolt-with-test-database
-    (madolt-test-create-table "t1" "id INT PRIMARY KEY")
-    (madolt-test-commit "init")
-    (madolt--run "remote" "add" "origin" "file:///tmp/fake")
+(ert-deftest test-madolt-pull-from-push-target-calls-dolt ()
+  "madolt-pull-from-push-target should run dolt pull <remote> <branch>."
+  (madolt-with-file-remote
+    ;; Push so origin/main exists as a remote tracking ref.
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
     (let (called-args)
       (cl-letf (((symbol-function 'madolt-call-dolt)
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
                 ((symbol-function 'madolt-refresh) #'ignore))
-        (madolt-pull-from-default nil)
-        (should (equal called-args '("pull" "origin")))))))
+        (madolt-pull-from-push-target nil)
+        (should (equal called-args '("pull" "origin" "main")))))))
+
+(ert-deftest test-madolt-pull-from-upstream-calls-dolt ()
+  "madolt-pull-from-upstream should run dolt pull <remote> <branch>."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    (let (called-args)
+      (cl-letf (((symbol-function 'madolt-call-dolt)
+                 (lambda (&rest args) (setq called-args args) '(0 . "")))
+                ((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-pull-from-upstream nil)
+        (should (equal called-args '("pull" "origin" "main")))))))
+
+(ert-deftest test-madolt-pull-from-elsewhere-calls-dolt ()
+  "madolt-pull-from-elsewhere accepts a (REMOTE . BRANCH) cons."
+  (madolt-with-file-remote
+    (madolt--run "push" "origin" "main")
+    (madolt--run "fetch" "origin")
+    (let (called-args)
+      (cl-letf (((symbol-function 'madolt-call-dolt)
+                 (lambda (&rest args) (setq called-args args) '(0 . "")))
+                ((symbol-function 'madolt-refresh) #'ignore))
+        (madolt-pull-from-elsewhere '("origin" . "main") nil)
+        (should (equal called-args '("pull" "origin" "main")))))))
 
 ;;;; Remote management transient
 

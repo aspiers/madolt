@@ -185,43 +185,132 @@ ARGS are additional arguments from the transient."
 
 ;;;; Pull transient
 
+(defun madolt-remote--split-tracking-ref (ref)
+  "Split a remote tracking REF \"REMOTE/BRANCH\" into (REMOTE . BRANCH).
+Returns nil if REF does not contain a slash. The remote name is
+matched against `madolt-remote-names' to handle branch names that
+themselves contain slashes (e.g. origin/feature/foo)."
+  (when (and ref (stringp ref) (string-match-p "/" ref))
+    (let ((remotes (madolt-remote-names))
+          match)
+      (dolist (remote remotes)
+        (let ((prefix (concat remote "/")))
+          (when (and (not match) (string-prefix-p prefix ref))
+            (setq match (cons remote (substring ref (length prefix)))))))
+      (or match
+          ;; Fallback: split on first slash.
+          (let ((slash (string-match "/" ref)))
+            (cons (substring ref 0 slash)
+                  (substring ref (1+ slash))))))))
+
+(defun madolt-remote--push-target ()
+  "Return the (REMOTE . BRANCH) the current branch would push to.
+Convention: the default remote plus the current local branch name.
+Returns nil if there is no remote, no current branch, or the target
+branch does not exist on the remote."
+  (let ((remote (madolt-remote--default))
+        (branch (madolt-current-branch)))
+    (when (and remote branch
+               (madolt-remote-branch-exists-p remote branch))
+      (cons remote branch))))
+
+(defun madolt-remote--upstream-target ()
+  "Return the (REMOTE . BRANCH) of the current branch's upstream.
+Wraps `madolt-upstream-ref' and splits the result."
+  (madolt-remote--split-tracking-ref (madolt-upstream-ref)))
+
+(defun madolt-remote--read-remote-branch (prompt)
+  "Read a remote branch name with PROMPT, return (REMOTE . BRANCH).
+Candidates come from `madolt-remote-branch-names', which lists every
+known remote tracking ref in REMOTE/BRANCH form."
+  (let* ((candidates (madolt-remote-branch-names))
+         (_ (unless candidates
+              (user-error "No remote branches configured")))
+         (default (madolt-upstream-ref))
+         (choice (completing-read prompt candidates nil t nil nil
+                                  (and (member default candidates) default))))
+    (or (madolt-remote--split-tracking-ref choice)
+        (user-error "Could not parse remote branch %s" choice))))
+
 ;;;###autoload (autoload 'madolt-pull "madolt-remote" nil t)
 (transient-define-prefix madolt-pull ()
   "Pull from a remote repository."
   :value '("--user=root")
+  [:description
+   (lambda ()
+     (format "Pull into %s from"
+             (or (madolt-current-branch) "?")))
+   ("p" madolt-pull-from-push-target)
+   ("u" madolt-pull-from-upstream)
+   ("e" "elsewhere" madolt-pull-from-elsewhere)]
   ["Arguments"
    ("-f" "Fast-forward only" "--ff-only")
    ("-n" "No fast-forward"   "--no-ff")
    ("-s" "Squash"            "--squash")
-   ("-u" "User" "--user="
-    :class transient-option)]
-  ["Pull from"
-   ("p" madolt-pull-from-default)
-   ("e" "elsewhere"   madolt-pull-from-remote)])
+   ("-U" "User" "--user="
+    :class transient-option)])
 
-(transient-define-suffix madolt-pull-from-default (&optional args)
-  "Pull from a remote, prompting when multiple exist.
-With a single remote, uses it directly.  With multiple remotes,
-prompts via `completing-read' with the default pre-selected."
-  :if (lambda () (madolt-remote--default))
-  :description (lambda () (or (madolt-remote--default) "no remote"))
-  (interactive (list (transient-args 'madolt-pull)))
-  (let* ((remote (madolt-remote--read-remote "Pull from remote: "))
-         (result (madolt-remote--call-with-auth
-                  remote args (list "pull" remote))))
+(defun madolt-remote--do-pull (remote branch args)
+  "Run dolt pull REMOTE BRANCH with auth from transient ARGS."
+  (let* ((dolt-args (delq nil (list "pull" remote branch)))
+         (result (madolt-remote--call-with-auth remote args dolt-args)))
     (madolt-refresh)
-    (madolt-remote--report "Pull" remote result)))
+    (madolt-remote--report
+     (format "Pull %s/%s" remote (or branch "")) remote result)))
+
+(transient-define-suffix madolt-pull-from-push-target (&optional args)
+  "Pull from the push target (default remote + current branch)."
+  :if (lambda () (madolt-remote--push-target))
+  :description
+  (lambda ()
+    (let ((target (madolt-remote--push-target)))
+      (if target
+          (format "%s/%s" (car target) (cdr target))
+        "no push target")))
+  (interactive (list (transient-args 'madolt-pull)))
+  (let ((target (madolt-remote--push-target)))
+    (unless target (user-error "No push target for this branch"))
+    (madolt-remote--do-pull (car target) (cdr target) args)))
+
+(transient-define-suffix madolt-pull-from-upstream (&optional args)
+  "Pull from the configured upstream of the current branch."
+  :if (lambda () (madolt-remote--upstream-target))
+  :description
+  (lambda ()
+    (let ((target (madolt-remote--upstream-target)))
+      (if target
+          (format "@{upstream}, i.e. %s/%s" (car target) (cdr target))
+        "no upstream")))
+  (interactive (list (transient-args 'madolt-pull)))
+  (let ((target (madolt-remote--upstream-target)))
+    (unless target (user-error "No upstream for this branch"))
+    (madolt-remote--do-pull (car target) (cdr target) args)))
+
+(transient-define-suffix madolt-pull-from-elsewhere (remote-branch &optional args)
+  "Pull from a remote branch chosen via `completing-read'.
+REMOTE-BRANCH is a (REMOTE . BRANCH) cons."
+  (interactive
+   (list (madolt-remote--read-remote-branch "Pull from remote branch: ")
+         (transient-args 'madolt-pull)))
+  (madolt-remote--do-pull (car remote-branch) (cdr remote-branch) args))
+
+(defun madolt-pull-from-default (&optional args)
+  "Backward-compatible entry point: pull from the push target.
+Prefer the transient suffix `madolt-pull-from-push-target' for new
+code. ARGS are forwarded as transient args."
+  (interactive (list (transient-args 'madolt-pull)))
+  (let ((target (madolt-remote--push-target)))
+    (unless target (user-error "No push target for this branch"))
+    (madolt-remote--do-pull (car target) (cdr target) args)))
 
 (defun madolt-pull-from-remote (remote &optional args)
-  "Pull from REMOTE, always prompting for which remote.
-ARGS are additional arguments from the transient."
+  "Backward-compatible entry point: pull REMOTE with no branch arg.
+Uses the legacy form `dolt pull <remote>'. New transient suffixes
+should be preferred. ARGS are forwarded as transient args."
   (interactive
    (list (madolt-remote--read-remote "Pull from remote: " t)
          (transient-args 'madolt-pull)))
-  (let ((result (madolt-remote--call-with-auth
-                 remote args (list "pull" remote))))
-    (madolt-refresh)
-    (madolt-remote--report "Pull" remote result)))
+  (madolt-remote--do-pull remote nil args))
 
 ;;;; Push transient
 
