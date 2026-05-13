@@ -733,6 +733,68 @@ log, status, and refs buffers.  Returns an empty string for nil."
 
 ;;;; Log queries
 
+(defun madolt-log--entries-via-sql (limit rev flat-extra)
+  "Return commit plists from `DOLT_LOG()' over the SQL connection.
+LIMIT is the row cap, REV is an optional revspec string, and
+FLAT-EXTRA is the flat list of additional log arguments (already
+filtered for the SQL path — the caller is responsible for skipping
+--graph and --stat). Returns the entries list on success, or nil to
+signal that the caller should fall back to the CLI path.
+
+Refs are not populated: the call sites that need ref decoration
+(notably the log buffer with --graph) already route through CLI."
+  (when (and (bound-and-true-p madolt-use-sql-server)
+             (fboundp 'madolt-connection-ensure)
+             (fboundp 'madolt-connection-query-json))
+    (condition-case _
+        (when (funcall 'madolt-connection-ensure)
+          (let* ((quote-sql
+                  (lambda (s) (replace-regexp-in-string "'" "''" s)))
+                 (proc-args
+                  (delq nil
+                        (append
+                         (list "'--parents'")
+                         (when (member "--merges" flat-extra)
+                           (list "'--merges'"))
+                         (when (member "--no-merges" flat-extra)
+                           (list "'--no-merges'"))
+                         (when rev
+                           (list (format "'%s'" (funcall quote-sql rev)))))))
+                 (sql (format "SELECT commit_hash, parents, date, committer, email, message FROM DOLT_LOG(%s) ORDER BY commit_order DESC LIMIT %d"
+                              (mapconcat #'identity proc-args ", ")
+                              limit))
+                 (rows (funcall 'madolt-connection-query-json sql))
+                 (json-line (caar rows))
+                 (parsed (and json-line
+                              (not (string-empty-p json-line))
+                              (condition-case _
+                                  (json-parse-string
+                                   json-line
+                                   :object-type 'alist
+                                   :array-type 'list)
+                                (json-parse-error nil)))))
+            (when parsed
+              (mapcar
+               (lambda (row)
+                 (let* ((parents-str (or (alist-get 'parents row) ""))
+                        (parents (and (not (string-empty-p parents-str))
+                                      (split-string parents-str)))
+                        (committer (or (alist-get 'committer row) ""))
+                        (email (or (alist-get 'email row) "")))
+                   (list :hash       (alist-get 'commit_hash row)
+                         :refs       nil
+                         :date       (alist-get 'date row)
+                         :author     (if (string-empty-p email)
+                                         committer
+                                       (format "%s <%s>" committer email))
+                         :parents    parents
+                         :graph      nil
+                         :graph-pre  nil
+                         :graph-post nil
+                         :message    (or (alist-get 'message row) ""))))
+               (alist-get 'rows parsed)))))
+      (error nil))))
+
 (defun madolt-log-entries (&optional n rev extra-args)
   "Return the last N commits as a list of plists.
 Each plist has keys :hash :refs :date :author :message :parents.
@@ -747,11 +809,31 @@ EXTRA-ARGS is a list of additional dolt log arguments
 such as \"--merges\".
 The :parents key holds a list of parent hash strings, parsed from
 the commit line (dolt log is called with --parents).  It is nil
-only for initial commits that have no parent."
+only for initial commits that have no parent.
+
+When the persistent SQL connection is available and no flags that
+require CLI-only behaviour are present (notably --graph and --stat),
+queries the `DOLT_LOG()' table function over SQL instead of forking
+a `dolt log' subprocess.  The SQL path saves the per-call CLI
+startup cost (~1-1.5s on large databases) at the price of leaving
+:refs nil — refs decoration still flows through the CLI path when
+needed (--graph already forces CLI for the log buffer)."
   (let* ((flat-extra (madolt--flatten-args extra-args))
          (graph-mode (member "--graph" flat-extra))
          (limit (or n 10))
-         (args (append (list "log" "--parents" "-n"
+         ;; Try SQL path first when no CLI-only flags are present.
+         (sql-entries
+          (and (not graph-mode)
+               (not (member "--stat" flat-extra))
+               (madolt-log--entries-via-sql limit rev flat-extra))))
+    (if sql-entries
+        sql-entries
+      (madolt-log--entries-via-cli limit rev flat-extra graph-mode))))
+
+(defun madolt-log--entries-via-cli (limit rev flat-extra graph-mode)
+  "Return commit plists by parsing `dolt log' CLI output.
+LIMIT, REV, FLAT-EXTRA, GRAPH-MODE come from `madolt-log-entries'."
+  (let* ((args (append (list "log" "--parents" "-n"
                              (number-to-string limit))
                        flat-extra
                        (when rev (list rev))))

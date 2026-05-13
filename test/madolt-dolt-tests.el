@@ -13,6 +13,7 @@
 (require 'ert)
 (require 'madolt-test-helpers)
 (require 'madolt-dolt)
+(require 'madolt-connection)
 
 ;;;; Core execution — madolt--run
 
@@ -519,6 +520,96 @@
           (when (plist-get entry :graph-pre)
             (setq has-junction t)))
         (should has-junction)))))
+
+;;;; Log queries via SQL (madolt-njma)
+
+(defun madolt-test--mock-log-sql-json (rows)
+  "Return a function that mocks `madolt-connection-query-json'.
+ROWS is the list of row alists to be returned inside the
+`((rows . ROWS))' wrapper. The returned function ignores its SQL
+arg and returns a single-row list whose first cell is the JSON
+encoding the connection layer would produce."
+  (let* ((json-payload (json-serialize `((rows . ,(vconcat rows)))))
+         (response (list (list json-payload))))
+    (lambda (_sql) response)))
+
+(ert-deftest test-madolt-log--entries-via-sql-parses-rows ()
+  "SQL log path returns plists with hash, author, date, parents, message."
+  (cl-letf* ((madolt-use-sql-server t)
+             ((symbol-function 'madolt-connection-ensure) (lambda () t))
+             ((symbol-function 'madolt-connection-query-json)
+              (madolt-test--mock-log-sql-json
+               '(((commit_hash . "deadbeef")
+                  (parents . "feedface cafebabe")
+                  (date . "2026-05-13 12:00:00")
+                  (committer . "Alice")
+                  (email . "alice@example.com")
+                  (message . "first"))
+                 ((commit_hash . "feedface")
+                  (parents . "")
+                  (date . "2026-05-12 12:00:00")
+                  (committer . "Bob")
+                  (email . "bob@example.com")
+                  (message . "init"))))))
+    (let ((entries (madolt-log--entries-via-sql 10 nil nil)))
+      (should (= 2 (length entries)))
+      (let ((first (car entries)))
+        (should (equal "deadbeef" (plist-get first :hash)))
+        (should (equal "Alice <alice@example.com>" (plist-get first :author)))
+        (should (equal "2026-05-13 12:00:00" (plist-get first :date)))
+        (should (equal '("feedface" "cafebabe") (plist-get first :parents)))
+        (should (equal "first" (plist-get first :message)))
+        ;; SQL path leaves refs nil — log buffer's --graph path
+        ;; supplies ref decoration when needed.
+        (should-not (plist-get first :refs)))
+      ;; Second entry has no parent: :parents must be nil, not '("")
+      (should-not (plist-get (cadr entries) :parents)))))
+
+(ert-deftest test-madolt-log--entries-via-sql-disabled-when-no-server ()
+  "Without SQL server, the SQL log path returns nil so CLI takes over."
+  (let ((madolt-use-sql-server nil))
+    (should-not (madolt-log--entries-via-sql 10 nil nil))))
+
+(ert-deftest test-madolt-log--entries-via-sql-nil-on-error ()
+  "If the SQL query raises, the helper returns nil to trigger CLI fallback."
+  (cl-letf* ((madolt-use-sql-server t)
+             ((symbol-function 'madolt-connection-ensure) (lambda () t))
+             ((symbol-function 'madolt-connection-query-json)
+              (lambda (_sql) (error "broken pipe"))))
+    (should-not (madolt-log--entries-via-sql 10 nil nil))))
+
+(ert-deftest test-madolt-log-entries-falls-through-to-cli-on-graph ()
+  "Even with SQL server enabled, --graph must use the CLI parser."
+  (let ((via-sql-called nil)
+        (via-cli-called nil))
+    (cl-letf* ((madolt-use-sql-server t)
+               ((symbol-function 'madolt-log--entries-via-sql)
+                (lambda (&rest _args) (setq via-sql-called t) nil))
+               ((symbol-function 'madolt-log--entries-via-cli)
+                (lambda (&rest _args)
+                  (setq via-cli-called t) '())))
+      (madolt-log-entries 5 nil '("--graph"))
+      ;; SQL path is gated out for --graph; CLI must be the only path used
+      (should-not via-sql-called)
+      (should via-cli-called))))
+
+(ert-deftest test-madolt-log--entries-via-sql-revspec-arg ()
+  "Revspecs are passed through to DOLT_LOG as a quoted SQL arg."
+  (let ((captured-sql nil))
+    (cl-letf* ((madolt-use-sql-server t)
+               ((symbol-function 'madolt-connection-ensure) (lambda () t))
+               ((symbol-function 'madolt-connection-query-json)
+                (lambda (sql)
+                  (setq captured-sql sql)
+                  (list (list (json-serialize '((rows . [])))))))
+               (entries
+                (madolt-log--entries-via-sql 25 "main..HEAD" '("--no-merges"))))
+      ;; entries declared in cl-letf binding for side effect; rebind for assertions
+      (ignore entries))
+    (should captured-sql)
+    (should (string-match-p "DOLT_LOG('--parents', '--no-merges', 'main..HEAD')"
+                            captured-sql))
+    (should (string-match-p "LIMIT 25" captured-sql))))
 
 ;;;; Mutation operations
 
