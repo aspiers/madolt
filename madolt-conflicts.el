@@ -112,22 +112,15 @@ Use \".\" for all tables."
 
 (defun madolt-conflicts--table-names ()
   "Return a list of table names that have unresolved conflicts.
-Parses `dolt status' output for unmerged tables."
-  (let ((output (cdr (madolt--run "status")))
-        (tables nil)
-        (in-unmerged nil))
-    (dolist (line (split-string output "\n"))
-      (cond
-       ((string-match-p "^Unmerged paths:" line)
-        (setq in-unmerged t))
-       ;; End of unmerged section
-       ((and in-unmerged (string-match-p "^[A-Z]" line))
-        (setq in-unmerged nil))
-       ;; Table entry: "\tboth modified:  table_name"
-       ((and in-unmerged
-             (string-match "^\t[a-z ]+:\\s-+\\(\\S-+\\)" line))
-        (push (match-string 1 line) tables))))
-    (nreverse tables)))
+Uses `madolt-status-tables', which queries `dolt_status' via the
+persistent SQL connection (cached during refresh) instead of
+spawning a `dolt status' CLI subprocess. The previous CLI-and-regex
+parser was both slow (~1-1.5s of CLI startup per call) and lossy:
+when the CLI emitted a status line whose label did not match
+`^\\t[a-z ]+:' (e.g. when output formatting drifted between dolt
+versions), the table list came back empty and `completing-read'
+offered no candidates."
+  (mapcar #'car (alist-get 'conflicts (madolt-status-tables))))
 
 ;;;; Buffer display
 
