@@ -204,15 +204,24 @@ or signals an error if the stash push fails unexpectedly."
 
 (defun madolt-rebase--stash-pop (db-dir stash-name)
   "Pop stash STASH-NAME in DB-DIR after an interactive rebase.
-Logs silently if the stash no longer exists."
+On failure, surface an error-level warning naming the stash and
+how to recover it. Silent failure is a data-loss hazard: the `-a'
+stash includes dolt_ignore'd tables (api keys, auth state, etc.),
+which would silently vanish from the working set."
   (when stash-name
     (let* ((query (format "CALL DOLT_STASH('pop', '%s')" stash-name))
            (result (let ((default-directory db-dir))
                      (madolt-call-dolt "sql" "-q" query))))
       (unless (zerop (car result))
+        ;; Also keep the process-buffer log for diagnostics
         (madolt-connection--log
          (format "Could not pop pre-rebase stash '%s'" stash-name)
-         (string-trim (cdr result)))))))
+         (string-trim (cdr result)))
+        (display-warning
+         'madolt
+         (format "Failed to pop pre-rebase stash '%s': %s\nThe stash is retained in dolt_stashes. Recover with: CALL DOLT_STASH('pop', '%s')"
+                 stash-name (string-trim (or (cdr result) "")) stash-name)
+         :error)))))
 
 (defun madolt-rebase--retain-stash-warning (stash-name context detail)
   "Warn that STASH-NAME was retained because CONTEXT failed with DETAIL.

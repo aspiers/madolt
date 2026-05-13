@@ -404,6 +404,49 @@ This ensures the pointed-at commit is included in the rebase plan."
         (should-not (string-match-p "Body line 1" text))
         (should-not (string-match-p "Body line 2" text))))))
 
+;;;; Stash-pop: surface failure as warning (madolt-2o4o)
+
+(ert-deftest test-madolt-rebase-stash-pop-surfaces-failure ()
+  "When stash pop fails, an error-level warning must be raised."
+  (let ((warnings nil))
+    (cl-letf (((symbol-function 'madolt-call-dolt)
+               (lambda (&rest _args) '(1 . "stash not found")))
+              ((symbol-function 'madolt-connection--log) #'ignore)
+              ((symbol-function 'display-warning)
+               (lambda (type message &optional level)
+                 (push (list type message level) warnings))))
+      (madolt-rebase--stash-pop "/tmp/db" "stash-xyz")
+      (should warnings)
+      (let* ((entry (car warnings))
+             (msg (cadr entry))
+             (level (caddr entry)))
+        (should (eq (car entry) 'madolt))
+        (should (eq level :error))
+        (should (string-match-p "stash-xyz" msg))
+        (should (string-match-p "Recover with" msg))))))
+
+(ert-deftest test-madolt-rebase-stash-pop-silent-on-success ()
+  "When stash pop succeeds, no warning should be raised."
+  (let ((warnings nil))
+    (cl-letf (((symbol-function 'madolt-call-dolt)
+               (lambda (&rest _args) '(0 . "")))
+              ((symbol-function 'display-warning)
+               (lambda (&rest args) (push args warnings))))
+      (madolt-rebase--stash-pop "/tmp/db" "stash-xyz")
+      (should-not warnings))))
+
+(ert-deftest test-madolt-rebase-stash-pop-noop-without-stash ()
+  "With nil stash-name, stash-pop should do nothing — no SQL call, no warning."
+  (let ((called nil)
+        (warnings nil))
+    (cl-letf (((symbol-function 'madolt-call-dolt)
+               (lambda (&rest _args) (setq called t) '(0 . "")))
+              ((symbol-function 'display-warning)
+               (lambda (&rest args) (push args warnings))))
+      (madolt-rebase--stash-pop "/tmp/db" nil)
+      (should-not called)
+      (should-not warnings))))
+
 ;;;; Abort-then-pop: avoid silent corruption when abort fails
 
 (ert-deftest test-madolt-rebase-abort-then-pop-pops-on-success ()
