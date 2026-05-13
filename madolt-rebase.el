@@ -188,6 +188,55 @@ ARGS are additional arguments from the transient."
   "Alist of (db-dir . stash-name) for in-progress interactive rebases.
 Used by continue/abort commands when the plan buffer is no longer current.")
 
+(defvar madolt-rebase--orphans-checked nil
+  "List of database directories already checked for orphan rebase stashes.
+Used by `madolt-rebase--check-orphan-stashes' to avoid re-warning each
+time `madolt-setup-buffer' runs.")
+
+(defun madolt-rebase--check-orphan-stashes (db-dir)
+  "Warn about orphan madolt-rebase stashes in DB-DIR.
+
+An orphan is any `madolt-rebase-…' entry in `dolt_stashes' that is
+not tracked by `madolt-rebase--active-stashes'. Orphans appear when
+Emacs is killed mid-rebase, when stash-pop fails silently (now fixed,
+see madolt-2o4o), or when an abort/continue fails (now retained, see
+madolt-fy4h). A surviving stash for which there is no in-memory link
+means the user's working set is missing whatever was stashed —
+including dolt_ignore'd tables when the `-a' stash flag was used.
+
+Runs at most once per DB-DIR per Emacs session. Query failures are
+silent: this is a best-effort warning, not a hard requirement."
+  (unless (member db-dir madolt-rebase--orphans-checked)
+    (push db-dir madolt-rebase--orphans-checked)
+    (let ((known (mapcar #'cdr madolt-rebase--active-stashes))
+          (default-directory db-dir))
+      (condition-case _
+          (let* ((json (madolt-dolt-json
+                        "sql" "-q"
+                        "SELECT name, branch, hash, commit_message FROM dolt_stashes WHERE name LIKE 'madolt-rebase-%'"
+                        "-r" "json"))
+                 (rows (alist-get 'rows json)))
+            (dolist (row rows)
+              (let ((name (alist-get 'name row)))
+                (unless (member name known)
+                  (display-warning
+                   'madolt
+                   (format "Orphan rebase stash '%s' found in %s.
+  Branch: %s
+  Commit: %s %s
+This stash was not popped after its rebase. The working set may be
+missing tables (including dolt_ignore'd ones if pushed with -a).
+Inspect:  dolt sql -q \"SHOW TABLES AS OF '%s'\"
+Recover:  dolt sql -q \"CALL DOLT_STASH('pop', '%s')\""
+                           name db-dir
+                           (or (alist-get 'branch row) "?")
+                           (or (alist-get 'hash row) "?")
+                           (or (alist-get 'commit_message row) "")
+                           (or (alist-get 'hash row) "?")
+                           name)
+                   :warning)))))
+        (error nil)))))
+
 (defun madolt-rebase--stash-push (db-dir stash-name)
   "Push a stash named STASH-NAME before an interactive rebase in DB-DIR.
 Returns STASH-NAME on success, nil if there was nothing to stash,

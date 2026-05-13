@@ -377,7 +377,11 @@ database root, activate MODE, and call `madolt-refresh'."
         (funcall mode))
       (setq default-directory db-dir)
       (setq madolt-buffer-database-dir db-dir)
-      (madolt-refresh))
+      (madolt-refresh)
+      ;; Once per database per session, warn about orphan rebase stashes
+      ;; left behind by killed/crashed Emacs or failed abort/continue.
+      (when (fboundp 'madolt-rebase--check-orphan-stashes)
+        (madolt-rebase--check-orphan-stashes db-dir)))
     (madolt-display-buffer buffer)
     buffer))
 
