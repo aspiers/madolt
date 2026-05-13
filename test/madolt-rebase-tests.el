@@ -135,7 +135,7 @@
 ;;;; Rebase command — calls dolt with correct args
 
 (ert-deftest test-madolt-rebase-elsewhere-calls-dolt ()
-  "madolt-rebase-elsewhere should invoke dolt rebase with correct args."
+  "madolt-rebase-elsewhere should invoke SQL DOLT_REBASE with correct args."
   (madolt-with-test-database
     (madolt-test-create-table "t1" "id INT PRIMARY KEY")
     (madolt-test-commit "init")
@@ -145,7 +145,8 @@
                  (lambda (&rest args) (setq called-args args) '(0 . "")))
                 ((symbol-function 'madolt-refresh) #'ignore))
         (madolt-rebase-elsewhere "feature" nil)
-        (should (equal called-args '("rebase" "feature")))))))
+        (should (equal called-args
+                       '("sql" "-q" "CALL DOLT_REBASE('feature')")))))))
 
 (ert-deftest test-madolt-rebase-elsewhere-with-empty-keep ()
   "madolt-rebase-elsewhere with --empty=keep should pass the flag."
@@ -159,7 +160,7 @@
                 ((symbol-function 'madolt-refresh) #'ignore))
         (madolt-rebase-elsewhere "feature" '("--empty=keep"))
         (should (equal called-args
-                       '("rebase" "--empty=keep" "feature")))))))
+                       '("sql" "-q" "CALL DOLT_REBASE('--empty=keep', 'feature')")))))))
 
 (ert-deftest test-madolt-rebase-interactive-calls-sql ()
   "madolt-rebase-interactive should invoke SQL DOLT_REBASE."

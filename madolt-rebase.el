@@ -169,7 +169,14 @@ ARGS are additional arguments from the transient."
            (transient-args 'madolt-rebase))))
   (when (string-empty-p upstream)
     (user-error "Must specify an upstream branch"))
-  (let ((result (apply #'madolt-call-dolt "rebase" (append args (list upstream)))))
+  ;; Use SQL CALL DOLT_REBASE rather than `dolt rebase' CLI: the CLI
+  ;; refuses to run while a sql-server holds the database lock.
+  (let* ((quote-sql (lambda (s) (replace-regexp-in-string "'" "''" s)))
+         (sql-args (mapcar (lambda (a) (format "'%s'" (funcall quote-sql a)))
+                           (append args (list upstream))))
+         (query (format "CALL DOLT_REBASE(%s)"
+                        (mapconcat #'identity sql-args ", ")))
+         (result (madolt-call-dolt "sql" "-q" query)))
     (madolt-refresh)
     (if (zerop (car result))
         (message "Rebased %s onto %s" (madolt-current-branch) upstream)
