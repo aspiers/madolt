@@ -428,7 +428,7 @@ git-rebase-todo layout."
                   " "
                   (propertize short-hash 'font-lock-face 'madolt-hash)
                   " "
-                  (or message "")
+                  (or (car (split-string (or message "") "\n")) "")
                   "\n")
           (when (equal action "drop")
             (let ((ov (make-overlay line-start (1- (point)))))

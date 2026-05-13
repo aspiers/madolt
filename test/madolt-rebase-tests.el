@@ -386,5 +386,23 @@ This ensures the pointed-at commit is included in the rebase plan."
                        (alist-get 'action
                                   (car (alist-get 'rows json)))))))))
 
+(ert-deftest test-madolt-rebase-render-plan-truncates-multiline ()
+  "madolt-rebase--render-plan should show only the first line of messages."
+  (with-temp-buffer
+    (let ((madolt-rebase--branch "main")
+          (madolt-rebase--upstream "abc123")
+          (plan (list (list :order 1 :action "pick" :hash "abcdef1234567890"
+                            :message "First line\n\nBody line 1\nBody line 2")
+                      (list :order 2 :action "pick" :hash "1234567890abcdef"
+                            :message "Single line commit"))))
+      (madolt-rebase--render-plan plan)
+      (let ((text (buffer-string)))
+        ;; First lines should appear
+        (should (string-match-p "First line" text))
+        (should (string-match-p "Single line commit" text))
+        ;; Body lines should NOT appear
+        (should-not (string-match-p "Body line 1" text))
+        (should-not (string-match-p "Body line 2" text))))))
+
 (provide 'madolt-rebase-tests)
 ;;; madolt-rebase-tests.el ends here

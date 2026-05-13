@@ -394,7 +394,7 @@ Only shown when a SQL-initiated interactive rebase is in progress."
                   " "
                   (propertize short 'font-lock-face 'madolt-hash)
                   " "
-                  (or message "")))))
+                  (or (car (split-string (or message "") "\n")) "")))))
           (insert "\n"))))))
 
 (defun madolt-insert-merge-conflicts ()

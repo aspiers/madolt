@@ -638,5 +638,40 @@ Leaves a SQL-initiated rebase in progress on `main'."
          magit-root-section)
         (should found)))))
 
+(defun madolt-test--setup-rebase-multiline ()
+  "Set up a rebase with a multi-line commit message.
+Like `madolt-test--setup-rebase' but the last commit has a multi-line
+message to test truncation behavior."
+  (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+  (madolt-test-commit "initial")
+  (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+  (madolt-test-commit "add t2")
+  (madolt-test-create-table "t3" "id INT PRIMARY KEY")
+  ;; Create a commit with a multi-line message
+  (call-process madolt-dolt-executable nil nil nil "add" ".")
+  (call-process madolt-dolt-executable nil nil nil
+                "commit" "-m" "add t3\n\nThis is the body of the commit\nwith multiple lines")
+  ;; Upstream = the "initial" commit (two back from HEAD)
+  (let ((upstream (string-trim
+                   (cdr (madolt--run "sql" "-q"
+                                     "SELECT commit_hash FROM dolt_log ORDER BY date ASC LIMIT 1 OFFSET 1"
+                                     "-r" "csv")))))
+    (setq upstream (car (last (split-string upstream "\n"))))
+    (madolt--run "sql" "-q"
+                 (format "CALL DOLT_REBASE('-i', '%s')" upstream))
+    upstream))
+
+(ert-deftest test-madolt-status-rebase-truncates-multiline-messages ()
+  "Rebase pick lines should show only the first line of commit messages."
+  (madolt-with-test-database
+    (madolt-test--setup-rebase-multiline)
+    (madolt-with-status-buffer
+      (let ((text (buffer-string)))
+        ;; First line of the multi-line commit message should appear
+        (should (string-match-p "add t3" text))
+        ;; Body lines should NOT appear in the status buffer
+        (should-not (string-match-p "This is the body of the commit" text))
+        (should-not (string-match-p "with multiple lines" text))))))
+
 (provide 'madolt-status-tests)
 ;;; madolt-status-tests.el ends here
