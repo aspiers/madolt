@@ -1260,5 +1260,72 @@ The initial commit (from dolt init) should have nil :parents."
     (goto-char (point-min))
     (should-error (madolt-log-goto-parent) :type 'user-error)))
 
+;;;; Topological sort (madolt-n21q)
+
+(defun madolt-test--log-entry (hash &rest parents)
+  "Helper: build a minimal log entry plist with HASH and PARENTS."
+  (list :hash hash :parents parents))
+
+(ert-deftest test-madolt-log-topo-sort-groups-branches ()
+  "Topo-sort groups each branch's commits together rather than zippering.
+
+Setup mirrors a real divergence:
+
+   main:  M  ->  M_root
+   feat:  F  ->  F_root  ->  M_root
+
+The chronological order from dolt is `M F F_root M_root' (F's commit
+date sits between M and M_root). Topo-sort must keep main's chain
+together and feat's chain together."
+  (let* ((entries
+          (list
+           (madolt-test--log-entry "M" "M_root")
+           (madolt-test--log-entry "F" "F_root")
+           (madolt-test--log-entry "F_root" "M_root")
+           (madolt-test--log-entry "M_root")))
+         (sorted (madolt-log--topo-sort entries))
+         (hashes (mapcar (lambda (e) (plist-get e :hash)) sorted)))
+    ;; Same multiset
+    (should (equal (sort (copy-sequence hashes) #'string<)
+                   '("F" "F_root" "M" "M_root")))
+    ;; M must precede M_root
+    (should (< (cl-position "M" hashes :test #'equal)
+               (cl-position "M_root" hashes :test #'equal)))
+    ;; F must precede F_root which must precede M_root
+    (should (< (cl-position "F" hashes :test #'equal)
+               (cl-position "F_root" hashes :test #'equal)))
+    (should (< (cl-position "F_root" hashes :test #'equal)
+               (cl-position "M_root" hashes :test #'equal)))))
+
+(ert-deftest test-madolt-log-topo-sort-preserves-linear ()
+  "A linear history must come back in the same order."
+  (let* ((entries
+          (list
+           (madolt-test--log-entry "C" "B")
+           (madolt-test--log-entry "B" "A")
+           (madolt-test--log-entry "A")))
+         (sorted (madolt-log--topo-sort entries))
+         (hashes (mapcar (lambda (e) (plist-get e :hash)) sorted)))
+    (should (equal '("C" "B" "A") hashes))))
+
+(ert-deftest test-madolt-log-topo-sort-merge ()
+  "A merge commit must precede both parents and the common ancestor."
+  (let* ((entries
+          (list
+           (madolt-test--log-entry "Merge" "Main" "Feat")
+           (madolt-test--log-entry "Main" "Base")
+           (madolt-test--log-entry "Feat" "Base")
+           (madolt-test--log-entry "Base")))
+         (sorted (madolt-log--topo-sort entries))
+         (hashes (mapcar (lambda (e) (plist-get e :hash)) sorted)))
+    (should (equal "Merge" (car hashes)))
+    (should (equal "Base" (car (last hashes))))
+    (should (member "Main" hashes))
+    (should (member "Feat" hashes))))
+
+(ert-deftest test-madolt-log-topo-sort-empty ()
+  "Empty input must round-trip to empty."
+  (should (null (madolt-log--topo-sort '()))))
+
 (provide 'madolt-log-tests)
 ;;; madolt-log-tests.el ends here

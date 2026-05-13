@@ -395,15 +395,36 @@ ARGS are additional arguments from the transient."
   (interactive (list (transient-args 'madolt-log)))
   (madolt-log--show "HEAD" args))
 
+(defcustom madolt-log-all-topo-sort t
+  "Whether `madolt-log-all' should client-side topologically sort commits.
+
+When non-nil (the default), commits across all branches are reordered
+so each branch's commits appear together rather than zippered by
+commit date.  Dolt does not support `--topo-order' server-side and
+its `--graph' output assumes chronological ordering, so enabling
+topo-sort also forces `--graph' off — the commits are shown as a
+flat, branch-grouped list.
+
+When nil, the old behaviour is restored: `--graph' is auto-enabled
+and commits are rendered in dolt's chronological order, producing
+the interleaved \"zipper\" pattern across branches."
+  :group 'madolt
+  :type 'boolean)
+
 (defun madolt-log-all (&optional args)
   "Show log for all branches.
 ARGS are additional arguments from the transient."
   (interactive (list (transient-args 'madolt-log)))
   (unless (member "--all" args)
     (push "--all" args))
-  ;; Auto-enable --graph for multi-branch views (like magit)
-  (unless (member "--graph" args)
-    (push "--graph" args))
+  (if madolt-log-all-topo-sort
+      ;; Strip --graph if the user toggled it on in the transient — the
+      ;; graph chars come from dolt and assume chronological order, so
+      ;; they would mis-align after the client-side topo sort.
+      (setq args (cl-remove "--graph" args :test #'equal))
+    ;; Legacy behaviour: auto-enable --graph for multi-branch views.
+    (unless (member "--graph" args)
+      (push "--graph" args)))
   (madolt-log--show "--all" args))
 
 ;;;; Log display
@@ -457,15 +478,88 @@ The limit is handled separately via `madolt-log--limit'."
        (t (push arg result))))
     (nreverse result)))
 
+(defun madolt-log--topo-sort (entries)
+  "Topologically sort ENTRIES so each branch's commits stay grouped.
+
+ENTRIES is a list of plists with :hash and :parents (a list of parent
+hash strings), newest first. Returns a new list reordered so a commit
+appears before any of its ancestors in the set, regardless of commit
+date. Commits whose parents are outside the set are treated as roots.
+
+This is the client-side equivalent of git's --topo-order. Dolt has
+no native --topo-order, and its --graph rendering assumes
+chronological ordering, so callers should drop --graph before
+applying this sort."
+  (let* ((by-hash (make-hash-table :test #'equal))
+         (children (make-hash-table :test #'equal))
+         (visited (make-hash-table :test #'equal))
+         (output nil))
+    (dolist (entry entries)
+      (puthash (plist-get entry :hash) entry by-hash))
+    ;; Build child map: for each entry, record which entries in the set
+    ;; list it among their parents.
+    (dolist (entry entries)
+      (let ((hash (plist-get entry :hash)))
+        (dolist (parent (plist-get entry :parents))
+          (when (gethash parent by-hash)
+            (push hash (gethash parent children))))))
+    ;; Tips first — entries with no in-set child, preserving the
+    ;; chronological order coming from dolt so the latest tip leads.
+    (let ((tips (cl-remove-if (lambda (entry)
+                                (gethash (plist-get entry :hash) children))
+                              entries)))
+      (dolist (tip tips)
+        (madolt-log--topo-dfs tip by-hash visited
+                              (lambda (e) (push e output)))))
+    ;; DFS may leave isolated cycles or missing entries unvisited
+    ;; (shouldn't happen with --parents, but be defensive).
+    (dolist (entry entries)
+      (unless (gethash (plist-get entry :hash) visited)
+        (madolt-log--topo-dfs entry by-hash visited
+                              (lambda (e) (push e output)))))
+    ;; DFS emits in post-order (ancestors before descendants); `push'
+    ;; prepends, so `output' already has descendants before ancestors —
+    ;; i.e. newest-first, the order callers expect.
+    output))
+
+(defun madolt-log--topo-dfs (entry by-hash visited emit)
+  "Iterative DFS post-order from ENTRY.
+BY-HASH maps hash strings to entry plists, VISITED tracks emitted
+hashes, EMIT is a one-arg function called once per entry on
+post-order. Iterative to avoid blowing the Emacs stack on long
+histories."
+  (let ((stack (list (cons entry nil))))
+    (while stack
+      (pcase-let ((`(,e . ,expanded) (car stack)))
+        (let ((hash (plist-get e :hash)))
+          (cond
+           ((gethash hash visited)
+            (pop stack))
+           (expanded
+            (puthash hash t visited)
+            (funcall emit e)
+            (pop stack))
+           (t
+            (setcdr (car stack) t)
+            (dolist (parent (plist-get e :parents))
+              (let ((parent-entry (gethash parent by-hash)))
+                (when (and parent-entry
+                           (not (gethash parent visited)))
+                  (push (cons parent-entry nil) stack)))))))))))
+
 (defun madolt-log-refresh-buffer ()
   "Refresh the log buffer by inserting commit sections."
   (setq madolt-log--remote-names (madolt-remote-names))
   (let* ((rev (unless (string= madolt-log--rev "--all")
                 madolt-log--rev))
-         (entries (madolt-log-entries
-                   madolt-log--limit
-                   rev
-                   (madolt-log--filter-log-args madolt-log--args))))
+         (raw-entries (madolt-log-entries
+                       madolt-log--limit
+                       rev
+                       (madolt-log--filter-log-args madolt-log--args)))
+         (entries (if (and (string= madolt-log--rev "--all")
+                           madolt-log-all-topo-sort)
+                      (madolt-log--topo-sort raw-entries)
+                    raw-entries)))
     (magit-insert-section (log)
       (magit-insert-heading
         (if (string= madolt-log--rev "--all")
