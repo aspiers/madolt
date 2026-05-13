@@ -118,10 +118,12 @@ to set the given ACTION for COMMIT, and opens the plan buffer."
                          action commit))))
           (if (not (zerop (car update-result)))
               (progn
-                ;; Roll back: abort the rebase and pop the stash.
-                (madolt-call-dolt "--branch" rebase-branch
-                                  "sql" "-q" "CALL DOLT_REBASE('--abort')")
-                (madolt-rebase--stash-pop db-dir stash-name)
+                ;; Roll back: abort the rebase and pop the stash, but only
+                ;; pop if the abort succeeded — popping on top of an
+                ;; unknown working-set state risks data loss.
+                (madolt-rebase--abort-then-pop
+                 rebase-branch db-dir stash-name
+                 (format "Rollback of action update (%s)" action))
                 (madolt-refresh)
                 (message "Failed to set %s on commit: %s"
                          action (string-trim (cdr update-result))))
@@ -212,6 +214,41 @@ Logs silently if the stash no longer exists."
          (format "Could not pop pre-rebase stash '%s'" stash-name)
          (string-trim (cdr result)))))))
 
+(defun madolt-rebase--retain-stash-warning (stash-name context detail)
+  "Warn that STASH-NAME was retained because CONTEXT failed with DETAIL.
+The stash is left in `dolt_stashes' so the user can recover their
+working set manually after healing whatever state the failed operation
+left behind."
+  (display-warning
+   'madolt
+   (format "%s failed: %s\nStash '%s' retained. After repairing the working set, recover with: CALL DOLT_STASH('pop', '%s')"
+           context (string-trim (or detail "")) stash-name stash-name)
+   :error))
+
+(defun madolt-rebase--abort-then-pop (rebase-branch db-dir stash-name context)
+  "Run CALL DOLT_REBASE('--abort') on REBASE-BRANCH then pop STASH-NAME.
+DB-DIR is the database directory. CONTEXT is a human-readable label
+for the operation that triggered the abort (e.g. \"Rebase abort\",
+\"Rollback of action update\"), used in the error message if the
+abort fails.
+
+If the abort fails, the stash is NOT popped — popping on top of an
+unknown intermediate working-set state can produce spurious conflicts
+or partially apply, masking the abort failure and corrupting the
+working set. Instead, surface the failure with the stash name so the
+user can recover manually.
+
+Returns the abort result cons (EXIT-CODE . OUTPUT)."
+  (let ((abort-result
+         (madolt-call-dolt "--branch" rebase-branch
+                           "sql" "-q" "CALL DOLT_REBASE('--abort')")))
+    (if (zerop (car abort-result))
+        (madolt-rebase--stash-pop db-dir stash-name)
+      (when stash-name
+        (madolt-rebase--retain-stash-warning
+         stash-name context (cdr abort-result))))
+    abort-result))
+
 (defun madolt-rebase-interactive (upstream &optional _args)
   "Start an interactive rebase of current branch onto UPSTREAM.
 Uses the SQL DOLT_REBASE procedure to create a rebase plan in the
@@ -287,11 +324,20 @@ falls back to CLI."
                                        "sql" "-q"
                                        "CALL DOLT_REBASE('--continue')")
                    (madolt-call-dolt "rebase" "--continue"))))
-    (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
-    (madolt-rebase--stash-pop db-dir stash-name)
-    (madolt-refresh)
+    ;; Only pop the stash if continue succeeded — popping on top of an
+    ;; unknown mid-rebase working-set state risks data loss. On failure,
+    ;; leave the stash in place and the active-stashes entry so the
+    ;; user can recover after healing the working set.
     (if (zerop (car result))
-        (message "Rebase continued successfully")
+        (progn
+          (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
+          (madolt-rebase--stash-pop db-dir stash-name)
+          (madolt-refresh)
+          (message "Rebase continued successfully"))
+      (when stash-name
+        (madolt-rebase--retain-stash-warning
+         stash-name "Rebase continue" (cdr result)))
+      (madolt-refresh)
       (message "Continue failed: %s" (string-trim (cdr result))))))
 
 (defun madolt-rebase-skip-command ()
@@ -322,11 +368,19 @@ falls back to CLI."
                                        "sql" "-q"
                                        "CALL DOLT_REBASE('--abort')")
                    (madolt-call-dolt "rebase" "--abort"))))
-    (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
-    (madolt-rebase--stash-pop db-dir stash-name)
-    (madolt-refresh)
+    ;; Only pop the stash if abort succeeded — popping on top of an
+    ;; unknown intermediate working-set state risks producing odd
+    ;; conflicts, partially applying, or masking the abort failure.
     (if (zerop (car result))
-        (message "Rebase aborted")
+        (progn
+          (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
+          (madolt-rebase--stash-pop db-dir stash-name)
+          (madolt-refresh)
+          (message "Rebase aborted"))
+      (when stash-name
+        (madolt-rebase--retain-stash-warning
+         stash-name "Rebase abort" (cdr result)))
+      (madolt-refresh)
       (message "Abort failed: %s" (string-trim (cdr result))))))
 
 ;;;; Rebase plan editor
@@ -614,11 +668,20 @@ git-rebase-todo layout."
                    "--branch" rebase-branch
                    "sql" "-q" "CALL DOLT_REBASE('--continue')")))
       (kill-buffer (current-buffer))
-      (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
-      (madolt-rebase--stash-pop db-dir stash-name)
-      (madolt-refresh)
+      ;; Only pop the stash if continue succeeded — popping on top of
+      ;; an unknown mid-rebase working-set state risks data loss. On
+      ;; failure, leave the stash and active-stashes entry in place so
+      ;; the user can recover after healing the working set.
       (if (zerop (car result))
-          (message "Rebase completed successfully")
+          (progn
+            (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
+            (madolt-rebase--stash-pop db-dir stash-name)
+            (madolt-refresh)
+            (message "Rebase completed successfully"))
+        (when stash-name
+          (madolt-rebase--retain-stash-warning
+           stash-name "Rebase finish (continue)" (cdr result)))
+        (madolt-refresh)
         (message "Rebase failed: %s" (string-trim (cdr result)))))))
 
 (defun madolt-rebase-plan-abort ()
@@ -628,14 +691,24 @@ git-rebase-todo layout."
     (let* ((default-directory madolt-rebase--db-dir)
            (rebase-branch (concat "dolt_rebase_" madolt-rebase--branch))
            (stash-name madolt-rebase--stash-name)
-           (db-dir madolt-rebase--db-dir))
-      (madolt-call-dolt "--branch" rebase-branch
-                        "sql" "-q" "CALL DOLT_REBASE('--abort')")
+           (db-dir madolt-rebase--db-dir)
+           (abort-result
+            (madolt-call-dolt "--branch" rebase-branch
+                              "sql" "-q" "CALL DOLT_REBASE('--abort')")))
       (kill-buffer (current-buffer))
-      (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
-      (madolt-rebase--stash-pop db-dir stash-name)
-      (madolt-refresh)
-      (message "Rebase aborted"))))
+      ;; Only pop the stash if abort succeeded — popping on top of an
+      ;; unknown intermediate working-set state risks data loss.
+      (if (zerop (car abort-result))
+          (progn
+            (setf (alist-get db-dir madolt-rebase--active-stashes nil 'remove #'equal) nil)
+            (madolt-rebase--stash-pop db-dir stash-name)
+            (madolt-refresh)
+            (message "Rebase aborted"))
+        (when stash-name
+          (madolt-rebase--retain-stash-warning
+           stash-name "Rebase plan abort" (cdr abort-result)))
+        (madolt-refresh)
+        (message "Abort failed: %s" (string-trim (cdr abort-result)))))))
 
 (defun madolt-rebase--show-plan (branch upstream db-dir stash-name)
   "Show the rebase plan editor for BRANCH onto UPSTREAM.

@@ -404,5 +404,111 @@ This ensures the pointed-at commit is included in the rebase plan."
         (should-not (string-match-p "Body line 1" text))
         (should-not (string-match-p "Body line 2" text))))))
 
+;;;; Abort-then-pop: avoid silent corruption when abort fails
+
+(ert-deftest test-madolt-rebase-abort-then-pop-pops-on-success ()
+  "When abort succeeds, the stash should be popped."
+  (let ((calls nil))
+    (cl-letf (((symbol-function 'madolt-call-dolt)
+               (lambda (&rest args)
+                 (push args calls)
+                 ;; Abort call -> success
+                 '(0 . "")))
+              ((symbol-function 'madolt-rebase--stash-pop)
+               (lambda (db-dir stash-name)
+                 (push (list 'pop db-dir stash-name) calls))))
+      (madolt-rebase--abort-then-pop
+       "dolt_rebase_main" "/tmp/db" "stash-xyz" "test")
+      (let ((reversed (reverse calls)))
+        ;; First call should be the abort
+        (should (equal (car reversed)
+                       '("--branch" "dolt_rebase_main"
+                         "sql" "-q" "CALL DOLT_REBASE('--abort')")))
+        ;; Pop must follow
+        (should (equal (cadr reversed)
+                       '(pop "/tmp/db" "stash-xyz")))))))
+
+(ert-deftest test-madolt-rebase-abort-then-pop-retains-stash-on-failure ()
+  "When abort fails, the stash must NOT be popped — data-loss hazard."
+  (let ((pop-called nil)
+        (warnings nil))
+    (cl-letf (((symbol-function 'madolt-call-dolt)
+               (lambda (&rest _args) '(1 . "abort error")))
+              ((symbol-function 'madolt-rebase--stash-pop)
+               (lambda (&rest _args) (setq pop-called t)))
+              ((symbol-function 'display-warning)
+               (lambda (&rest args) (push args warnings))))
+      (madolt-rebase--abort-then-pop
+       "dolt_rebase_main" "/tmp/db" "stash-xyz" "Rollback")
+      (should-not pop-called)
+      ;; A warning must be surfaced mentioning the stash name
+      (should warnings)
+      (let ((msg (cadr (car warnings))))
+        (should (string-match-p "stash-xyz" msg))
+        (should (string-match-p "Rollback" msg))))))
+
+(ert-deftest test-madolt-rebase-abort-then-pop-no-warning-without-stash ()
+  "When there is no stash, abort failure should still not raise a stash warning."
+  (let ((warnings nil))
+    (cl-letf (((symbol-function 'madolt-call-dolt)
+               (lambda (&rest _args) '(1 . "abort error")))
+              ((symbol-function 'madolt-rebase--stash-pop)
+               (lambda (&rest _args)
+                 (error "Should not be called")))
+              ((symbol-function 'display-warning)
+               (lambda (&rest args) (push args warnings))))
+      (madolt-rebase--abort-then-pop
+       "dolt_rebase_main" "/tmp/db" nil "Rollback")
+      (should-not warnings))))
+
+(ert-deftest test-madolt-rebase-continue-retains-stash-on-failure ()
+  "If `--continue' fails, the stash and active-stashes entry must survive."
+  (let ((pop-called nil)
+        (madolt-rebase--active-stashes
+         '(("/tmp/db" . "stash-xyz"))))
+    (cl-letf (((symbol-function 'madolt-current-branch)
+               (lambda () "main"))
+              ((symbol-function 'madolt-branch-names)
+               (lambda () '("dolt_rebase_main" "main")))
+              ((symbol-function 'madolt-database-dir)
+               (lambda () "/tmp/db"))
+              ((symbol-function 'madolt-call-dolt)
+               (lambda (&rest _args) '(1 . "continue conflict")))
+              ((symbol-function 'madolt-rebase--stash-pop)
+               (lambda (&rest _args) (setq pop-called t)))
+              ((symbol-function 'madolt-refresh) #'ignore)
+              ((symbol-function 'display-warning) #'ignore)
+              ((symbol-function 'message) #'ignore))
+      (madolt-rebase-continue-command)
+      (should-not pop-called)
+      ;; alist entry must still be there for recovery / orphan detection
+      (should (equal (alist-get "/tmp/db" madolt-rebase--active-stashes
+                                nil nil #'equal)
+                     "stash-xyz")))))
+
+(ert-deftest test-madolt-rebase-abort-command-retains-stash-on-failure ()
+  "If `--abort' fails, the stash and active-stashes entry must survive."
+  (let ((pop-called nil)
+        (madolt-rebase--active-stashes
+         '(("/tmp/db" . "stash-xyz"))))
+    (cl-letf (((symbol-function 'madolt-current-branch)
+               (lambda () "main"))
+              ((symbol-function 'madolt-branch-names)
+               (lambda () '("dolt_rebase_main" "main")))
+              ((symbol-function 'madolt-database-dir)
+               (lambda () "/tmp/db"))
+              ((symbol-function 'madolt-call-dolt)
+               (lambda (&rest _args) '(1 . "abort error")))
+              ((symbol-function 'madolt-rebase--stash-pop)
+               (lambda (&rest _args) (setq pop-called t)))
+              ((symbol-function 'madolt-refresh) #'ignore)
+              ((symbol-function 'display-warning) #'ignore)
+              ((symbol-function 'message) #'ignore))
+      (madolt-rebase-abort-command)
+      (should-not pop-called)
+      (should (equal (alist-get "/tmp/db" madolt-rebase--active-stashes
+                                nil nil #'equal)
+                     "stash-xyz")))))
+
 (provide 'madolt-rebase-tests)
 ;;; madolt-rebase-tests.el ends here
