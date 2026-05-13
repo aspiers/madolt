@@ -126,7 +126,10 @@ then re-enables it after."
 (defun madolt-merge--do-merge (message args)
   "Execute `dolt merge' with MESSAGE and ARGS.
 ARGS should already include the branch to merge.
-MESSAGE may be nil to use dolt's auto-generated message."
+MESSAGE may be nil to use dolt's auto-generated message.
+Returns a plist (:failure FAILURE :head-changed BOOL :conflicts LIST
+:staged LIST :merge-in-progress BOOL) so callers can make decisions
+without redundant CLI calls."
   (let* ((head-before (madolt-dolt-string "log" "-n" "1" "--oneline"))
          ;; Extract the branch name (last non-flag arg)
          (branch (car (last (cl-remove-if
@@ -151,32 +154,57 @@ MESSAGE may be nil to use dolt's auto-generated message."
     ;; Reset SQL connection after merge to avoid stale session state
     (when (fboundp 'madolt-connection-disconnect)
       (madolt-connection-disconnect))
-    (let ((failure
-           (cond
-            ((not (zerop (car result)))
-             output)
-            ((string-match-p "\\(conflict\\|error\\|rolled back\\)" output)
-             output)
-            ;; Skip HEAD check for --squash/--no-commit (they don't change HEAD)
-            ((and (equal head-before head-after)
-                  (not (member "--squash" flags))
-                  (not (member "--no-commit" flags)))
-             "HEAD unchanged (merge may have failed silently)"))))
+    (let* ((head-changed (not (equal head-before head-after)))
+           (failure
+            (cond
+             ((not (zerop (car result)))
+              output)
+             ((string-match-p "\\(conflict\\|error\\|rolled back\\)" output)
+              output)
+             ;; Skip HEAD check for --squash/--no-commit (they don't change HEAD)
+             ((and (not head-changed)
+                   (not (member "--squash" flags))
+                   (not (member "--no-commit" flags)))
+              "HEAD unchanged (merge may have failed silently)"))))
       (madolt-refresh)
-      (if failure
-          (progn
-            ;; Log to process buffer and display it
-            (madolt--process-insert-section
-             (list "merge" branch) 1 failure)
-            (madolt-process-buffer)
-            (message "Merge failed: %s"
-                     (truncate-string-to-width failure 80 nil nil "...")))
-        (if (and (member "--no-commit" flags)
-                 (equal head-before head-after))
-            ;; --no-commit stopped before creating the merge commit
-            (message "Merge of %s staged (commit pending)" branch)
-          (message "Merged %s into %s" branch
-                   (madolt-current-branch)))))))
+      ;; Collect post-refresh state once for both our messages and the caller.
+      ;; Use a single madolt-status-tables call after refresh rather than
+      ;; the multiple redundant calls that previously caused multi-second hangs.
+      (let ((status (madolt-status-tables))
+            merge-in-progress)
+        (let ((conflicts (alist-get 'conflicts status))
+              (staged (alist-get 'staged status)))
+          ;; Only check merge-in-progress if we'll actually need it:
+          ;; when there's no failure and no conflicts and HEAD didn't change.
+          ;; Inline the check rather than calling madolt-merge-in-progress-p,
+          ;; which would redundantly re-fetch status tables and raw status.
+          (when (and (not failure) (not conflicts) (not head-changed))
+            (let ((raw-output (cdr (madolt--run "status"))))
+              (setq merge-in-progress
+                    (and raw-output
+                         (or (string-match-p "You have unmerged tables"
+                                             raw-output)
+                             (string-match-p "still merging"
+                                             raw-output))))))
+          (if failure
+              (progn
+                ;; Log to process buffer and display it
+                (madolt--process-insert-section
+                 (list "merge" branch) 1 failure)
+                (madolt-process-buffer)
+                (message "Merge failed: %s"
+                         (truncate-string-to-width failure 80 nil nil "...")))
+            (if (and (member "--no-commit" flags)
+                     (not head-changed))
+                ;; --no-commit stopped before creating the merge commit
+                (message "Merge of %s staged (commit pending)" branch)
+              (message "Merged %s into %s" branch
+                       (madolt-current-branch))))
+          (list :failure failure
+                :head-changed head-changed
+                :conflicts conflicts
+                :staged staged
+                :merge-in-progress merge-in-progress))))))
 
 (defun madolt-merge--do-commit (message _args)
   "Commit a pending merge with MESSAGE.
@@ -214,25 +242,23 @@ commit message buffer (like magit) for non-fast-forward merges."
       ;; Normal merge: run with --no-commit, then open buffer if needed.
       ;; --no-commit has no effect on fast-forward merges (they just
       ;; complete immediately), so the buffer only opens for real merges.
-      (let* ((head-before (madolt-dolt-string "log" "-n" "1" "--oneline"))
-             (no-commit-args (cons "--no-commit" merge-args)))
-        (madolt-merge--do-merge nil no-commit-args)
-        ;; Check if the merge is pending (non-FF merge stopped by --no-commit)
-        (let ((head-after (madolt-dolt-string "log" "-n" "1" "--oneline"))
-              (conflicts (alist-get 'conflicts (madolt-status-tables))))
-          (when (and (equal head-before head-after)
-                     ;; HEAD didn't change — could be a pending merge
-                     ;; (non-FF stopped by --no-commit) or a failure.
-                     ;; Only open the buffer if we're pending a commit
-                     ;; with no unresolved conflicts.
-                     (not conflicts)
-                     (or (madolt-merge-in-progress-p)
-                         (alist-get 'staged (madolt-status-tables))))
-            (madolt-commit--setup-buffer
-             (format "Merge %s into %s" branch current)
-             nil nil
-             #'madolt-merge--do-commit
-             #'madolt-merge--buffer-name)))))))
+      (let* ((no-commit-args (cons "--no-commit" merge-args))
+             (merge-result (madolt-merge--do-merge nil no-commit-args)))
+        ;; Use the result from do-merge instead of re-querying.
+        (when (and (not (plist-get merge-result :head-changed))
+                   ;; HEAD didn't change — could be a pending merge
+                   ;; (non-FF stopped by --no-commit) or a failure.
+                   ;; Only open the buffer if we're pending a commit
+                   ;; with no unresolved conflicts.
+                   (not (plist-get merge-result :failure))
+                   (not (plist-get merge-result :conflicts))
+                   (or (plist-get merge-result :merge-in-progress)
+                       (plist-get merge-result :staged)))
+          (madolt-commit--setup-buffer
+           (format "Merge %s into %s" branch current)
+           nil nil
+           #'madolt-merge--do-commit
+           #'madolt-merge--buffer-name))))))
 
 (defun madolt-merge-continue-command ()
   "Continue the current merge after resolving conflicts.
