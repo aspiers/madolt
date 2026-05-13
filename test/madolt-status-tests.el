@@ -673,5 +673,45 @@ message to test truncation behavior."
         (should-not (string-match-p "This is the body of the commit" text))
         (should-not (string-match-p "with multiple lines" text))))))
 
+(defun madolt-test--setup-mid-rebase ()
+  "Set up a rebase that has progressed past one pick.
+Like `madolt-test--setup-rebase' but pauses after the first commit
+has been replayed by setting its action to `edit' and calling
+`--continue'. Returns the upstream hash."
+  (madolt-test-create-table "t1" "id INT PRIMARY KEY")
+  (madolt-test-commit "initial")
+  (madolt-test-create-table "t2" "id INT PRIMARY KEY")
+  (madolt-test-commit "add t2")
+  (madolt-test-create-table "t3" "id INT PRIMARY KEY")
+  (madolt-test-commit "add t3")
+  (let ((upstream (string-trim
+                   (cdr (madolt--run "sql" "-q"
+                                     "SELECT commit_hash FROM dolt_log ORDER BY date ASC LIMIT 1 OFFSET 2"
+                                     "-r" "csv")))))
+    (setq upstream (car (last (split-string upstream "\n"))))
+    (madolt--run "sql" "-q"
+                 (format "CALL DOLT_REBASE('-i', '%s')" upstream))
+    ;; Set the first pick to `edit' so --continue pauses after applying it.
+    (madolt--run "--branch" "dolt_rebase_main"
+                 "sql" "-q"
+                 "UPDATE dolt_rebase SET action='edit' WHERE rebase_order=1.00")
+    (madolt--run "--branch" "dolt_rebase_main"
+                 "sql" "-q" "CALL DOLT_REBASE('--continue')")
+    upstream))
+
+(ert-deftest test-madolt-status-rebase-shows-done-commits ()
+  "Mid-rebase, the rebase sequence section lists already-applied commits."
+  (madolt-with-test-database
+    (madolt-test--setup-mid-rebase)
+    (madolt-with-status-buffer
+      (let ((text (buffer-string)))
+        ;; The first commit has been replayed — it should appear as `done'
+        ;; in the rebase sequence section.
+        (should (string-match-p "Rebasing" text))
+        (should (string-match-p "done" text))
+        ;; The replayed commit should also appear (by its message)
+        ;; somewhere in the rebase section.
+        (should (string-match-p "add t2" text))))))
+
 (provide 'madolt-status-tests)
 ;;; madolt-status-tests.el ends here

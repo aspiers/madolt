@@ -332,19 +332,30 @@ launches parallel prefetch for:
 
 (defun madolt-insert-rebase-sequence ()
   "Insert a section showing the in-progress interactive rebase, like magit.
-Only shown when a SQL-initiated interactive rebase is in progress."
+Only shown when a SQL-initiated interactive rebase is in progress.
+
+Above the remaining plan, list commits that already exist on the
+rebase branch between upstream and rebase HEAD — these are the
+commits replayed (or newly created) so far during the rebase, the
+way magit shows \"done\" entries."
   (when (madolt-rebase-in-progress-p)
     (let* ((branch (madolt-current-branch))
            (rebase-branch (concat "dolt_rebase_" branch))
-           ;; Upstream is the HEAD commit of the rebase branch.
+           ;; Upstream is the oldest commit reachable from the rebase
+           ;; branch (the commit it was started from). Reading the
+           ;; rebase branch with LIMIT 1 gives its current HEAD, which
+           ;; is only the upstream before any picks have been applied.
+           ;; To get the upstream regardless of progress, take the
+           ;; merge-base of the original branch and the rebase branch.
            (upstream-hash
             (let ((json (madolt-dolt-json
-                         "--branch" rebase-branch
                          "sql" "-q"
-                         "SELECT commit_hash FROM dolt_log LIMIT 1"
+                         (format "SELECT DOLT_MERGE_BASE('%s', '%s') AS hash"
+                                 (replace-regexp-in-string "'" "''" branch)
+                                 (replace-regexp-in-string "'" "''" rebase-branch))
                          "-r" "json")))
               (when json
-                (alist-get 'commit_hash (car (alist-get 'rows json))))))
+                (alist-get 'hash (car (alist-get 'rows json))))))
            ;; Resolve hash to a branch name if possible.
            (upstream
             (or (when upstream-hash
@@ -356,6 +367,23 @@ Only shown when a SQL-initiated interactive rebase is in progress."
                     (when json
                       (alist-get 'name (car (alist-get 'rows json))))))
                 upstream-hash))
+           ;; Commits already created on the rebase branch since upstream.
+           ;; Newest first (the natural DOLT_LOG order). Reverse so we
+           ;; render oldest-to-newest, matching magit's "done" listing.
+           (done
+            (when upstream-hash
+              (let ((json (madolt-dolt-json
+                           "--branch" rebase-branch
+                           "sql" "-q"
+                           (format "SELECT commit_hash, message FROM DOLT_LOG('%s..HEAD')"
+                                   (replace-regexp-in-string "'" "''" upstream-hash))
+                           "-r" "json")))
+                (when json
+                  (nreverse
+                   (mapcar (lambda (row)
+                             (list :hash    (alist-get 'commit_hash row)
+                                   :message (alist-get 'message row)))
+                           (alist-get 'rows json)))))))
            ;; Read the remaining rebase plan entries.
            (plan
             (let ((json (madolt-dolt-json
@@ -369,13 +397,24 @@ Only shown when a SQL-initiated interactive rebase is in progress."
                                 :hash    (alist-get 'commit_hash row)
                                 :message (alist-get 'commit_message row)))
                         (alist-get 'rows json))))))
-      (when (and branch upstream plan)
+      (when (and branch upstream (or done plan))
         (magit-insert-section (rebase-sequence)
           (magit-insert-heading
             (concat "Rebasing "
                     (propertize branch 'font-lock-face 'madolt-branch-local)
                     " onto "
                     (propertize upstream 'font-lock-face 'madolt-branch-local)))
+          (dolist (entry done)
+            (let* ((hash    (plist-get entry :hash))
+                   (short   (substring hash 0 (min 8 (length hash))))
+                   (message (plist-get entry :message)))
+              (magit-insert-section (commit hash)
+                (magit-insert-heading
+                  (propertize "done" 'font-lock-face 'magit-sequence-done)
+                  " "
+                  (propertize short 'font-lock-face 'madolt-hash)
+                  " "
+                  (or (car (split-string (or message "") "\n")) "")))))
           (dolist (entry plan)
             (let* ((action  (plist-get entry :action))
                    (hash    (plist-get entry :hash))
